@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  CheckSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -39,6 +40,11 @@ const navItems = [
     title: "Projects",
     href: "/projects",
     icon: FolderKanban,
+  },
+  {
+    title: "Tasks",
+    href: "/tasks",
+    icon: CheckSquare,
   },
   {
     title: "Donors",

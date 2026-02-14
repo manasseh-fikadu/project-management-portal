@@ -109,9 +109,40 @@ export const proposals = pgTable("proposals", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "completed"]);
+
+export const tasks = pgTable("tasks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  status: taskStatusEnum("status").default("pending").notNull(),
+  priority: varchar("priority", { length: 20 }).default("medium").notNull(),
+  dueDate: timestamp("due_date"),
+  assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  completedAt: timestamp("completed_at"),
+  order: integer("order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const taskDocuments = pgTable("task_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 100 }).notNull(),
+  url: text("url").notNull(),
+  size: integer("size").notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
   projectMemberships: many(projectMembers),
+  assignedTasks: many(tasks, { relationName: "assignedTasks" }),
+  createdTasks: many(tasks, { relationName: "createdTasks" }),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -123,6 +154,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   members: many(projectMembers),
   documents: many(projectDocuments),
   proposals: many(proposals),
+  tasks: many(tasks),
 }));
 
 export const projectDocumentsRelations = relations(projectDocuments, ({ one }) => ({
@@ -173,10 +205,43 @@ export const proposalsRelations = relations(proposals, ({ one }) => ({
   }),
 }));
 
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [tasks.projectId],
+    references: [projects.id],
+  }),
+  assignee: one(users, {
+    fields: [tasks.assignedTo],
+    references: [users.id],
+    relationName: "assignedTasks",
+  }),
+  creator: one(users, {
+    fields: [tasks.createdBy],
+    references: [users.id],
+    relationName: "createdTasks",
+  }),
+  documents: many(taskDocuments),
+}));
+
+export const taskDocumentsRelations = relations(taskDocuments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskDocuments.taskId],
+    references: [tasks.id],
+  }),
+  uploader: one(users, {
+    fields: [taskDocuments.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
 export type Donor = typeof donors.$inferSelect;
 export type NewDonor = typeof donors.$inferInsert;
 export type Proposal = typeof proposals.$inferSelect;
 export type NewProposal = typeof proposals.$inferInsert;
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
+export type TaskDocument = typeof taskDocuments.$inferSelect;
+export type NewTaskDocument = typeof taskDocuments.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Project = typeof projects.$inferSelect;
