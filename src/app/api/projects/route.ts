@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, projects, milestones, projectMembers } from "@/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 
 export async function GET() {

@@ -62,7 +62,7 @@ export default function ProjectsPage() {
   }
 
   function formatBudget(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB" }).format(amount);
   }
 
   function getMilestoneProgress(milestones: Milestone[]) {
@@ -73,102 +73,96 @@ export default function ProjectsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="p-6">
         <p>Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => router.push("/dashboard")}>
-              ← Dashboard
-            </Button>
-            <h1 className="text-xl font-semibold">Projects</h1>
-          </div>
-          <Button onClick={() => router.push("/projects/new")}>
-            <Plus className="h-4 w-4 mr-2" /> New Project
-          </Button>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Projects</h1>
+          <p className="text-muted-foreground">Manage your projects and track progress</p>
         </div>
-      </header>
+        <Button onClick={() => router.push("/projects/new")}>
+          <Plus className="h-4 w-4 mr-2" /> New Project
+        </Button>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {projects.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-gray-500 mb-4">No projects found</p>
-              <Button onClick={() => router.push("/projects/new")}>
-                <Plus className="h-4 w-4 mr-2" /> Create your first project
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <Card
-                key={project.id}
-                className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => router.push(`/projects/${project.id}`)}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-lg">{project.name}</CardTitle>
-                    <Badge className={statusColors[project.status]}>{project.status.replace("_", " ")}</Badge>
+      {projects.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-gray-500 mb-4">No projects found</p>
+            <Button onClick={() => router.push("/projects/new")}>
+              <Plus className="h-4 w-4 mr-2" /> Create your first project
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <Card
+              key={project.id}
+              className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => router.push(`/projects/${project.id}`)}
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-lg">{project.name}</CardTitle>
+                  <Badge className={statusColors[project.status]}>{project.status.replace("_", " ")}</Badge>
+                </div>
+                <CardDescription className="line-clamp-2">
+                  {project.description || "No description"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <User className="h-4 w-4" />
+                  <span>
+                    {project.manager.firstName} {project.manager.lastName}
+                  </span>
+                </div>
+
+                {project.donorId && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Donor ID:</span> {project.donorId}
                   </div>
-                  <CardDescription className="line-clamp-2">
-                    {project.description || "No description"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <User className="h-4 w-4" />
-                    <span>
-                      {project.manager.firstName} {project.manager.lastName}
-                    </span>
-                  </div>
+                )}
 
-                  {project.donorId && (
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">Donor ID:</span> {project.donorId}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-4 text-sm">
-                    {project.totalBudget > 0 && (
-                      <div className="flex items-center gap-1 text-gray-600">
-                        <DollarSign className="h-4 w-4" />
-                        <span>{formatBudget(project.totalBudget)}</span>
-                      </div>
-                    )}
+                <div className="flex items-center gap-4 text-sm">
+                  {project.totalBudget > 0 && (
                     <div className="flex items-center gap-1 text-gray-600">
-                      <Calendar className="h-4 w-4" />
-                      <span>{formatDate(project.startDate)}</span>
-                    </div>
-                  </div>
-
-                  {project.milestones.length > 0 && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span>Milestones</span>
-                        <span>{getMilestoneProgress(project.milestones)}%</span>
-                      </div>
-                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-green-500 transition-all"
-                          style={{ width: `${getMilestoneProgress(project.milestones)}%` }}
-                        />
-                      </div>
+                      <DollarSign className="h-4 w-4" />
+                      <span>{formatBudget(project.totalBudget)}</span>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </main>
+                  <div className="flex items-center gap-1 text-gray-600">
+                    <Calendar className="h-4 w-4" />
+                    <span>{formatDate(project.startDate)}</span>
+                  </div>
+                </div>
+
+                {project.milestones.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span>Milestones</span>
+                      <span>{getMilestoneProgress(project.milestones)}%</span>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-green-500 transition-all"
+                        style={{ width: `${getMilestoneProgress(project.milestones)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

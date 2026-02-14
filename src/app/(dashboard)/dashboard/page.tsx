@@ -1,131 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderKanban, Users } from "lucide-react";
-
-type User = {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-  department: string | null;
-};
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FolderKanban, Users, FileText, TrendingUp } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) {
-          setUser(data.user);
-        } else {
-          router.push("/login");
-        }
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
+  const quickActions = [
+    {
+      title: "Projects",
+      description: "Manage your projects",
+      icon: FolderKanban,
+      href: "/projects",
+      color: "bg-blue-100 text-blue-600",
+    },
+    {
+      title: "Donors",
+      description: "Manage donor contacts",
+      icon: Users,
+      href: "/donors",
+      color: "bg-green-100 text-green-600",
+    },
+    {
+      title: "Proposals",
+      description: "Track grant proposals",
+      icon: FileText,
+      href: "/proposals",
+      color: "bg-purple-100 text-purple-600",
+    },
+    {
+      title: "New Project",
+      description: "Create a new project",
+      icon: TrendingUp,
+      href: "/projects/new",
+      color: "bg-orange-100 text-orange-600",
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Project Management Portal</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              {user.firstName} {user.lastName} ({user.role})
-            </span>
-            <Button variant="outline" onClick={handleLogout}>
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push("/projects")}>
-            <CardHeader>
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-100 rounded-lg">
-                  <FolderKanban className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">Projects</CardTitle>
-                  <CardDescription>Manage your projects</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
+    <div className="p-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <p className="text-muted-foreground">
+          Welcome to the Project Management Portal
+        </p>
+      </div>
 
-          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push("/projects/new")}>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        {quickActions.map((action) => (
+          <Card
+            key={action.href}
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push(action.href)}
+          >
             <CardHeader>
               <div className="flex items-center gap-4">
-                <div className="p-3 bg-green-100 rounded-lg">
-                  <Users className="h-6 w-6 text-green-600" />
+                <div className={`p-3 rounded-lg ${action.color}`}>
+                  <action.icon className="h-6 w-6" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">New Project</CardTitle>
-                  <CardDescription>Register a new project</CardDescription>
+                  <CardTitle className="text-lg">{action.title}</CardTitle>
+                  <CardDescription>{action.description}</CardDescription>
                 </div>
               </div>
             </CardHeader>
           </Card>
-        </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+            <CardDescription>Your recent actions and updates</CardDescription>
+          </CardHeader>
+        </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Welcome, {user.firstName}!</CardTitle>
-            <CardDescription>
-              Your account has been successfully set up.
-            </CardDescription>
+            <CardTitle>Quick Stats</CardTitle>
+            <CardDescription>Overview of your portfolio</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Email</p>
-                <p className="text-sm">{user.email}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Role</p>
-                <p className="text-sm capitalize">{user.role}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Department</p>
-                <p className="text-sm">{user.department || "Not assigned"}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Status</p>
-                <p className="text-sm text-green-600">Active</p>
-              </div>
-            </div>
-          </CardContent>
         </Card>
-      </main>
+      </div>
     </div>
   );
 }

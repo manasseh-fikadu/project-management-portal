@@ -13,7 +13,7 @@ async function verifySessionForEdge(token: string, secret: string): Promise<{ us
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const secret = process.env.SESSION_SECRET;

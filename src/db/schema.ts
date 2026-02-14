@@ -67,6 +67,48 @@ export const projectMembers = pgTable("project_members", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const donorTypeEnum = pgEnum("donor_type", ["government", "foundation", "corporate", "individual", "multilateral", "ngo"]);
+
+export const donors = pgTable("donors", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: donorTypeEnum("type").notNull(),
+  contactPerson: varchar("contact_person", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  address: text("address"),
+  website: varchar("website", { length: 500 }),
+  grantTypes: text("grant_types"),
+  focusAreas: text("focus_areas"),
+  averageGrantSize: integer("average_grant_size"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const proposalStatusEnum = pgEnum("proposal_status", ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]);
+
+export const proposals = pgTable("proposals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  status: proposalStatusEnum("status").default("draft").notNull(),
+  amountRequested: integer("amount_requested").notNull(),
+  amountApproved: integer("amount_approved"),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  submissionDate: timestamp("submission_date"),
+  decisionDate: timestamp("decision_date"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  description: text("description"),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
   projectMemberships: many(projectMembers),
@@ -80,6 +122,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   milestones: many(milestones),
   members: many(projectMembers),
   documents: many(projectDocuments),
+  proposals: many(proposals),
 }));
 
 export const projectDocumentsRelations = relations(projectDocuments, ({ one }) => ({
@@ -111,6 +154,29 @@ export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
   }),
 }));
 
+export const donorsRelations = relations(donors, ({ many }) => ({
+  proposals: many(proposals),
+}));
+
+export const proposalsRelations = relations(proposals, ({ one }) => ({
+  donor: one(donors, {
+    fields: [proposals.donorId],
+    references: [donors.id],
+  }),
+  project: one(projects, {
+    fields: [proposals.projectId],
+    references: [projects.id],
+  }),
+  creator: one(users, {
+    fields: [proposals.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export type Donor = typeof donors.$inferSelect;
+export type NewDonor = typeof donors.$inferInsert;
+export type Proposal = typeof proposals.$inferSelect;
+export type NewProposal = typeof proposals.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Project = typeof projects.$inferSelect;

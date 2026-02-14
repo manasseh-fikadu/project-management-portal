@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -124,14 +123,9 @@ export default function ProjectProfilePage() {
   const [loading, setLoading] = useState(true);
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ title: "", description: "", dueDate: "" });
-  const [saving, setSaving] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
 
-  useEffect(() => {
-    fetchProject();
-  }, [projectId]);
-
-  async function fetchProject() {
+  const fetchProject = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}`);
       const data = await res.json();
@@ -145,7 +139,11 @@ export default function ProjectProfilePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [projectId, router]);
+
+  useEffect(() => {
+    fetchProject();
+  }, [fetchProject]);
 
   function formatDate(date: string | null) {
     if (!date) return "Not set";
@@ -153,7 +151,7 @@ export default function ProjectProfilePage() {
   }
 
   function formatBudget(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB" }).format(amount);
   }
 
   function formatFileSize(bytes: number) {
@@ -170,7 +168,6 @@ export default function ProjectProfilePage() {
 
   async function handleStatusChange(newStatus: string) {
     if (!project) return;
-    setSaving(true);
     try {
       await fetch(`/api/projects/${projectId}`, {
         method: "PUT",
@@ -179,7 +176,6 @@ export default function ProjectProfilePage() {
       });
       setProject({ ...project, status: newStatus });
     } finally {
-      setSaving(false);
     }
   }
 
@@ -312,7 +308,7 @@ export default function ProjectProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="p-6">
         <p>Loading...</p>
       </div>
     );
@@ -323,312 +319,306 @@ export default function ProjectProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => router.push("/projects")}>
-              <ArrowLeft className="h-4 w-4 mr-2" /> Back to Projects
+    <div className="p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <Button variant="ghost" onClick={() => router.push("/projects")}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Projects
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <MoreVertical className="h-4 w-4" />
             </Button>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleStatusChange("active")}>
-                Set Active
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleStatusChange("on_hold")}>
-                Set On Hold
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
-                Set Completed
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleStatusChange("cancelled")}>
-                Set Cancelled
-              </DropdownMenuItem>
-              <Separator className="my-1" />
-              <DropdownMenuItem onClick={handleDeleteProject} className="text-red-600">
-                <Trash2 className="h-4 w-4 mr-2" /> Delete Project
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => handleStatusChange("active")}>
+              Set Active
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleStatusChange("on_hold")}>
+              Set On Hold
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
+              Set Completed
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleStatusChange("cancelled")}>
+              Set Cancelled
+            </DropdownMenuItem>
+            <Separator className="my-1" />
+            <DropdownMenuItem onClick={handleDeleteProject} className="text-red-600">
+              <Trash2 className="h-4 w-4 mr-2" /> Delete Project
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-2xl">{project.name}</CardTitle>
-                    <CardDescription className="mt-2">
-                      {project.description || "No description provided"}
-                    </CardDescription>
-                  </div>
-                  <Badge className={statusColors[project.status]}>
-                    {project.status.replace("_", " ")}
-                  </Badge>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-2xl">{project.name}</CardTitle>
+                  <CardDescription className="mt-2">
+                    {project.description || "No description provided"}
+                  </CardDescription>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm">
-                      <span className="text-gray-500">Manager:</span>{" "}
-                      {project.manager.firstName} {project.manager.lastName}
-                    </span>
-                  </div>
-                  {project.donorId && (
-                    <div className="text-sm">
-                      <span className="text-gray-500">Donor ID:</span> {project.donorId}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm">
-                      Budget: {formatBudget(project.totalBudget)}
-                      {project.spentBudget > 0 && (
-                        <span className="text-gray-500 ml-1">
-                          ({formatBudget(project.spentBudget)} spent)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm">
-                      {formatDate(project.startDate)} - {formatDate(project.endDate)}
-                    </span>
-                  </div>
+                <Badge className={statusColors[project.status]}>
+                  {project.status.replace("_", " ")}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm">
+                    <span className="text-gray-500">Manager:</span>{" "}
+                    {project.manager.firstName} {project.manager.lastName}
+                  </span>
                 </div>
-
-                <div className="mt-6">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>Overall Progress</span>
-                    <span>{getProgress()}%</span>
-                  </div>
-                  <Progress value={getProgress()} />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Work Plan / Milestones</CardTitle>
-                  <Dialog open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
-                    <DialogTrigger asChild>
-                      <Button size="sm">
-                        <Plus className="h-4 w-4 mr-1" /> Add Milestone
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add New Milestone</DialogTitle>
-                      </DialogHeader>
-                      <form onSubmit={handleAddMilestone} className="space-y-4 mt-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="milestone-title">Title *</Label>
-                          <Input
-                            id="milestone-title"
-                            value={newMilestone.title}
-                            onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="milestone-description">Description</Label>
-                          <Textarea
-                            id="milestone-description"
-                            value={newMilestone.description}
-                            onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="milestone-due">Due Date</Label>
-                          <Input
-                            id="milestone-due"
-                            type="date"
-                            value={newMilestone.dueDate}
-                            onChange={(e) => setNewMilestone({ ...newMilestone, dueDate: e.target.value })}
-                          />
-                        </div>
-                        <div className="flex gap-2 justify-end">
-                          <Button type="button" variant="outline" onClick={() => setIsAddMilestoneOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button type="submit">Add Milestone</Button>
-                        </div>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {project.milestones.length === 0 ? (
-                  <p className="text-sm text-gray-500">No milestones defined yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {project.milestones.map((milestone) => (
-                      <div key={milestone.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                        <div className={`mt-0.5 ${milestoneStatusColors[milestone.status]}`}>
-                          {milestoneStatusIcons[milestone.status]}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium">{milestone.title}</h4>
-                            <Badge variant="outline" className={milestoneStatusColors[milestone.status]}>
-                              {milestone.status.replace("_", " ")}
-                            </Badge>
-                          </div>
-                          {milestone.description && (
-                            <p className="text-sm text-gray-500 mt-1">{milestone.description}</p>
-                          )}
-                          {milestone.dueDate && (
-                            <p className="text-xs text-gray-400 mt-1">
-                              Due: {formatDate(milestone.dueDate)}
-                            </p>
-                          )}
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "in_progress")}>
-                              Set In Progress
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "completed")}>
-                              Set Completed
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "cancelled")}>
-                              Set Cancelled
-                            </DropdownMenuItem>
-                            <Separator className="my-1" />
-                            <DropdownMenuItem onClick={() => handleDeleteMilestone(milestone.id)} className="text-red-600">
-                              <Trash2 className="h-4 w-4 mr-2" /> Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ))}
+                {project.donorId && (
+                  <div className="text-sm">
+                    <span className="text-gray-500">Donor ID:</span> {project.donorId}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Documents</CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="h-4 w-4 mr-1" /> Upload
-                  </Button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileUpload}
-                  />
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm">
+                    Budget: {formatBudget(project.totalBudget)}
+                    {project.spentBudget > 0 && (
+                      <span className="text-gray-500 ml-1">
+                        ({formatBudget(project.spentBudget)} spent)
+                      </span>
+                    )}
+                  </span>
                 </div>
-              </CardHeader>
-              <CardContent>
-                {uploadingFiles.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {uploadingFiles.map((file, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{file.name}</p>
-                          <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
-                            <div
-                              className="h-full bg-blue-500 transition-all duration-300"
-                              style={{ width: `${file.progress}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm">
+                    {formatDate(project.startDate)} - {formatDate(project.endDate)}
+                  </span>
+                </div>
+              </div>
 
-                {project.documents.length === 0 && uploadingFiles.length === 0 ? (
-                  <p className="text-sm text-gray-500">No documents uploaded yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {project.documents.map((doc) => (
-                      <div key={doc.id} className="flex items-start gap-2 p-2 hover:bg-gray-50 rounded border group">
-                        <FileText className="h-4 w-4 mt-0.5 text-gray-400 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <a
-                            href={doc.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium truncate hover:underline block"
-                          >
-                            {doc.name}
-                          </a>
-                          <p className="text-xs text-gray-400">
-                            {formatFileSize(doc.size)} • {formatDate(doc.createdAt)}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
-                          onClick={() => handleDeleteDocument(doc.id)}
-                        >
-                          <Trash2 className="h-3 w-3 text-red-500" />
+              <div className="mt-6">
+                <div className="flex justify-between text-sm mb-2">
+                  <span>Overall Progress</span>
+                  <span>{getProgress()}%</span>
+                </div>
+                <Progress value={getProgress()} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Work Plan / Milestones</CardTitle>
+                <Dialog open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" /> Add Milestone
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Milestone</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleAddMilestone} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="milestone-title">Title *</Label>
+                        <Input
+                          id="milestone-title"
+                          value={newMilestone.title}
+                          onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="milestone-description">Description</Label>
+                        <Textarea
+                          id="milestone-description"
+                          value={newMilestone.description}
+                          onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="milestone-due">Due Date</Label>
+                        <Input
+                          id="milestone-due"
+                          type="date"
+                          value={newMilestone.dueDate}
+                          onChange={(e) => setNewMilestone({ ...newMilestone, dueDate: e.target.value })}
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button type="button" variant="outline" onClick={() => setIsAddMilestoneOpen(false)}>
+                          Cancel
                         </Button>
+                        <Button type="submit">Add Milestone</Button>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Team Members</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {project.members.length === 0 ? (
-                  <p className="text-sm text-gray-500">No team members assigned.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {project.members.map((member) => (
-                      <div key={member.user.id} className="flex items-center gap-2 p-2 border rounded">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
-                          {member.user.firstName[0]}
-                          {member.user.lastName[0]}
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {project.milestones.length === 0 ? (
+                <p className="text-sm text-gray-500">No milestones defined yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {project.milestones.map((milestone) => (
+                    <div key={milestone.id} className="flex items-start gap-3 p-3 border rounded-lg">
+                      <div className={`mt-0.5 ${milestoneStatusColors[milestone.status]}`}>
+                        {milestoneStatusIcons[milestone.status]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{milestone.title}</h4>
+                          <Badge variant="outline" className={milestoneStatusColors[milestone.status]}>
+                            {milestone.status.replace("_", " ")}
+                          </Badge>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">
-                            {member.user.firstName} {member.user.lastName}
+                        {milestone.description && (
+                          <p className="text-sm text-gray-500 mt-1">{milestone.description}</p>
+                        )}
+                        {milestone.dueDate && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Due: {formatDate(milestone.dueDate)}
                           </p>
-                          <p className="text-xs text-gray-500 capitalize">{member.role}</p>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "in_progress")}>
+                            Set In Progress
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "completed")}>
+                            Set Completed
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "cancelled")}>
+                            Set Cancelled
+                          </DropdownMenuItem>
+                          <Separator className="my-1" />
+                          <DropdownMenuItem onClick={() => handleDeleteMilestone(milestone.id)} className="text-red-600">
+                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Documents</CardTitle>
+                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-1" /> Upload
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {uploadingFiles.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {uploadingFiles.map((file, index) => (
+                    <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{file.name}</p>
+                        <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
+                          <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${file.progress}%` }}
+                          />
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {project.documents.length === 0 && uploadingFiles.length === 0 ? (
+                <p className="text-sm text-gray-500">No documents uploaded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {project.documents.map((doc) => (
+                    <div key={doc.id} className="flex items-start gap-2 p-2 hover:bg-gray-50 rounded border group">
+                      <FileText className="h-4 w-4 mt-0.5 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium truncate hover:underline block"
+                        >
+                          {doc.name}
+                        </a>
+                        <p className="text-xs text-gray-400">
+                          {formatFileSize(doc.size)} • {formatDate(doc.createdAt)}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                        onClick={() => handleDeleteDocument(doc.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-red-500" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Team Members</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {project.members.length === 0 ? (
+                <p className="text-sm text-gray-500">No team members assigned.</p>
+              ) : (
+                <div className="space-y-2">
+                  {project.members.map((member) => (
+                    <div key={member.user.id} className="flex items-center gap-2 p-2 border rounded">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
+                        {member.user.firstName[0]}
+                        {member.user.lastName[0]}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">
+                          {member.user.firstName} {member.user.lastName}
+                        </p>
+                        <p className="text-xs text-gray-500 capitalize">{member.role}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
