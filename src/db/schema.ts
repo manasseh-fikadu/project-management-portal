@@ -23,12 +23,25 @@ export const projects = pgTable("projects", {
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   status: projectStatusEnum("status").default("planning").notNull(),
-  budget: integer("budget").default(0),
+  donorId: varchar("donor_id", { length: 255 }),
+  totalBudget: integer("total_budget").default(0),
+  spentBudget: integer("spent_budget").default(0),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   managerId: uuid("manager_id").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const projectDocuments = pgTable("project_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 100 }).notNull(),
+  url: text("url").notNull(),
+  size: integer("size").notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const milestoneStatusEnum = pgEnum("milestone_status", ["pending", "in_progress", "completed", "cancelled"]);
@@ -66,6 +79,18 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   }),
   milestones: many(milestones),
   members: many(projectMembers),
+  documents: many(projectDocuments),
+}));
+
+export const projectDocumentsRelations = relations(projectDocuments, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectDocuments.projectId],
+    references: [projects.id],
+  }),
+  uploader: one(users, {
+    fields: [projectDocuments.uploadedBy],
+    references: [users.id],
+  }),
 }));
 
 export const milestonesRelations = relations(milestones, ({ one }) => ({
@@ -94,3 +119,5 @@ export type Milestone = typeof milestones.$inferSelect;
 export type NewMilestone = typeof milestones.$inferInsert;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 export type NewProjectMember = typeof projectMembers.$inferInsert;
+export type ProjectDocument = typeof projectDocuments.$inferSelect;
+export type NewProjectDocument = typeof projectDocuments.$inferInsert;

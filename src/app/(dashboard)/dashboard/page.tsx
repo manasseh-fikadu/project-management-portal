@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FolderKanban, Users } from "lucide-react";
 
 type User = {
   id: string;
@@ -66,6 +67,36 @@ export default function DashboardPage() {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
+          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push("/projects")}>
+            <CardHeader>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <FolderKanban className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Projects</CardTitle>
+                  <CardDescription>Manage your projects</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push("/projects/new")}>
+            <CardHeader>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <Users className="h-6 w-6 text-green-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">New Project</CardTitle>
+                  <CardDescription>Register a new project</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Welcome, {user.firstName}!</CardTitle>
