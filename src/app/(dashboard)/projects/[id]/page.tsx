@@ -25,13 +25,13 @@ import {
   User,
   DollarSign,
   MoreVertical,
-  Edit,
   Trash2,
   Upload,
   FileText,
   CheckCircle,
   Clock,
   XCircle,
+  Loader2,
 } from "lucide-react";
 
 type Milestone = {
@@ -55,6 +55,11 @@ type Document = {
     firstName: string;
     lastName: string;
   };
+};
+
+type UploadingFile = {
+  name: string;
+  progress: number;
 };
 
 type Project = {
@@ -120,6 +125,7 @@ export default function ProjectProfilePage() {
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ title: "", description: "", dueDate: "" });
   const [saving, setSaving] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
 
   useEffect(() => {
     fetchProject();
@@ -238,9 +244,18 @@ export default function ProjectProfilePage() {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !project) return;
 
-    for (const file of files) {
+    const newUploads: UploadingFile[] = files.map((f) => ({ name: f.name, progress: 0 }));
+    setUploadingFiles((prev) => [...prev, ...newUploads]);
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const formData = new FormData();
       formData.append("file", file);
+
+      setUploadingFiles((prev) =>
+        prev.map((u, idx) => (u.name === file.name && idx === prev.findIndex((p) => p.name === file.name) ? { ...u, progress: 50 } : u))
+      );
+
       try {
         const res = await fetch(`/api/projects/${projectId}/documents`, {
           method: "POST",
@@ -248,17 +263,39 @@ export default function ProjectProfilePage() {
         });
         const data = await res.json();
         if (data.document) {
-          setProject({
-            ...project,
-            documents: [...project.documents, data.document],
-          });
+          setProject((prev) =>
+            prev ? { ...prev, documents: [...prev.documents, data.document] } : prev
+          );
         }
       } catch (error) {
         console.error("Failed to upload document:", error);
       }
+
+      setUploadingFiles((prev) =>
+        prev.map((u) => (u.name === file.name ? { ...u, progress: 100 } : u))
+      );
     }
+
+    setTimeout(() => {
+      setUploadingFiles((prev) => prev.filter((u) => !files.some((f) => f.name === u.name)));
+    }, 500);
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleDeleteDocument(documentId: string) {
+    if (!project || !confirm("Are you sure you want to delete this document?")) return;
+
+    try {
+      await fetch(`/api/documents/${documentId}`, { method: "DELETE" });
+      setProject({
+        ...project,
+        documents: project.documents.filter((d) => d.id !== documentId),
+      });
+    } catch (error) {
+      console.error("Failed to delete document:", error);
     }
   }
 
@@ -508,26 +545,54 @@ export default function ProjectProfilePage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {project.documents.length === 0 ? (
+                {uploadingFiles.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {uploadingFiles.map((file, index) => (
+                      <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{file.name}</p>
+                          <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
+                            <div
+                              className="h-full bg-blue-500 transition-all duration-300"
+                              style={{ width: `${file.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {project.documents.length === 0 && uploadingFiles.length === 0 ? (
                   <p className="text-sm text-gray-500">No documents uploaded yet.</p>
                 ) : (
                   <div className="space-y-2">
                     {project.documents.map((doc) => (
-                      <a
-                        key={doc.id}
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-2 p-2 hover:bg-gray-50 rounded border"
-                      >
-                        <FileText className="h-4 w-4 mt-0.5 text-gray-400" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{doc.name}</p>
+                      <div key={doc.id} className="flex items-start gap-2 p-2 hover:bg-gray-50 rounded border group">
+                        <FileText className="h-4 w-4 mt-0.5 text-gray-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <a
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium truncate hover:underline block"
+                          >
+                            {doc.name}
+                          </a>
                           <p className="text-xs text-gray-400">
                             {formatFileSize(doc.size)} • {formatDate(doc.createdAt)}
                           </p>
                         </div>
-                      </a>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                        >
+                          <Trash2 className="h-3 w-3 text-red-500" />
+                        </Button>
+                      </div>
                     ))}
                   </div>
                 )}

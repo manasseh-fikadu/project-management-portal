@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, projectDocuments } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage";
+import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -24,7 +25,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       orderBy: (docs, { desc }) => [desc(docs.createdAt)],
     });
 
-    return NextResponse.json({ documents });
+    const documentsWithUrls = await Promise.all(
+      documents.map(async (doc) => {
+        if (R2_PUBLIC_URL) {
+          return doc;
+        }
+        const key = doc.url.replace("/uploads/", "");
+        const command = new GetObjectCommand({ Bucket: R2_BUCKET, Key: key });
+        const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 3600 });
+        return { ...doc, url: signedUrl };
+      })
+    );
+
+    return NextResponse.json({ documents: documentsWithUrls });
   } catch (error) {
     console.error("Error fetching documents:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -47,16 +60,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const uploadsDir = path.join(process.cwd(), "uploads", id);
-    await mkdir(uploadsDir, { recursive: true });
-
     const fileExtension = file.name.split(".").pop() || "bin";
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-    const filePath = path.join(uploadsDir, fileName);
+    const key = `${id}/${fileName}`;
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filePath, buffer);
+
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: file.type || "application/octet-stream",
+      })
+    );
+
+    const fileUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${key}` : `/uploads/${key}`;
 
     const [document] = await db
       .insert(projectDocuments)
@@ -64,7 +84,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         projectId: id,
         name: name || file.name,
         type: file.type || "application/octet-stream",
-        url: `/uploads/${id}/${fileName}`,
+        url: fileUrl,
         size: file.size,
         uploadedBy: session.userId,
       })
