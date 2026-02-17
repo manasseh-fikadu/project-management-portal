@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, donors } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(
   request: NextRequest,
@@ -38,12 +40,21 @@ export async function PUT(
 ) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
     const body = await request.json();
+    const existingDonor = await db.query.donors.findFirst({
+      where: eq(donors.id, id),
+    });
+
+    if (!existingDonor) {
+      return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+    }
 
     const [updatedDonor] = await db
       .update(donors)
@@ -58,6 +69,15 @@ export async function PUT(
       return NextResponse.json({ error: "Donor not found" }, { status: 404 });
     }
 
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "update",
+      entityType: "donor",
+      entityId: id,
+      changes: { before: existingDonor, after: updatedDonor },
+      request,
+    });
+
     return NextResponse.json({ donor: updatedDonor });
   } catch (error) {
     console.error("Error updating donor:", error);
@@ -71,6 +91,8 @@ export async function DELETE(
 ) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -81,6 +103,15 @@ export async function DELETE(
     if (!deletedDonor) {
       return NextResponse.json({ error: "Donor not found" }, { status: 404 });
     }
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "delete",
+      entityType: "donor",
+      entityId: id,
+      changes: { before: deletedDonor },
+      request,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { profiles, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
@@ -15,6 +15,35 @@ if (!SESSION_SECRET) {
 
 export function getSecretKey() {
   return new TextEncoder().encode(SESSION_SECRET);
+}
+
+export type ProfileRole = typeof profiles.$inferSelect.role;
+
+function mapLegacyRoleToProfileRole(role: typeof users.$inferSelect.role): ProfileRole {
+  if (role === "admin") return "admin";
+  if (role === "manager") return "project_manager";
+  return "beneficiary";
+}
+
+function mapProfileRoleToLegacyRole(role: ProfileRole): typeof users.$inferSelect.role {
+  if (role === "admin") return "admin";
+  if (role === "project_manager") return "manager";
+  return "user";
+}
+
+export async function resolveUserRole(
+  userId: string,
+  fallbackRole?: typeof users.$inferSelect.role
+): Promise<ProfileRole> {
+  const profile = await db.query.profiles.findFirst({
+    where: eq(profiles.userId, userId),
+  });
+
+  if (profile?.role) {
+    return profile.role;
+  }
+
+  return mapLegacyRoleToProfileRole(fallbackRole ?? "user");
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -44,7 +73,11 @@ export async function verifySessionToken(token: string): Promise<{ userId: strin
   }
 }
 
-export async function getSession(): Promise<{ userId: string; user: typeof users.$inferSelect } | null> {
+export type SessionUser = Omit<typeof users.$inferSelect, "role"> & {
+  role: ProfileRole;
+};
+
+export async function getSession(): Promise<{ userId: string; user: SessionUser } | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
 
@@ -65,7 +98,9 @@ export async function getSession(): Promise<{ userId: string; user: typeof users
     return null;
   }
 
-  return { userId: session.userId, user };
+  const role = await resolveUserRole(user.id, user.role);
+
+  return { userId: session.userId, user: { ...user, role } };
 }
 
 export async function setSessionCookie(token: string): Promise<void> {
@@ -89,7 +124,7 @@ export async function registerUser(
   password: string,
   firstName: string,
   lastName: string,
-  role: "admin" | "manager" | "user" = "user",
+  role: ProfileRole = "beneficiary",
   department?: string
 ) {
   const existingUser = await db.query.users.findFirst({
@@ -109,10 +144,15 @@ export async function registerUser(
       passwordHash,
       firstName,
       lastName,
-      role,
+      role: mapProfileRoleToLegacyRole(role),
       department,
     })
     .returning();
+
+  await db.insert(profiles).values({
+    userId: newUser.id,
+    role,
+  });
 
   return newUser;
 }

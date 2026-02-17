@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, projects } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -52,12 +54,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
     const body = await request.json();
+    const existingProject = await db.query.projects.findFirst({
+      where: eq(projects.id, id),
+    });
+
+    if (!existingProject) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
 
     const [updatedProject] = await db
       .update(projects)
@@ -74,6 +85,15 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "update",
+      entityType: "project",
+      entityId: id,
+      changes: { before: existingProject, after: updatedProject },
+      request,
+    });
+
     return NextResponse.json({ project: updatedProject });
   } catch (error) {
     console.error("Error updating project:", error);
@@ -84,6 +104,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -95,6 +117,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!deletedProject) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "delete",
+      entityType: "project",
+      entityId: id,
+      changes: { before: deletedProject },
+      request,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

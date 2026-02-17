@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, donors } from "@/db";
 import { desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET() {
   try {
@@ -24,6 +26,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -63,6 +67,15 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
       })
       .returning();
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "create",
+      entityType: "donor",
+      entityId: newDonor.id,
+      changes: { after: newDonor },
+      request,
+    });
 
     return NextResponse.json({ donor: newDonor }, { status: 201 });
   } catch (error) {

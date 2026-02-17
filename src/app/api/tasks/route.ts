@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, tasks } from "@/db";
 import { desc, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,6 +74,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -104,6 +108,15 @@ export async function POST(request: NextRequest) {
         createdBy: session.userId,
       })
       .returning();
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "create",
+      entityType: "task",
+      entityId: newTask.id,
+      changes: { after: newTask },
+      request,
+    });
 
     const taskWithRelations = await db.query.tasks.findFirst({
       where: eq(tasks.id, newTask.id),

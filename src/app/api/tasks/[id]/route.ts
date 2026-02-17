@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, tasks } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(
   request: NextRequest,
@@ -53,12 +55,21 @@ export async function PUT(
 ) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
     const body = await request.json();
+    const existingTask = await db.query.tasks.findFirst({
+      where: eq(tasks.id, id),
+    });
+
+    if (!existingTask) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
 
     const updateData: Record<string, unknown> = {
       ...body,
@@ -82,6 +93,15 @@ export async function PUT(
     if (!updatedTask) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "update",
+      entityType: "task",
+      entityId: id,
+      changes: { before: existingTask, after: updatedTask },
+      request,
+    });
 
     const taskWithRelations = await db.query.tasks.findFirst({
       where: eq(tasks.id, updatedTask.id),
@@ -118,6 +138,8 @@ export async function DELETE(
 ) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -128,6 +150,15 @@ export async function DELETE(
     if (!deletedTask) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "delete",
+      entityType: "task",
+      entityId: id,
+      changes: { before: deletedTask },
+      request,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

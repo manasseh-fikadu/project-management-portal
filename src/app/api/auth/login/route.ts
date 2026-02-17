@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loginUser, createSession, setSessionCookie } from "@/lib/auth";
+import { loginUser, createSession, resolveUserRole, setSessionCookie } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await loginUser(email, password);
+    const role = await resolveUserRole(user.id, user.role);
     const token = await createSession(user.id);
     await setSessionCookie(token);
 
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
+        role,
         department: user.department,
       },
     });

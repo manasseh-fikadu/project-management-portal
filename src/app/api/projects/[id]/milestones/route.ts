@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, milestones } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,6 +29,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -53,6 +57,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         order: order ?? existingMilestones.length,
       })
       .returning();
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "create",
+      entityType: "milestone",
+      entityId: milestone.id,
+      changes: { after: milestone },
+      request,
+    });
 
     return NextResponse.json({ milestone }, { status: 201 });
   } catch (error) {

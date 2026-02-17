@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, proposals } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(
   request: NextRequest,
@@ -42,12 +44,21 @@ export async function PUT(
 ) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
     const body = await request.json();
+    const existingProposal = await db.query.proposals.findFirst({
+      where: eq(proposals.id, id),
+    });
+
+    if (!existingProposal) {
+      return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
 
     const [updatedProposal] = await db
       .update(proposals)
@@ -66,6 +77,15 @@ export async function PUT(
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
     }
 
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "update",
+      entityType: "proposal",
+      entityId: id,
+      changes: { before: existingProposal, after: updatedProposal },
+      request,
+    });
+
     return NextResponse.json({ proposal: updatedProposal });
   } catch (error) {
     console.error("Error updating proposal:", error);
@@ -79,6 +99,8 @@ export async function DELETE(
 ) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -89,6 +111,15 @@ export async function DELETE(
     if (!deletedProposal) {
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
     }
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "delete",
+      entityType: "proposal",
+      entityId: id,
+      changes: { before: deletedProposal },
+      request,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

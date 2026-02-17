@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await registerUser(email, password, firstName, lastName, role, department);
+    const user = await registerUser(email, password, firstName, lastName, role ?? "beneficiary", department);
     const token = await createSession(user.id);
     await setSessionCookie(token);
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role,
+        role: role ?? "beneficiary",
         department: user.department,
       },
     });

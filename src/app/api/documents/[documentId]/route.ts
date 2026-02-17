@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, projectDocuments } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { ensureEditAccess } from "@/lib/rbac";
+import { logAuditEvent } from "@/lib/audit";
 import { r2Client, R2_BUCKET } from "@/lib/storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ documentId: string }> }) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -38,6 +42,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     await db.delete(projectDocuments).where(eq(projectDocuments.id, documentId));
+
+    await logAuditEvent({
+      actorUserId: session.userId,
+      action: "delete",
+      entityType: "project_document",
+      entityId: documentId,
+      changes: { before: document },
+      request,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

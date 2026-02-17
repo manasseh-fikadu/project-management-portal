@@ -1,7 +1,9 @@
-import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
+export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
+export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -14,6 +16,25 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const profiles = pgTable("profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+  role: profileRoleEnum("role").default("beneficiary").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  action: auditActionEnum("action").notNull(),
+  entityType: varchar("entity_type", { length: 100 }).notNull(),
+  entityId: varchar("entity_id", { length: 255 }).notNull(),
+  changes: jsonb("changes"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const projectStatusEnum = pgEnum("project_status", ["planning", "active", "on_hold", "completed", "cancelled"]);
@@ -138,11 +159,30 @@ export const taskDocuments = pgTable("task_documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
+  profile: one(profiles, {
+    fields: [users.id],
+    references: [profiles.userId],
+  }),
   projects: many(projects),
   projectMemberships: many(projectMembers),
   assignedTasks: many(tasks, { relationName: "assignedTasks" }),
   createdTasks: many(tasks, { relationName: "createdTasks" }),
+  auditLogs: many(auditLogs),
+}));
+
+export const profilesRelations = relations(profiles, ({ one }) => ({
+  user: one(users, {
+    fields: [profiles.userId],
+    references: [users.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  actor: one(users, {
+    fields: [auditLogs.actorUserId],
+    references: [users.id],
+  }),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -244,6 +284,10 @@ export type TaskDocument = typeof taskDocuments.$inferSelect;
 export type NewTaskDocument = typeof taskDocuments.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type Profile = typeof profiles.$inferSelect;
+export type NewProfile = typeof profiles.$inferInsert;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
 export type Milestone = typeof milestones.$inferSelect;
