@@ -159,6 +159,48 @@ export const taskDocuments = pgTable("task_documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const budgetAllocations = pgTable("budget_allocations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  activityName: varchar("activity_name", { length: 255 }).notNull(),
+  plannedAmount: integer("planned_amount").notNull(),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const expenditures = pgTable("expenditures", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
+  activityName: varchar("activity_name", { length: 255 }),
+  amount: integer("amount").notNull(),
+  expenditureDate: timestamp("expenditure_date").notNull(),
+  description: text("description"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const disbursementLogs = pgTable("disbursement_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
+  budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
+  expenditureId: uuid("expenditure_id").references(() => expenditures.id, { onDelete: "set null" }),
+  activityName: varchar("activity_name", { length: 255 }).notNull(),
+  amount: integer("amount").notNull(),
+  disbursedAt: timestamp("disbursed_at").notNull(),
+  reference: varchar("reference", { length: 255 }),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, {
     fields: [users.id],
@@ -169,6 +211,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   assignedTasks: many(tasks, { relationName: "assignedTasks" }),
   createdTasks: many(tasks, { relationName: "createdTasks" }),
   auditLogs: many(auditLogs),
+  budgetAllocations: many(budgetAllocations),
+  expenditures: many(expenditures),
+  disbursementLogs: many(disbursementLogs),
 }));
 
 export const profilesRelations = relations(profiles, ({ one }) => ({
@@ -195,6 +240,9 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   documents: many(projectDocuments),
   proposals: many(proposals),
   tasks: many(tasks),
+  budgetAllocations: many(budgetAllocations),
+  expenditures: many(expenditures),
+  disbursementLogs: many(disbursementLogs),
 }));
 
 export const projectDocumentsRelations = relations(projectDocuments, ({ one }) => ({
@@ -228,6 +276,8 @@ export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
 
 export const donorsRelations = relations(donors, ({ many }) => ({
   proposals: many(proposals),
+  expenditures: many(expenditures),
+  disbursementLogs: many(disbursementLogs),
 }));
 
 export const proposalsRelations = relations(proposals, ({ one }) => ({
@@ -261,6 +311,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     relationName: "createdTasks",
   }),
   documents: many(taskDocuments),
+  expenditures: many(expenditures),
 }));
 
 export const taskDocumentsRelations = relations(taskDocuments, ({ one }) => ({
@@ -274,6 +325,66 @@ export const taskDocumentsRelations = relations(taskDocuments, ({ one }) => ({
   }),
 }));
 
+export const budgetAllocationsRelations = relations(budgetAllocations, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [budgetAllocations.projectId],
+    references: [projects.id],
+  }),
+  creator: one(users, {
+    fields: [budgetAllocations.createdBy],
+    references: [users.id],
+  }),
+  expenditures: many(expenditures),
+  disbursementLogs: many(disbursementLogs),
+}));
+
+export const expendituresRelations = relations(expenditures, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [expenditures.projectId],
+    references: [projects.id],
+  }),
+  budgetAllocation: one(budgetAllocations, {
+    fields: [expenditures.budgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
+  task: one(tasks, {
+    fields: [expenditures.taskId],
+    references: [tasks.id],
+  }),
+  donor: one(donors, {
+    fields: [expenditures.donorId],
+    references: [donors.id],
+  }),
+  creator: one(users, {
+    fields: [expenditures.createdBy],
+    references: [users.id],
+  }),
+  disbursementLogs: many(disbursementLogs),
+}));
+
+export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) => ({
+  project: one(projects, {
+    fields: [disbursementLogs.projectId],
+    references: [projects.id],
+  }),
+  donor: one(donors, {
+    fields: [disbursementLogs.donorId],
+    references: [donors.id],
+  }),
+  budgetAllocation: one(budgetAllocations, {
+    fields: [disbursementLogs.budgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
+  expenditure: one(expenditures, {
+    fields: [disbursementLogs.expenditureId],
+    references: [expenditures.id],
+  }),
+  creator: one(users, {
+    fields: [disbursementLogs.createdBy],
+    references: [users.id],
+  }),
+}));
+
 export type Donor = typeof donors.$inferSelect;
 export type NewDonor = typeof donors.$inferInsert;
 export type Proposal = typeof proposals.$inferSelect;
@@ -282,6 +393,12 @@ export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type TaskDocument = typeof taskDocuments.$inferSelect;
 export type NewTaskDocument = typeof taskDocuments.$inferInsert;
+export type BudgetAllocation = typeof budgetAllocations.$inferSelect;
+export type NewBudgetAllocation = typeof budgetAllocations.$inferInsert;
+export type Expenditure = typeof expenditures.$inferSelect;
+export type NewExpenditure = typeof expenditures.$inferInsert;
+export type DisbursementLog = typeof disbursementLogs.$inferSelect;
+export type NewDisbursementLog = typeof disbursementLogs.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;

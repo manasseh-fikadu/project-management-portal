@@ -13,6 +13,7 @@ import {
   ChevronRight,
   LogOut,
   CheckSquare,
+  HandCoins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -55,6 +56,11 @@ const navItems = [
     title: "Proposals",
     href: "/proposals",
     icon: FileText,
+  },
+  {
+    title: "Financials",
+    href: "/financials",
+    icon: HandCoins,
   },
 ];
 

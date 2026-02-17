@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderKanban, Users, FileText, TrendingUp } from "lucide-react";
+import { FolderKanban, Users, FileText, TrendingUp, HandCoins } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -36,6 +36,13 @@ export default function DashboardPage() {
       href: "/projects/new",
       color: "bg-orange-100 text-orange-600",
     },
+    {
+      title: "Financials",
+      description: "Track budgets and disbursements",
+      icon: HandCoins,
+      href: "/financials",
+      color: "bg-emerald-100 text-emerald-700",
+    },
   ];
 
   return (
@@ -47,7 +54,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 mb-8">
         {quickActions.map((action) => (
           <Card
             key={action.href}
