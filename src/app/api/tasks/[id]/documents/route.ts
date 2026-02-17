@@ -32,10 +32,12 @@ export async function GET(
 
     const documentsWithUrls = await Promise.all(
       documents.map(async (doc) => {
-        if (R2_PUBLIC_URL) {
-          return doc;
+        let key = doc.url;
+        if (R2_PUBLIC_URL && doc.url.startsWith(R2_PUBLIC_URL)) {
+          key = doc.url.replace(`${R2_PUBLIC_URL}/`, "");
+        } else if (doc.url.startsWith("/uploads/")) {
+          key = doc.url.replace("/uploads/", "");
         }
-        const key = doc.url.replace("/uploads/", "");
         const command = new GetObjectCommand({ Bucket: R2_BUCKET, Key: key });
         const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 3600 });
         return { ...doc, url: signedUrl };

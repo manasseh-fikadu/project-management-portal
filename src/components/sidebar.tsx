@@ -2,6 +2,7 @@
 
 import { useState, createContext, useContext } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
@@ -94,13 +95,20 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
     >
       <div className="flex h-full flex-col">
         <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-4">
-          {!isCollapsed && (
-            <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <Image
+              src="/motri.png"
+              alt="MoTRI Logo"
+              width={32}
+              height={32}
+              className="rounded-full shrink-0"
+            />
+            {!isCollapsed && (
               <span className="font-semibold text-sidebar-foreground">
-                PM Portal
+                MoTRI
               </span>
-            </Link>
-          )}
+            )}
+          </Link>
           <Button
             variant="ghost"
             size="icon"
