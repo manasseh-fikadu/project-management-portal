@@ -32,6 +32,8 @@ import {
   Clock,
   XCircle,
   Loader2,
+  ListTodo,
+  AlertCircle,
 } from "lucide-react";
 
 type Milestone = {
@@ -70,6 +72,27 @@ type UserOption = {
   role?: string;
 };
 
+type TaskUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+};
+
+type Task = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  progress: number;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  assignee: TaskUser | null;
+  creator: { id: string; firstName: string; lastName: string };
+};
+
 type Donor = {
   id: string;
   name: string;
@@ -95,6 +118,7 @@ type Project = {
     email: string;
   };
   milestones: Milestone[];
+  tasks: Task[];
   documents: Document[];
   members: Array<{
     role: string;
@@ -129,6 +153,18 @@ const milestoneStatusIcons: Record<string, React.ReactNode> = {
   cancelled: <XCircle className="h-4 w-4" />,
 };
 
+const taskStatusColors: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-700",
+  in_progress: "bg-blue-100 text-blue-700",
+  completed: "bg-green-100 text-green-700",
+};
+
+const taskPriorityColors: Record<string, string> = {
+  low: "bg-gray-100 text-gray-600",
+  medium: "bg-yellow-100 text-yellow-700",
+  high: "bg-red-100 text-red-700",
+};
+
 export default function ProjectProfilePage() {
   const router = useRouter();
   const params = useParams();
@@ -141,6 +177,14 @@ export default function ProjectProfilePage() {
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ title: "", description: "", dueDate: "" });
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: "",
+    description: "",
+    priority: "medium",
+    dueDate: "",
+    assignedTo: "",
+  });
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -277,6 +321,69 @@ export default function ProjectProfilePage() {
       });
     } catch (error) {
       console.error("Failed to delete milestone:", error);
+    }
+  }
+
+  async function handleAddTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project) return;
+
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          title: newTask.title,
+          description: newTask.description || null,
+          priority: newTask.priority,
+          dueDate: newTask.dueDate || null,
+          assignedTo: newTask.assignedTo || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.task) {
+        setProject({
+          ...project,
+          tasks: [data.task, ...project.tasks],
+        });
+        setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "" });
+        setIsAddTaskOpen(false);
+      }
+    } catch (error) {
+      console.error("Failed to add task:", error);
+    }
+  }
+
+  async function handleTaskStatusChange(taskId: string, newStatus: string) {
+    if (!project) return;
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setProject({
+        ...project,
+        tasks: project.tasks.map((t) =>
+          t.id === taskId ? { ...t, status: newStatus } : t
+        ),
+      });
+    } catch (error) {
+      console.error("Failed to update task:", error);
+    }
+  }
+
+  async function handleDeleteTask(taskId: string) {
+    if (!project || !confirm("Are you sure you want to delete this task?")) return;
+    try {
+      await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      setProject({
+        ...project,
+        tasks: project.tasks.filter((t) => t.id !== taskId),
+      });
+    } catch (error) {
+      console.error("Failed to delete task:", error);
     }
   }
 
@@ -563,6 +670,180 @@ export default function ProjectProfilePage() {
                           </DropdownMenuItem>
                           <Separator className="my-1" />
                           <DropdownMenuItem onClick={() => handleDeleteMilestone(milestone.id)} className="text-red-600">
+                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Tasks Section */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Tasks & Activities</CardTitle>
+                <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" /> Add Task
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Task</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleAddTask} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="task-title">Title *</Label>
+                        <Input
+                          id="task-title"
+                          value={newTask.title}
+                          onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                          placeholder="Task title"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-description">Description</Label>
+                        <Textarea
+                          id="task-description"
+                          value={newTask.description}
+                          onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                          placeholder="What needs to be done?"
+                          rows={2}
+                        />
+                      </div>
+                      <div className="grid gap-4 grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="task-priority">Priority</Label>
+                          <Select
+                            value={newTask.priority}
+                            onValueChange={(value) => setNewTask({ ...newTask, priority: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="task-due">Due Date</Label>
+                          <Input
+                            id="task-due"
+                            type="date"
+                            value={newTask.dueDate}
+                            onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-assignee">Assign To</Label>
+                        <Select
+                          value={newTask.assignedTo}
+                          onValueChange={(value) => setNewTask({ ...newTask, assignedTo: value === "_none" ? "" : value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select assignee" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">Unassigned</SelectItem>
+                            {users.map((user) => (
+                              <SelectItem key={user.id} value={user.id}>
+                                {user.firstName} {user.lastName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button type="button" variant="outline" onClick={() => setIsAddTaskOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button type="submit">Add Task</Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {project.tasks.length === 0 ? (
+                <div className="text-center py-8">
+                  <ListTodo className="h-10 w-10 mx-auto text-gray-300 mb-2" />
+                  <p className="text-sm text-gray-500">No tasks created yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {project.tasks.map((task) => (
+                    <div key={task.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors">
+                      <div className="mt-1">
+                        {task.status === "completed" ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : task.status === "in_progress" ? (
+                          <Clock className="h-4 w-4 text-blue-500" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className={`font-medium text-sm ${task.status === "completed" ? "line-through text-gray-400" : ""}`}>
+                            {task.title}
+                          </h4>
+                          <Badge variant="outline" className={`text-xs ${taskStatusColors[task.status] || ""}`}>
+                            {task.status.replace("_", " ")}
+                          </Badge>
+                          <Badge variant="outline" className={`text-xs ${taskPriorityColors[task.priority] || ""}`}>
+                            {task.priority}
+                          </Badge>
+                        </div>
+                        {task.description && (
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{task.description}</p>
+                        )}
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                          {task.assignee && (
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {task.assignee.firstName} {task.assignee.lastName}
+                            </span>
+                          )}
+                          {task.dueDate && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {formatDate(task.dueDate)}
+                            </span>
+                          )}
+                          {task.progress > 0 && (
+                            <span>{task.progress}% done</span>
+                          )}
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "pending")}>
+                            Set Pending
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "in_progress")}>
+                            Set In Progress
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "completed")}>
+                            Set Completed
+                          </DropdownMenuItem>
+                          <Separator className="my-1" />
+                          <DropdownMenuItem onClick={() => handleDeleteTask(task.id)} className="text-red-600">
                             <Trash2 className="h-4 w-4 mr-2" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>

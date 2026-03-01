@@ -26,6 +26,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         milestones: {
           orderBy: (milestones, { asc }) => [asc(milestones.order)],
         },
+        tasks: {
+          with: {
+            assignee: {
+              columns: { id: true, firstName: true, lastName: true, email: true },
+            },
+            creator: {
+              columns: { id: true, firstName: true, lastName: true },
+            },
+          },
+          orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
+        },
         documents: {
           with: {
             uploader: {
