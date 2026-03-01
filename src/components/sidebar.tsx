@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -20,6 +20,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 interface SidebarContextType {
   isCollapsed: boolean;
@@ -36,7 +38,7 @@ export function useSidebar() {
 }
 
 type NavItem = {
-  title: string;
+  titleKey: string;
   href: string;
   icon: React.ElementType;
   adminOnly?: boolean;
@@ -44,37 +46,37 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   {
-    title: "Dashboard",
+    titleKey: "sidebar.dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
-    title: "Projects",
+    titleKey: "sidebar.projects",
     href: "/projects",
     icon: FolderKanban,
   },
   {
-    title: "Tasks",
+    titleKey: "sidebar.tasks",
     href: "/tasks",
     icon: CheckSquare,
   },
   {
-    title: "Donors",
+    titleKey: "sidebar.donors",
     href: "/donors",
     icon: Users,
   },
   {
-    title: "Proposals",
+    titleKey: "sidebar.proposals",
     href: "/proposals",
     icon: FileText,
   },
   {
-    title: "Financials",
+    titleKey: "sidebar.financials",
     href: "/financials",
     icon: HandCoins,
   },
   {
-    title: "Users",
+    titleKey: "sidebar.users",
     href: "/users",
     icon: ShieldCheck,
     adminOnly: true,
@@ -113,6 +115,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProps) {
+  const { t } = useTranslation();
   const { isCollapsed, setIsCollapsed } = useSidebar();
   const pathname = usePathname();
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
@@ -202,7 +205,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                       )}
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
-                      <span className="flex-1">Projects</span>
+                      <span className="flex-1">{t("sidebar.projects")}</span>
                     </Link>
                     {recentProjects.length > 0 && (
                       <button
@@ -262,7 +265,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                 )}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
-                {!isCollapsed && <span>{item.title}</span>}
+                {!isCollapsed && <span>{t(item.titleKey)}</span>}
               </Link>
             );
           })}
@@ -278,8 +281,13 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                 {userEmail}
               </p>
               <p className="text-xs text-muted-foreground capitalize">
-                {userRole}
+                {userRole ? t(`roles.${userRole}`, { defaultValue: userRole }) : userRole}
               </p>
+            </div>
+          )}
+          {!isCollapsed && (
+            <div className="mb-3">
+              <LanguageSwitcher />
             </div>
           )}
           <Button
@@ -292,7 +300,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
             )}
           >
             <LogOut className="h-4 w-4" />
-            {!isCollapsed && <span className="ml-2">Sign Out</span>}
+            {!isCollapsed && <span className="ml-2">{t("sidebar.signOut")}</span>}
           </Button>
         </div>
       </div>

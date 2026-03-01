@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, SidebarProvider, MainContent } from "@/components/sidebar";
+import { useTranslation } from "react-i18next";
 
 type User = {
   id: string;
@@ -18,6 +19,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +46,7 @@ export default function DashboardLayout({
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
+        <p>{t("layout.loading")}</p>
       </div>
     );
   }
