@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loginUser, createSession, resolveUserRole, setSessionCookie } from "@/lib/auth";
+import { createOtpForUser } from "@/lib/otp";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,14 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await loginUser(email, password);
+    if (!user.firstLoginAt) {
+      await createOtpForUser(user.id, user.email, user.firstName);
+      return NextResponse.json({
+        requiresOtp: true,
+        userId: user.id,
+      });
+    }
+
     const role = await resolveUserRole(user.id, user.role);
     const token = await createSession(user.id);
     await setSessionCookie(token);

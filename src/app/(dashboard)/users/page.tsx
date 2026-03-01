@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Shield, Users, Briefcase, Heart } from "lucide-react";
+import { UserPlus, Shield, Users, Briefcase, Heart, Search } from "lucide-react";
 
 type User = {
   id: string;
@@ -56,6 +56,7 @@ export default function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [form, setForm] = useState({
     firstName: "",
@@ -131,6 +132,20 @@ export default function UsersPage() {
       setSubmitting(false);
     }
   }
+
+  const filteredUsers = users.filter((user) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
+    const roleLabel = ROLE_CONFIG[user.role]?.label.toLowerCase() ?? user.role.toLowerCase();
+    return (
+      fullName.includes(q) ||
+      user.email.toLowerCase().includes(q) ||
+      roleLabel.includes(q) ||
+      user.role.toLowerCase().includes(q) ||
+      (user.department?.toLowerCase().includes(q) ?? false)
+    );
+  });
 
   if (loading || !currentUser) {
     return (
@@ -255,12 +270,27 @@ export default function UsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Users</CardTitle>
-          <CardDescription>Manage users and their roles across the platform.</CardDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>All Users</CardTitle>
+              <CardDescription>Manage users and their roles across the platform.</CardDescription>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, role..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 w-full sm:w-72"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {users.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No users found.</p>
+          {filteredUsers.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              {searchQuery.trim() ? "No users match your search." : "No users found."}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -275,7 +305,7 @@ export default function UsersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {users.map((user) => {
+                  {filteredUsers.map((user) => {
                     const roleConfig = ROLE_CONFIG[user.role] || ROLE_CONFIG.beneficiary;
                     const RoleIcon = roleConfig.icon;
                     return (

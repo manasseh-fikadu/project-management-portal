@@ -40,6 +40,11 @@ export default function LoginPage() {
         return;
       }
 
+      if (data.requiresOtp && data.userId) {
+        router.push(`/verify-otp?userId=${encodeURIComponent(data.userId)}`);
+        return;
+      }
+
       router.push("/dashboard");
       router.refresh();
     } catch {

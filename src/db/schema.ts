@@ -14,6 +14,7 @@ export const users = pgTable("users", {
   role: roleEnum("role").default("user").notNull(),
   department: varchar("department", { length: 100 }),
   isActive: boolean("is_active").default(true).notNull(),
+  firstLoginAt: timestamp("first_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -24,6 +25,15 @@ export const profiles = pgTable("profiles", {
   role: profileRoleEnum("role").default("beneficiary").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const otpCodes = pgTable("otp_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  code: varchar("code", { length: 6 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
@@ -219,6 +229,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [profiles.userId],
   }),
+  otpCodes: many(otpCodes),
   projects: many(projects),
   projectMemberships: many(projectMembers),
   assignedTasks: many(tasks, { relationName: "assignedTasks" }),
@@ -232,6 +243,13 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 export const profilesRelations = relations(profiles, ({ one }) => ({
   user: one(users, {
     fields: [profiles.userId],
+    references: [users.id],
+  }),
+}));
+
+export const otpCodesRelations = relations(otpCodes, ({ one }) => ({
+  user: one(users, {
+    fields: [otpCodes.userId],
     references: [users.id],
   }),
 }));
@@ -436,6 +454,8 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
+export type OtpCode = typeof otpCodes.$inferSelect;
+export type NewOtpCode = typeof otpCodes.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type Project = typeof projects.$inferSelect;
