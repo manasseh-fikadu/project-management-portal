@@ -142,6 +142,7 @@ export const tasks = pgTable("tasks", {
   dueDate: timestamp("due_date"),
   assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id).notNull(),
+  progress: integer("progress").default(0).notNull(),
   completedAt: timestamp("completed_at"),
   order: integer("order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

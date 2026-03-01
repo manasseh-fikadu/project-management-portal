@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
       priority,
       dueDate,
       assignedTo,
+      progress,
     } = body;
 
     if (!projectId || !title) {
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
         priority: priority || "medium",
         dueDate: dueDate ? new Date(dueDate) : null,
         assignedTo: assignedTo || null,
+        progress: typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : 0,
         createdBy: session.userId,
       })
       .returning();

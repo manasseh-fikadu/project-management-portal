@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       where: projectId ? eq(projects.id, projectId) : undefined,
       with: {
         tasks: {
-          columns: { id: true, status: true },
+          columns: { id: true, status: true, progress: true },
         },
       },
       orderBy: [desc(projects.createdAt)],
@@ -62,7 +62,8 @@ export async function GET(request: NextRequest) {
     const comparison = projectRows.map((project) => {
       const totalTasks = project.tasks.length;
       const completedTasks = project.tasks.filter((task) => task.status === "completed").length;
-      const physicalPerformance = toPercent(completedTasks, totalTasks);
+      const totalProgress = project.tasks.reduce((sum, task) => sum + (task.progress ?? 0), 0);
+      const physicalPerformance = totalTasks > 0 ? Math.round(totalProgress / totalTasks) : 0;
 
       const plannedFromAllocations = plannedByProject.get(project.id) ?? 0;
       const plannedBudget = plannedFromAllocations > 0 ? plannedFromAllocations : (project.totalBudget ?? 0);
@@ -100,6 +101,7 @@ export async function GET(request: NextRequest) {
         acc.disbursedAmount += row.disbursedAmount;
         acc.totalTasks += row.totalTasks;
         acc.completedTasks += row.completedTasks;
+        acc.weightedProgress += row.physicalPerformance * row.totalTasks;
         return acc;
       },
       {
@@ -108,12 +110,13 @@ export async function GET(request: NextRequest) {
         disbursedAmount: 0,
         totalTasks: 0,
         completedTasks: 0,
+        weightedProgress: 0,
       }
     );
 
     const totalsWithPerformance = {
       ...totals,
-      physicalPerformance: toPercent(totals.completedTasks, totals.totalTasks),
+      physicalPerformance: totals.totalTasks > 0 ? Math.round(totals.weightedProgress / totals.totalTasks) : 0,
       financialPerformance: toPercent(totals.spentAmount, totals.plannedBudget),
     };
 
