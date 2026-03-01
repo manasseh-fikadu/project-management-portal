@@ -25,7 +25,19 @@
     "departmentPlaceholder": "ለምሳሌ፣ ፋይናንስ፣ አይቲ፣ እቅድ",
     "minimumPassword": "ቢያንስ 8 ፊደላት",
     "creatingAccount": "መለያ በመፍጠር ላይ...",
-    "alreadyHaveAccount": "አስቀድሞ መለያ አለዎት?"
+    "alreadyHaveAccount": "አስቀድሞ መለያ አለዎት?",
+    "otpTitle": "መግቢያዎን ያረጋግጡ",
+    "otpDescription": "ለመቀጠል ወደ ኢሜይልዎ የተላከውን 6 አሃዝ ኮድ ያስገቡ።",
+    "otpPlaceholder": "አሃዝ",
+    "verifyCode": "ኮድ አረጋግጥ",
+    "verifying": "በማረጋገጥ ላይ...",
+    "resendCode": "ኮድን እንደገና ላክ",
+    "resendingCode": "እንደገና በመላክ ላይ...",
+    "resendIn": "እንደገና መላክ የሚቻለው በ",
+    "invalidOtp": "የማረጋገጫ ኮድ ልክ አይደለም።",
+    "otpExpired": "የማረጋገጫ ኮድ ጊዜው አልፏል። እባክዎ አዲስ ይጠይቁ።",
+    "otpSent": "የማረጋገጫ ኮድ ወደ ኢሜይልዎ ተልኳል።",
+    "otpResent": "አዲስ የማረጋገጫ ኮድ ተልኳል።"
   },
   "layout": {
     "loading": "በመጫን ላይ..."

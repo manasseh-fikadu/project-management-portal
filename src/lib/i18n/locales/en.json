@@ -25,7 +25,19 @@
     "departmentPlaceholder": "e.g., Finance, IT, Planning",
     "minimumPassword": "Minimum 8 characters",
     "creatingAccount": "Creating Account...",
-    "alreadyHaveAccount": "Already have an account?"
+    "alreadyHaveAccount": "Already have an account?",
+    "otpTitle": "Verify your sign-in",
+    "otpDescription": "Enter the 6-digit code sent to your email to continue.",
+    "otpPlaceholder": "Digit",
+    "verifyCode": "Verify Code",
+    "verifying": "Verifying...",
+    "resendCode": "Resend Code",
+    "resendingCode": "Resending...",
+    "resendIn": "Resend available in",
+    "invalidOtp": "Invalid verification code.",
+    "otpExpired": "Verification code has expired. Please request a new one.",
+    "otpSent": "A verification code has been sent to your email.",
+    "otpResent": "A new verification code has been sent."
   },
   "layout": {
     "loading": "Loading..."
