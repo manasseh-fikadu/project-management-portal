@@ -17,6 +17,7 @@ import {
   CheckSquare,
   HandCoins,
   Circle,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -34,7 +35,14 @@ export function useSidebar() {
   return useContext(SidebarContext);
 }
 
-const navItems = [
+type NavItem = {
+  title: string;
+  href: string;
+  icon: React.ElementType;
+  adminOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
@@ -64,6 +72,12 @@ const navItems = [
     title: "Financials",
     href: "/financials",
     icon: HandCoins,
+  },
+  {
+    title: "Users",
+    href: "/users",
+    icon: ShieldCheck,
+    adminOnly: true,
   },
 ];
 
@@ -167,7 +181,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
         </div>
 
         <nav className="flex-1 overflow-y-auto space-y-1 p-2">
-          {navItems.map((item) => {
+          {navItems.filter((item) => !item.adminOnly || userRole === "admin").map((item) => {
             const isActive =
               item.href === "/dashboard"
                 ? pathname === "/dashboard"
