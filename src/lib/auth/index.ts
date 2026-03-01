@@ -99,8 +99,9 @@ export async function getSession(): Promise<{ userId: string; user: SessionUser 
   }
 
   const role = await resolveUserRole(user.id, user.role);
+  const shouldForcePasswordChange = user.mustChangePassword || !user.passwordChangedAt;
 
-  return { userId: session.userId, user: { ...user, role } };
+  return { userId: session.userId, user: { ...user, role, mustChangePassword: shouldForcePasswordChange } };
 }
 
 export async function setSessionCookie(token: string): Promise<void> {
@@ -125,7 +126,8 @@ export async function registerUser(
   firstName: string,
   lastName: string,
   role: ProfileRole = "beneficiary",
-  department?: string
+  department?: string,
+  options?: { mustChangePassword?: boolean }
 ) {
   const existingUser = await db.query.users.findFirst({
     where: eq(users.email, email),
@@ -146,6 +148,8 @@ export async function registerUser(
       lastName,
       role: mapProfileRoleToLegacyRole(role),
       department,
+      mustChangePassword: options?.mustChangePassword ?? false,
+      passwordChangedAt: options?.mustChangePassword ? null : new Date(),
     })
     .returning();
 
@@ -177,4 +181,38 @@ export async function loginUser(email: string, password: string) {
   }
 
   return user;
+}
+
+export async function changeUserPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  const isCurrentValid = await verifyPassword(currentPassword, user.passwordHash);
+  if (!isCurrentValid) {
+    throw new Error("Current password is incorrect");
+  }
+
+  if (newPassword.length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db
+    .update(users)
+    .set({
+      passwordHash,
+      mustChangePassword: false,
+      passwordChangedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
 }

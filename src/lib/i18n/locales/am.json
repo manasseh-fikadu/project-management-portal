@@ -49,8 +49,25 @@
     "donors": "ለጋሾች",
     "proposals": "ፕሮፖዛሎች",
     "financials": "ፋይናንስ",
+    "profile": "ፕሮፋይል",
     "users": "ተጠቃሚዎች",
     "signOut": "ውጣ"
+  },
+  "profile": {
+    "title": "ፕሮፋይል",
+    "description": "የመለያ ቅንብሮችዎን ያስተዳድሩ",
+    "changePassword": "የይለፍ ቃል ቀይር",
+    "changePasswordDescription": "የመለያዎን የይለፍ ቃል በደህንነት ያዘምኑ።",
+    "currentPassword": "የአሁኑ የይለፍ ቃል",
+    "newPassword": "አዲስ የይለፍ ቃል",
+    "confirmPassword": "አዲስ የይለፍ ቃሉን ያረጋግጡ",
+    "updatePassword": "የይለፍ ቃል አዘምን",
+    "updatingPassword": "በማዘመን ላይ...",
+    "passwordUpdated": "የይለፍ ቃል በተሳካ ሁኔታ ተዘምኗል።",
+    "passwordUpdateFailed": "የይለፍ ቃል ማዘመን አልተሳካም።",
+    "passwordMismatch": "አዲሱ የይለፍ ቃል እና ማረጋገጫ አይዛመዱም።",
+    "passwordSetByAdminDisclaimer": "የአሁኑ የይለፍ ቃልዎ በአስተዳዳሪ ተዘጋጅቷል። ለደህንነት እባክዎ ይቀይሩት።",
+    "changePasswordNow": "አሁን የይለፍ ቃል ቀይር"
   },
   "roles": {
     "admin": "አስተዳዳሪ",

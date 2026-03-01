@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,12 +109,6 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? t("auth.signingIn") : t("auth.signIn")}
             </Button>
-            <p className="text-sm text-gray-600">
-              {t("auth.noAccount")}{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                {t("auth.register")}
-              </Link>
-            </p>
           </CardFooter>
         </form>
         </Card>

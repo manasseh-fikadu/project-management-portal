@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, SidebarProvider, MainContent } from "@/components/sidebar";
 import { useTranslation } from "react-i18next";
+import Link from "next/link";
 
 type User = {
   id: string;
@@ -12,6 +13,7 @@ type User = {
   lastName: string;
   role: string;
   department: string | null;
+  mustChangePassword: boolean;
 };
 
 export default function DashboardLayout({
@@ -63,7 +65,19 @@ export default function DashboardLayout({
         userName={`${user.firstName} ${user.lastName}`}
         userRole={user.role}
       />
-      <MainContent>{children}</MainContent>
+      <MainContent>
+        {user.mustChangePassword && (
+          <div className="mx-6 mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-amber-800">
+            <p className="text-sm">
+              {t("profile.passwordSetByAdminDisclaimer")}{" "}
+              <Link href="/profile" className="font-medium underline">
+                {t("profile.changePasswordNow")}
+              </Link>
+            </p>
+          </div>
+        )}
+        {children}
+      </MainContent>
     </SidebarProvider>
   );
 }

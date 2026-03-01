@@ -49,8 +49,25 @@
     "donors": "Donors",
     "proposals": "Proposals",
     "financials": "Financials",
+    "profile": "Profile",
     "users": "Users",
     "signOut": "Sign Out"
+  },
+  "profile": {
+    "title": "Profile",
+    "description": "Manage your account settings",
+    "changePassword": "Change Password",
+    "changePasswordDescription": "Update your account password securely.",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm Password",
+    "updatePassword": "Update Password",
+    "updatingPassword": "Updating...",
+    "passwordUpdated": "Password updated successfully.",
+    "passwordUpdateFailed": "Failed to update password.",
+    "passwordMismatch": "New password and confirm password do not match.",
+    "passwordSetByAdminDisclaimer": "Your current password was set by an admin. For security, please change it.",
+    "changePasswordNow": "Change password now"
   },
   "roles": {
     "admin": "Admin",

@@ -18,6 +18,7 @@ import {
   HandCoins,
   Circle,
   ShieldCheck,
+  UserCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -74,6 +75,11 @@ const navItems: NavItem[] = [
     titleKey: "sidebar.financials",
     href: "/financials",
     icon: HandCoins,
+  },
+  {
+    titleKey: "sidebar.profile",
+    href: "/profile",
+    icon: UserCog,
   },
   {
     titleKey: "sidebar.users",

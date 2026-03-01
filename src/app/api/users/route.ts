@@ -70,7 +70,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
-    const newUser = await registerUser(email, password, firstName, lastName, role, department);
+    const newUser = await registerUser(email, password, firstName, lastName, role, department, {
+      mustChangePassword: true,
+    });
 
     return NextResponse.json({
       user: {
