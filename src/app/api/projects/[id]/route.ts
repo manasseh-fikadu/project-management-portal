@@ -23,6 +23,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         donor: {
           columns: { id: true, name: true, type: true },
         },
+        projectDonors: {
+          with: {
+            donor: {
+              columns: { id: true, name: true, type: true, email: true, contactPerson: true, isActive: true },
+            },
+          },
+        },
         milestones: {
           orderBy: (milestones, { asc }) => [asc(milestones.order)],
         },

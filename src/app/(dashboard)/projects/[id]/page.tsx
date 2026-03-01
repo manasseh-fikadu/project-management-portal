@@ -34,6 +34,8 @@ import {
   Loader2,
   ListTodo,
   AlertCircle,
+  HandCoins,
+  X,
 } from "lucide-react";
 
 type Milestone = {
@@ -99,6 +101,23 @@ type Donor = {
   type: string;
 };
 
+type ProjectDonorLink = {
+  id: string;
+  projectId: string;
+  donorId: string;
+  status: string;
+  notes: string | null;
+  createdAt: string;
+  donor: {
+    id: string;
+    name: string;
+    type: string;
+    email: string | null;
+    contactPerson: string | null;
+    isActive: boolean;
+  };
+};
+
 type Project = {
   id: string;
   name: string;
@@ -106,6 +125,7 @@ type Project = {
   status: string;
   donorId: string | null;
   donor: Donor | null;
+  projectDonors: ProjectDonorLink[];
   totalBudget: number;
   spentBudget: number;
   startDate: string | null;
@@ -165,6 +185,13 @@ const taskPriorityColors: Record<string, string> = {
   high: "bg-red-100 text-red-700",
 };
 
+const donorStatusColors: Record<string, string> = {
+  active: "bg-green-100 text-green-700",
+  pending: "bg-yellow-100 text-yellow-700",
+  completed: "bg-blue-100 text-blue-700",
+  withdrawn: "bg-red-100 text-red-700",
+};
+
 export default function ProjectProfilePage() {
   const router = useRouter();
   const params = useParams();
@@ -185,6 +212,9 @@ export default function ProjectProfilePage() {
     dueDate: "",
     assignedTo: "",
   });
+  const [allDonors, setAllDonors] = useState<Donor[]>([]);
+  const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
+  const [addingDonorId, setAddingDonorId] = useState("");
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -193,6 +223,16 @@ export default function ProjectProfilePage() {
       if (data.users) setUsers(data.users);
     } catch (err) {
       console.error("Error fetching users:", err);
+    }
+  }, []);
+
+  const fetchDonors = useCallback(async () => {
+    try {
+      const res = await fetch("/api/donors");
+      const data = await res.json();
+      if (data.donors) setAllDonors(data.donors);
+    } catch (err) {
+      console.error("Error fetching donors:", err);
     }
   }, []);
 
@@ -215,7 +255,8 @@ export default function ProjectProfilePage() {
   useEffect(() => {
     fetchProject();
     fetchUsers();
-  }, [fetchProject, fetchUsers]);
+    fetchDonors();
+  }, [fetchProject, fetchUsers, fetchDonors]);
 
   function formatDate(date: string | null) {
     if (!date) return "Not set";
@@ -457,6 +498,62 @@ export default function ProjectProfilePage() {
     }
   }
 
+  async function handleAddDonor() {
+    if (!project || !addingDonorId) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/donors`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ donorId: addingDonorId }),
+      });
+      const data = await res.json();
+      if (data.projectDonor) {
+        setProject({
+          ...project,
+          projectDonors: [...project.projectDonors, data.projectDonor],
+        });
+        setAddingDonorId("");
+        setIsAddDonorOpen(false);
+      }
+    } catch (error) {
+      console.error("Failed to add donor:", error);
+    }
+  }
+
+  async function handleDonorStatusChange(donorId: string, newStatus: string) {
+    if (!project) return;
+    try {
+      await fetch(`/api/projects/${projectId}/donors`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ donorId, status: newStatus }),
+      });
+      setProject({
+        ...project,
+        projectDonors: project.projectDonors.map((pd) =>
+          pd.donorId === donorId ? { ...pd, status: newStatus } : pd
+        ),
+      });
+    } catch (error) {
+      console.error("Failed to update donor status:", error);
+    }
+  }
+
+  async function handleRemoveDonor(donorId: string) {
+    if (!project || !confirm("Remove this donor from the project?")) return;
+    try {
+      await fetch(`/api/projects/${projectId}/donors?donorId=${donorId}`, {
+        method: "DELETE",
+      });
+      setProject({
+        ...project,
+        projectDonors: project.projectDonors.filter((pd) => pd.donorId !== donorId),
+      });
+    } catch (error) {
+      console.error("Failed to remove donor:", error);
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6">
@@ -542,8 +639,20 @@ export default function ProjectProfilePage() {
                   </Select>
                 </div>
                 <div className="text-sm">
-                  <span className="text-gray-500">Donor:</span>{" "}
-                  {project.donor ? project.donor.name : <span className="text-gray-400">Not assigned</span>}
+                  <span className="text-gray-500">Donors:</span>{" "}
+                  {project.projectDonors && project.projectDonors.length > 0 ? (
+                    <span className="inline-flex flex-wrap gap-1 ml-1">
+                      {project.projectDonors.map((pd) => (
+                        <Badge key={pd.donorId} variant="outline" className={`text-xs ${donorStatusColors[pd.status] || ""}`}>
+                          {pd.donor.name}
+                        </Badge>
+                      ))}
+                    </span>
+                  ) : project.donor ? (
+                    <span>{project.donor.name}</span>
+                  ) : (
+                    <span className="text-gray-400">None assigned</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-gray-500" />
@@ -921,6 +1030,131 @@ export default function ProjectProfilePage() {
                       >
                         <Trash2 className="h-3 w-3 text-red-500" />
                       </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Donors</CardTitle>
+                <Dialog open={isAddDonorOpen} onOpenChange={setIsAddDonorOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      <Plus className="h-4 w-4 mr-1" /> Add
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Donor to Project</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label>Select Donor</Label>
+                        <Select
+                          value={addingDonorId}
+                          onValueChange={setAddingDonorId}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a donor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allDonors
+                              .filter(
+                                (d) =>
+                                  !project?.projectDonors?.some(
+                                    (pd) => pd.donorId === d.id
+                                  )
+                              )
+                              .map((donor) => (
+                                <SelectItem key={donor.id} value={donor.id}>
+                                  {donor.name} ({donor.type})
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setIsAddDonorOpen(false);
+                            setAddingDonorId("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={handleAddDonor}
+                          disabled={!addingDonorId}
+                        >
+                          Add Donor
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {(!project.projectDonors || project.projectDonors.length === 0) ? (
+                <p className="text-sm text-gray-500">No donors linked to this project.</p>
+              ) : (
+                <div className="space-y-3">
+                  {project.projectDonors.map((pd) => (
+                    <div
+                      key={pd.donorId}
+                      className="flex items-start gap-2 p-3 border rounded-lg group"
+                    >
+                      <HandCoins className="h-4 w-4 mt-0.5 text-gray-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium">{pd.donor.name}</p>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${donorStatusColors[pd.status] || ""}`}
+                          >
+                            {pd.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-gray-400 capitalize mt-0.5">
+                          {pd.donor.type}
+                          {pd.donor.contactPerson && ` · ${pd.donor.contactPerson}`}
+                        </p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "active")}>
+                            Set Active
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "pending")}>
+                            Set Pending
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "completed")}>
+                            Set Completed
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "withdrawn")}>
+                            Set Withdrawn
+                          </DropdownMenuItem>
+                          <Separator className="my-1" />
+                          <DropdownMenuItem
+                            onClick={() => handleRemoveDonor(pd.donorId)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" /> Remove
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   ))}
                 </div>

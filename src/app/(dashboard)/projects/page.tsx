@@ -5,13 +5,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar, User, DollarSign } from "lucide-react";
+import { Plus, Calendar, User, DollarSign, HandCoins } from "lucide-react";
 
 type Milestone = {
   id: string;
   title: string;
   status: string;
   dueDate: string | null;
+};
+
+type ProjectDonorLink = {
+  donorId: string;
+  status: string;
+  donor: { id: string; name: string; type: string };
 };
 
 type Project = {
@@ -21,6 +27,7 @@ type Project = {
   status: string;
   donorId: string | null;
   donor: { id: string; name: string; type: string } | null;
+  projectDonors?: ProjectDonorLink[];
   totalBudget: number;
   startDate: string | null;
   endDate: string | null;
@@ -126,11 +133,22 @@ export default function ProjectsPage() {
                   </span>
                 </div>
 
-                {project.donor && (
+                {project.projectDonors && project.projectDonors.length > 0 ? (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Donors:</span>{" "}
+                    <span className="inline-flex flex-wrap gap-1">
+                      {project.projectDonors.map((pd) => (
+                        <Badge key={pd.donorId} variant="outline" className="text-xs">
+                          {pd.donor.name}
+                        </Badge>
+                      ))}
+                    </span>
+                  </div>
+                ) : project.donor ? (
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">Donor:</span> {project.donor.name}
                   </div>
-                )}
+                ) : null}
 
                 <div className="flex items-center gap-4 text-sm">
                   {project.totalBudget > 0 && (

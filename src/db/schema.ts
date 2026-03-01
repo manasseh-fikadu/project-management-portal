@@ -88,6 +88,8 @@ export const projectMembers = pgTable("project_members", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const donorStatusEnum = pgEnum("donor_status", ["active", "pending", "completed", "withdrawn"]);
+
 export const donorTypeEnum = pgEnum("donor_type", ["government", "foundation", "corporate", "individual", "multilateral", "ngo"]);
 
 export const donors = pgTable("donors", {
@@ -104,6 +106,16 @@ export const donors = pgTable("donors", {
   averageGrantSize: integer("average_grant_size"),
   notes: text("notes"),
   isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const projectDonors = pgTable("project_donors", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "cascade" }).notNull(),
+  status: donorStatusEnum("status").default("active").notNull(),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -240,6 +252,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     fields: [projects.donorId],
     references: [donors.id],
   }),
+  projectDonors: many(projectDonors),
   milestones: many(milestones),
   members: many(projectMembers),
   documents: many(projectDocuments),
@@ -281,9 +294,21 @@ export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
 
 export const donorsRelations = relations(donors, ({ many }) => ({
   projects: many(projects),
+  projectDonors: many(projectDonors),
   proposals: many(proposals),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+}));
+
+export const projectDonorsRelations = relations(projectDonors, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectDonors.projectId],
+    references: [projects.id],
+  }),
+  donor: one(donors, {
+    fields: [projectDonors.donorId],
+    references: [donors.id],
+  }),
 }));
 
 export const proposalsRelations = relations(proposals, ({ one }) => ({
@@ -393,6 +418,8 @@ export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) =
 
 export type Donor = typeof donors.$inferSelect;
 export type NewDonor = typeof donors.$inferInsert;
+export type ProjectDonor = typeof projectDonors.$inferSelect;
+export type NewProjectDonor = typeof projectDonors.$inferInsert;
 export type Proposal = typeof proposals.$inferSelect;
 export type NewProposal = typeof proposals.$inferInsert;
 export type Task = typeof tasks.$inferSelect;

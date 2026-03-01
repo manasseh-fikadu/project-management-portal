@@ -98,10 +98,11 @@ export default function NewProjectPage() {
   const [donors, setDonors] = useState<Donor[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
 
+  const [selectedDonorIds, setSelectedDonorIds] = useState<string[]>([]);
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    donorId: "",
     managerId: "",
     totalBudget: "",
     status: "planning",
@@ -224,7 +225,7 @@ export default function NewProjectPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          donorId: formData.donorId || null,
+          donorIds: selectedDonorIds,
           managerId: formData.managerId || null,
           totalBudget: formData.totalBudget ? parseInt(formData.totalBudget) : 0,
           milestones: milestones.filter((m) => m.title.trim()),
@@ -271,8 +272,14 @@ export default function NewProjectPage() {
     }
   }
 
-  function getSelectedDonor(): Donor | undefined {
-    return donors.find((d) => d.id === formData.donorId);
+  function getSelectedDonors(): Donor[] {
+    return donors.filter((d) => selectedDonorIds.includes(d.id));
+  }
+
+  function toggleDonor(donorId: string) {
+    setSelectedDonorIds((prev) =>
+      prev.includes(donorId) ? prev.filter((id) => id !== donorId) : [...prev, donorId]
+    );
   }
 
   function getSelectedManager(): UserOption | undefined {
@@ -720,44 +727,74 @@ export default function NewProjectPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Donor</h3>
-              <div className="space-y-2">
-                <Label htmlFor="donorId">Select Donor</Label>
-                <Select
-                  value={formData.donorId}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      donorId: value === "_none" ? "" : value,
-                    }))
-                  }
-                  disabled={loading}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a donor for this project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">No donor</SelectItem>
-                    {donors.map((donor) => (
-                      <SelectItem key={donor.id} value={donor.id}>
-                        {donor.name}{" "}
-                        <span className="text-muted-foreground">
-                          ({donor.type})
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <h3 className="text-lg font-medium">Donors</h3>
+              <p className="text-sm text-muted-foreground">
+                Select one or more donors for this project
+              </p>
 
-              {getSelectedDonor() && (
-                <div className="p-3 bg-muted/50 rounded-lg flex items-center gap-3">
-                  <Users className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium">{getSelectedDonor()!.name}</p>
-                    <p className="text-sm text-muted-foreground capitalize">
-                      {getSelectedDonor()!.type}
-                    </p>
+              {donors.length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-2">
+                  {donors.map((donor) => {
+                    const isSelected = selectedDonorIds.includes(donor.id);
+                    return (
+                      <button
+                        key={donor.id}
+                        type="button"
+                        onClick={() => toggleDonor(donor.id)}
+                        disabled={loading}
+                        className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                          isSelected
+                            ? "bg-primary/10 border border-primary/30"
+                            : "hover:bg-muted/50 border border-transparent"
+                        }`}
+                      >
+                        <div
+                          className={`flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors ${
+                            isSelected
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-muted-foreground/30"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{donor.name}</p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {donor.type}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No donors available. Create donors first from the Donors page.
+                </p>
+              )}
+
+              {selectedDonorIds.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">
+                    Selected Donors ({selectedDonorIds.length})
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {getSelectedDonors().map((donor) => (
+                      <Badge
+                        key={donor.id}
+                        variant="secondary"
+                        className="flex items-center gap-1 pr-1"
+                      >
+                        {donor.name}
+                        <button
+                          type="button"
+                          onClick={() => toggleDonor(donor.id)}
+                          className="ml-1 rounded-full hover:bg-muted p-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
                   </div>
                 </div>
               )}
@@ -973,16 +1010,22 @@ export default function NewProjectPage() {
             {/* Donor & Documents Summary */}
             <div className="space-y-3">
               <h3 className="text-lg font-medium flex items-center gap-2">
-                <Users className="h-5 w-5" /> Donor & Documents
+                <Users className="h-5 w-5" /> Donors & Documents
               </h3>
               <div className="p-4 bg-muted/30 rounded-lg space-y-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">Donor</p>
-                  <p className="text-sm">
-                    {getSelectedDonor()
-                      ? `${getSelectedDonor()!.name} (${getSelectedDonor()!.type})`
-                      : "No donor selected"}
-                  </p>
+                  <p className="text-sm text-muted-foreground">Donors</p>
+                  {getSelectedDonors().length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {getSelectedDonors().map((donor) => (
+                        <Badge key={donor.id} variant="secondary" className="text-xs">
+                          {donor.name} ({donor.type})
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm">No donors selected</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Documents</p>
