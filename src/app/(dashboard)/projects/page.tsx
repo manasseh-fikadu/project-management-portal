@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Calendar, User, DollarSign, HandCoins } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 type Milestone = {
   id: string;
@@ -70,7 +71,7 @@ export default function ProjectsPage() {
   }
 
   function formatBudget(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB" }).format(amount);
+    return formatCurrency(amount, "ETB");
   }
 
   function getMilestoneProgress(milestones: Milestone[]) {

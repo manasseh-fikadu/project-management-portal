@@ -16,6 +16,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe, Power, PowerOff } from "lucide-react";
+import { CurrencyInput } from "@/components/currency-input";
+import { formatCurrency } from "@/lib/currency";
 
 type Donor = {
   id: string;
@@ -195,11 +197,7 @@ export default function DonorsPage() {
 
   function formatGrantSize(amount: number | null) {
     if (!amount) return "Not specified";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "ETB",
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return formatCurrency(amount, "ETB");
   }
 
   const filteredDonors = donors.filter((donor) => {
@@ -347,12 +345,12 @@ export default function DonorsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="averageGrantSize">Average Grant Size (ETB)</Label>
-                <Input
+                <Label htmlFor="averageGrantSize">Average Grant Size</Label>
+                <CurrencyInput
                   id="averageGrantSize"
-                  type="number"
                   value={formData.averageGrantSize}
-                  onChange={(e) => setFormData({ ...formData, averageGrantSize: e.target.value })}
+                  onChange={(val) => setFormData({ ...formData, averageGrantSize: val })}
+                  currency="ETB"
                   placeholder="e.g., 500000"
                 />
               </div>

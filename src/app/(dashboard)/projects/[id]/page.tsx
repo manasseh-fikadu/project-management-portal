@@ -37,6 +37,7 @@ import {
   HandCoins,
   X,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 type Milestone = {
   id: string;
@@ -265,7 +266,7 @@ export default function ProjectProfilePage() {
   }
 
   function formatBudget(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB" }).format(amount);
+    return formatCurrency(amount, "ETB");
   }
 
   function formatFileSize(bytes: number) {

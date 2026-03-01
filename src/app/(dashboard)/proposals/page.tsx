@@ -17,6 +17,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Plus, Search, MoreVertical, Trash2, Edit, DollarSign, Calendar, Building2, FolderKanban, TrendingUp } from "lucide-react";
+import { CurrencyInput } from "@/components/currency-input";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
+import type { CurrencyCode } from "@/lib/currency";
 
 type Donor = {
   id: string;
@@ -248,11 +251,7 @@ export default function ProposalsPage() {
   }
 
   function formatCurrency(amount: number, currency: string) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return formatCurrencyUtil(amount, currency as CurrencyCode);
   }
 
   function formatDate(date: string | null) {
@@ -356,7 +355,7 @@ export default function ProposalsPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select
@@ -378,40 +377,26 @@ export default function ProposalsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="amountRequested">Amount Requested *</Label>
-                  <Input
+                  <CurrencyInput
                     id="amountRequested"
-                    type="number"
                     value={formData.amountRequested}
-                    onChange={(e) => setFormData({ ...formData, amountRequested: e.target.value })}
+                    onChange={(val) => setFormData(prev => ({ ...prev, amountRequested: val }))}
+                    currency={formData.currency as CurrencyCode}
+                    onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
                     required
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="currency">Currency</Label>
-                  <Select
-                    value={formData.currency}
-                    onValueChange={(value) => setFormData({ ...formData, currency: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ETB">ETB</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
 
               {formData.status === "approved" && (
                 <div className="space-y-2">
                   <Label htmlFor="amountApproved">Amount Approved</Label>
-                  <Input
+                  <CurrencyInput
                     id="amountApproved"
-                    type="number"
                     value={formData.amountApproved}
-                    onChange={(e) => setFormData({ ...formData, amountApproved: e.target.value })}
+                    onChange={(val) => setFormData(prev => ({ ...prev, amountApproved: val }))}
+                    currency={formData.currency as CurrencyCode}
+                    onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
                   />
                 </div>
               )}

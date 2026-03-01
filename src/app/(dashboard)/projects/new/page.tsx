@@ -36,6 +36,8 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
+import { CurrencyInput } from "@/components/currency-input";
+import { formatCurrency } from "@/lib/currency";
 
 type MilestoneInput = {
   title: string;
@@ -424,13 +426,12 @@ export default function NewProjectPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="totalBudget">Total Budget</Label>
-                <Input
+                <CurrencyInput
                   id="totalBudget"
-                  name="totalBudget"
-                  type="number"
-                  min="0"
                   value={formData.totalBudget}
-                  onChange={handleInputChange}
+                  onChange={(val) => setFormData((prev) => ({ ...prev, totalBudget: val }))}
+                  currency="ETB"
+                  min={0}
                   placeholder="0"
                   disabled={loading}
                 />
@@ -902,10 +903,7 @@ export default function NewProjectPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">Budget</p>
                     <p className="text-sm font-medium">
-                      {new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency: "ETB",
-                      }).format(parseInt(formData.totalBudget))}
+                      {formatCurrency(parseInt(formData.totalBudget), "ETB")}
                     </p>
                   </div>
                 )}
