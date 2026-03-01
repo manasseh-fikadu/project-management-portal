@@ -17,6 +17,9 @@ export async function GET() {
         manager: {
           columns: { id: true, firstName: true, lastName: true, email: true },
         },
+        donor: {
+          columns: { id: true, name: true, type: true },
+        },
         milestones: {
           columns: { id: true, title: true, status: true, dueDate: true },
         },
@@ -41,11 +44,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, donorId, totalBudget, startDate, endDate, milestones: inputMilestones } = body;
+    const { name, description, donorId, totalBudget, startDate, endDate, managerId, milestones: inputMilestones } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Project name is required" }, { status: 400 });
     }
+
+    const assignedManagerId = managerId || session.userId;
 
     const [newProject] = await db
       .insert(projects)
@@ -56,7 +61,7 @@ export async function POST(request: NextRequest) {
         totalBudget: totalBudget || 0,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
-        managerId: session.userId,
+        managerId: assignedManagerId,
       })
       .returning();
 
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     await db.insert(projectMembers).values({
       projectId: newProject.id,
-      userId: session.userId,
+      userId: assignedManagerId,
       role: "manager",
     });
 

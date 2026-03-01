@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,20 @@ type MilestoneInput = {
   dueDate: string;
 };
 
+type Donor = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+type UserOption = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+};
+
 export default function NewProjectPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -24,15 +38,43 @@ export default function NewProjectPage() {
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [milestones, setMilestones] = useState<MilestoneInput[]>([]);
+  const [donors, setDonors] = useState<Donor[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     donorId: "",
+    managerId: "",
     totalBudget: "",
     status: "planning",
     startDate: "",
     endDate: "",
   });
+
+  const fetchDonors = useCallback(async () => {
+    try {
+      const res = await fetch("/api/donors");
+      const data = await res.json();
+      if (data.donors) setDonors(data.donors);
+    } catch (err) {
+      console.error("Error fetching donors:", err);
+    }
+  }, []);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      const data = await res.json();
+      if (data.users) setUsers(data.users);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDonors();
+    fetchUsers();
+  }, [fetchDonors, fetchUsers]);
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
@@ -74,6 +116,8 @@ export default function NewProjectPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          donorId: formData.donorId || null,
+          managerId: formData.managerId || null,
           totalBudget: formData.totalBudget ? parseInt(formData.totalBudget) : 0,
           milestones: milestones.filter((m) => m.title.trim()),
         }),
@@ -156,14 +200,24 @@ export default function NewProjectPage() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="donorId">Donor ID</Label>
-                  <Input
-                    id="donorId"
-                    name="donorId"
+                  <Label htmlFor="donorId">Donor</Label>
+                  <Select
                     value={formData.donorId}
-                    onChange={handleInputChange}
+                    onValueChange={(value) => setFormData((prev) => ({ ...prev, donorId: value === "_none" ? "" : value }))}
                     disabled={loading}
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select donor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">No donor</SelectItem>
+                      {donors.map((donor) => (
+                        <SelectItem key={donor.id} value={donor.id}>
+                          {donor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -178,6 +232,26 @@ export default function NewProjectPage() {
                     disabled={loading}
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="managerId">Project Manager</Label>
+                <Select
+                  value={formData.managerId}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, managerId: value }))}
+                  disabled={loading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select project manager (defaults to you)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName} ({user.role})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">

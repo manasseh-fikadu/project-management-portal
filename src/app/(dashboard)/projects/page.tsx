@@ -20,6 +20,7 @@ type Project = {
   description: string | null;
   status: string;
   donorId: string | null;
+  donor: { id: string; name: string; type: string } | null;
   totalBudget: number;
   startDate: string | null;
   endDate: string | null;
@@ -125,9 +126,9 @@ export default function ProjectsPage() {
                   </span>
                 </div>
 
-                {project.donorId && (
+                {project.donor && (
                   <div className="text-sm text-gray-600">
-                    <span className="font-medium">Donor ID:</span> {project.donorId}
+                    <span className="font-medium">Donor:</span> {project.donor.name}
                   </div>
                 )}
 

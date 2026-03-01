@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -61,12 +62,27 @@ type UploadingFile = {
   progress: number;
 };
 
+type UserOption = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role?: string;
+};
+
+type Donor = {
+  id: string;
+  name: string;
+  type: string;
+};
+
 type Project = {
   id: string;
   name: string;
   description: string | null;
   status: string;
   donorId: string | null;
+  donor: Donor | null;
   totalBudget: number;
   spentBudget: number;
   startDate: string | null;
@@ -121,9 +137,20 @@ export default function ProjectProfilePage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ title: "", description: "", dueDate: "" });
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      const data = await res.json();
+      if (data.users) setUsers(data.users);
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  }, []);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -143,7 +170,8 @@ export default function ProjectProfilePage() {
 
   useEffect(() => {
     fetchProject();
-  }, [fetchProject]);
+    fetchUsers();
+  }, [fetchProject, fetchUsers]);
 
   function formatDate(date: string | null) {
     if (!date) return "Not set";
@@ -164,6 +192,22 @@ export default function ProjectProfilePage() {
     if (!project || project.milestones.length === 0) return 0;
     const completed = project.milestones.filter((m) => m.status === "completed").length;
     return Math.round((completed / project.milestones.length) * 100);
+  }
+
+  async function handleManagerChange(newManagerId: string) {
+    if (!project || newManagerId === project.manager.id) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ managerId: newManagerId }),
+      });
+      if (res.ok) {
+        await fetchProject();
+      }
+    } catch (error) {
+      console.error("Failed to update manager:", error);
+    }
   }
 
   async function handleStatusChange(newStatus: string) {
@@ -369,18 +413,31 @@ export default function ProjectProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm">
-                    <span className="text-gray-500">Manager:</span>{" "}
-                    {project.manager.firstName} {project.manager.lastName}
-                  </span>
-                </div>
-                {project.donorId && (
-                  <div className="text-sm">
-                    <span className="text-gray-500">Donor ID:</span> {project.donorId}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm text-gray-500">Project Manager</span>
                   </div>
-                )}
+                  <Select
+                    value={project.manager.id}
+                    onValueChange={handleManagerChange}
+                  >
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.firstName} {user.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="text-sm">
+                  <span className="text-gray-500">Donor:</span>{" "}
+                  {project.donor ? project.donor.name : <span className="text-gray-400">Not assigned</span>}
+                </div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-gray-500" />
                   <span className="text-sm">

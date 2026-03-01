@@ -44,7 +44,7 @@ export const projects = pgTable("projects", {
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   status: projectStatusEnum("status").default("planning").notNull(),
-  donorId: varchar("donor_id", { length: 255 }),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
   totalBudget: integer("total_budget").default(0),
   spentBudget: integer("spent_budget").default(0),
   startDate: timestamp("start_date"),
@@ -236,6 +236,10 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     fields: [projects.managerId],
     references: [users.id],
   }),
+  donor: one(donors, {
+    fields: [projects.donorId],
+    references: [donors.id],
+  }),
   milestones: many(milestones),
   members: many(projectMembers),
   documents: many(projectDocuments),
@@ -276,6 +280,7 @@ export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
 }));
 
 export const donorsRelations = relations(donors, ({ many }) => ({
+  projects: many(projects),
   proposals: many(proposals),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),

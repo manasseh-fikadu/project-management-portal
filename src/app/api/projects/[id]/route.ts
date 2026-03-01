@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, projects } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, projects, projectMembers } from "@/db";
+import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
@@ -19,6 +19,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       with: {
         manager: {
           columns: { id: true, firstName: true, lastName: true, email: true },
+        },
+        donor: {
+          columns: { id: true, name: true, type: true },
         },
         milestones: {
           orderBy: (milestones, { asc }) => [asc(milestones.order)],
@@ -70,19 +73,41 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
+    const updateData: Record<string, unknown> = {
+      ...body,
+      updatedAt: new Date(),
+    };
+    if (body.startDate !== undefined) {
+      updateData.startDate = body.startDate ? new Date(body.startDate) : null;
+    }
+    if (body.endDate !== undefined) {
+      updateData.endDate = body.endDate ? new Date(body.endDate) : null;
+    }
+
     const [updatedProject] = await db
       .update(projects)
-      .set({
-        ...body,
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        endDate: body.endDate ? new Date(body.endDate) : null,
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(projects.id, id))
       .returning();
 
     if (!updatedProject) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    if (body.managerId && body.managerId !== existingProject.managerId) {
+      await db
+        .delete(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, id),
+            eq(projectMembers.role, "manager")
+          )
+        );
+      await db.insert(projectMembers).values({
+        projectId: id,
+        userId: body.managerId,
+        role: "manager",
+      });
     }
 
     await logAuditEvent({
