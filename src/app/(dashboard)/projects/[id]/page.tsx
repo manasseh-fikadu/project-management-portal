@@ -99,6 +99,7 @@ type Donor = {
   id: string;
   name: string;
   type: string;
+  isActive: boolean;
 };
 
 type ProjectDonorLink = {
@@ -1065,6 +1066,7 @@ export default function ProjectProfilePage() {
                             {allDonors
                               .filter(
                                 (d) =>
+                                  d.isActive &&
                                   !project?.projectDonors?.some(
                                     (pd) => pd.donorId === d.id
                                   )

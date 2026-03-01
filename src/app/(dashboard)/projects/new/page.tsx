@@ -55,6 +55,7 @@ type Donor = {
   id: string;
   name: string;
   type: string;
+  isActive: boolean;
 };
 
 type UserOption = {
@@ -732,9 +733,9 @@ export default function NewProjectPage() {
                 Select one or more donors for this project
               </p>
 
-              {donors.length > 0 ? (
+              {donors.filter((d) => d.isActive).length > 0 ? (
                 <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-2">
-                  {donors.map((donor) => {
+                  {donors.filter((d) => d.isActive).map((donor) => {
                     const isSelected = selectedDonorIds.includes(donor.id);
                     return (
                       <button
