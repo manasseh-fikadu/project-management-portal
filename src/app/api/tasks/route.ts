@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 
 export async function GET(request: NextRequest) {
   try {
@@ -141,6 +142,24 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // Notify assignee when task is assigned to someone other than the creator (best-effort)
+    if (assignedTo && assignedTo !== session.userId) {
+      try {
+        const projectName = taskWithRelations?.project?.name ?? projectId;
+        await createNotification({
+          userId: assignedTo,
+          type: "task_assigned",
+          title: "New task assigned to you",
+          message: `You have been assigned "${title}" in project "${projectName}".`,
+          entityType: "task",
+          entityId: newTask.id,
+          sendEmail: true,
+        });
+      } catch (notifError) {
+        console.error(`Failed to notify assignee ${assignedTo} for task ${newTask.id}:`, notifError);
+      }
+    }
 
     return NextResponse.json({ task: taskWithRelations }, { status: 201 });
   } catch (error) {

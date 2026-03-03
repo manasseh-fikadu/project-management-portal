@@ -49,6 +49,7 @@
     "donors": "Donors",
     "proposals": "Proposals",
     "financials": "Financials",
+    "reports": "Reports",
     "profile": "Profile",
     "users": "Users",
     "signOut": "Sign Out"
@@ -361,5 +362,42 @@
     "what_needs_to_be_done": "What needs to be done?",
     "withdrawn": "Withdrawn",
     "work_plan_milestones": "Work Plan / Milestones"
+  },
+  "reports": {
+    "title": "Report Generator",
+    "description": "Generate internal and donor-ready reports as PDF or Excel.",
+    "project_summary": "Project Summary",
+    "project_summary_desc": "Overview of a project: status, milestones, tasks, and team.",
+    "financial_report": "Financial Report",
+    "financial_report_desc": "Budget vs expenditure, disbursements, and performance metrics.",
+    "donor_report": "Donor Report",
+    "donor_report_desc": "Donor-facing report with project progress and financial data.",
+    "configure": "Configure Report",
+    "configure_desc": "Select your filters and output format, then generate.",
+    "project_label": "Project",
+    "project_required": "Project *",
+    "project_optional": "Project (optional — omit for portfolio)",
+    "select_project": "Select project",
+    "all_projects_portfolio": "All Projects (Portfolio)",
+    "donor_label": "Donor *",
+    "select_donor": "Select donor",
+    "format_label": "Format",
+    "format_pdf": "PDF",
+    "format_excel": "Excel (.xlsx)",
+    "generating": "Generating...",
+    "generate_download": "Generate & Download",
+    "error_select_project": "Please select a project.",
+    "error_select_donor": "Please select a donor.",
+    "error_generate_failed": "Failed to generate report",
+    "error_generic": "An error occurred"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "mark_all_read": "Mark all read",
+    "no_notifications": "No notifications yet.",
+    "just_now": "just now",
+    "minutes_ago": "{{count}}m ago",
+    "hours_ago": "{{count}}h ago",
+    "days_ago": "{{count}}d ago"
   }
 }

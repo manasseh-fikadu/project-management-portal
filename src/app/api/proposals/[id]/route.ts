@@ -4,6 +4,29 @@ import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { createNotification, getAdminUserIds } from "@/lib/notifications";
+
+const allowedStatusTransitions: Record<string, string[]> = {
+  draft: ["submitted", "withdrawn"],
+  submitted: ["under_review", "withdrawn"],
+  under_review: ["approved", "rejected", "withdrawn"],
+  approved: [],
+  rejected: [],
+  withdrawn: [],
+};
+
+function buildLookupText(payload: {
+  title?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  torCode?: string | null;
+  torSubmissionRef?: string | null;
+}) {
+  return [payload.title, payload.description, payload.notes, payload.torCode, payload.torSubmissionRef]
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .join(" ")
+    .trim();
+}
 
 export async function GET(
   request: NextRequest,
@@ -21,6 +44,15 @@ export async function GET(
       with: {
         donor: true,
         project: true,
+        template: true,
+        documents: {
+          with: {
+            uploader: {
+              columns: { id: true, firstName: true, lastName: true },
+            },
+          },
+          orderBy: (docs, { desc }) => [desc(docs.createdAt)],
+        },
         creator: {
           columns: { id: true, firstName: true, lastName: true, email: true },
         },
@@ -60,6 +92,23 @@ export async function PUT(
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
     }
 
+    if (body.status && body.status !== existingProposal.status) {
+      const nextStates = allowedStatusTransitions[existingProposal.status] || [];
+      if (!nextStates.includes(body.status)) {
+        return NextResponse.json(
+          { error: `Invalid status transition from ${existingProposal.status} to ${body.status}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const nextTitle = typeof body.title === "string" ? body.title : existingProposal.title;
+    const nextDescription = typeof body.description === "string" ? body.description : existingProposal.description;
+    const nextNotes = typeof body.notes === "string" ? body.notes : existingProposal.notes;
+    const nextTorCode = typeof body.torCode === "string" ? body.torCode : existingProposal.torCode;
+    const nextTorSubmissionRef =
+      typeof body.torSubmissionRef === "string" ? body.torSubmissionRef : existingProposal.torSubmissionRef;
+
     const [updatedProposal] = await db
       .update(proposals)
       .set({
@@ -68,6 +117,13 @@ export async function PUT(
         decisionDate: body.decisionDate ? new Date(body.decisionDate) : undefined,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
+        lookupText: buildLookupText({
+          title: nextTitle,
+          description: nextDescription,
+          notes: nextNotes,
+          torCode: nextTorCode,
+          torSubmissionRef: nextTorSubmissionRef,
+        }),
         updatedAt: new Date(),
       })
       .where(eq(proposals.id, id))
@@ -85,6 +141,40 @@ export async function PUT(
       changes: { before: existingProposal, after: updatedProposal },
       request,
     });
+
+    // Notify on status changes
+    if (body.status && body.status !== existingProposal.status) {
+      const newStatus = body.status as string;
+
+      // Notify creator on approval/rejection
+      if (newStatus === "approved" || newStatus === "rejected") {
+        await createNotification({
+          userId: existingProposal.createdBy,
+          type: "approval_decision",
+          title: `Proposal ${newStatus}`,
+          message: `Your proposal "${updatedProposal.title}" has been ${newStatus}.`,
+          entityType: "proposal",
+          entityId: id,
+          sendEmail: true,
+        });
+      }
+
+      // Notify admins when submitted
+      if (newStatus === "submitted") {
+        const adminIds = await getAdminUserIds();
+        for (const adminId of adminIds) {
+          await createNotification({
+            userId: adminId,
+            type: "approval_pending",
+            title: "Proposal submitted for review",
+            message: `"${updatedProposal.title}" has been submitted and requires review.`,
+            entityType: "proposal",
+            entityId: id,
+            sendEmail: true,
+          });
+        }
+      }
+    }
 
     return NextResponse.json({ proposal: updatedProposal });
   } catch (error) {

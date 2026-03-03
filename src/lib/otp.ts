@@ -4,11 +4,29 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { emailOutbox, otpCodes, users } from "@/db/schema";
+import { processPendingEmailOutbox } from "@/lib/email-outbox";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_HASH_ROUNDS = 10;
 const BCRYPT_HASH_PATTERN = /^\$2[aby]\$/;
+
+function toEpochMs(value: Date | string | number | null | undefined): number | null {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const parsedMs = Date.parse(value);
+    return Number.isNaN(parsedMs) ? null : parsedMs;
+  }
+
+  return null;
+}
 
 export class OtpError extends Error {
   constructor(
@@ -33,7 +51,12 @@ export async function getOtpResendCooldownRemaining(userId: string): Promise<num
     return 0;
   }
 
-  const remainingMs = latestOtp.createdAt.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
+  const latestCreatedAtMs = toEpochMs(latestOtp.createdAt);
+  if (latestCreatedAtMs === null) {
+    return 0;
+  }
+
+  const remainingMs = latestCreatedAtMs + OTP_RESEND_COOLDOWN_MS - Date.now();
   if (remainingMs <= 0) {
     return 0;
   }
@@ -66,7 +89,12 @@ export async function createOtpForUser(
     const latestOtp = latestOtpRows.rows[0];
 
     if (enforceCooldown && latestOtp) {
-      const remainingMs = latestOtp.createdAt.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
+      const latestCreatedAtMs = toEpochMs(latestOtp.createdAt);
+      if (latestCreatedAtMs === null) {
+        throw new Error("Invalid OTP creation timestamp");
+      }
+
+      const remainingMs = latestCreatedAtMs + OTP_RESEND_COOLDOWN_MS - Date.now();
       if (remainingMs > 0) {
         const remainingSeconds = Math.ceil(remainingMs / 1000);
         throw new OtpError(`Please wait ${remainingSeconds} seconds before requesting a new code`, "cooldown");
@@ -98,6 +126,12 @@ export async function createOtpForUser(
       status: "pending",
     });
   });
+
+  try {
+    await processPendingEmailOutbox(10);
+  } catch (error) {
+    console.error("Failed to process OTP email outbox", error);
+  }
 }
 
 export async function verifyOtp(userId: string, code: string): Promise<void> {

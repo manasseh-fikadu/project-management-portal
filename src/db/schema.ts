@@ -1,10 +1,15 @@
-import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check, index } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
 export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
 export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
 export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "processing", "sent", "failed"]);
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "deadline_approaching", "deadline_overdue",
+  "approval_pending", "approval_decision",
+  "task_assigned", "milestone_updated"
+]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -52,6 +57,18 @@ export const emailOutbox = pgTable("email_outbox", {
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  type: notificationTypeEnum("type").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  entityType: varchar("entity_type", { length: 50 }),
+  entityId: uuid("entity_id"),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
@@ -151,16 +168,35 @@ export const projectDonors = pgTable("project_donors", {
 }));
 
 export const proposalStatusEnum = pgEnum("proposal_status", ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]);
+export const proposalTypeEnum = pgEnum("proposal_type", ["grant", "tor"]);
+
+export const proposalTemplates = pgTable("proposal_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 100 }),
+  sections: jsonb("sections").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 export const proposals = pgTable("proposals", {
   id: uuid("id").defaultRandom().primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
+  proposalType: proposalTypeEnum("proposal_type").default("grant").notNull(),
   donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  templateId: uuid("template_id").references(() => proposalTemplates.id, { onDelete: "set null" }),
   status: proposalStatusEnum("status").default("draft").notNull(),
   amountRequested: integer("amount_requested").notNull(),
   amountApproved: integer("amount_approved"),
   currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  torCode: varchar("tor_code", { length: 100 }),
+  torSubmissionRef: varchar("tor_submission_ref", { length: 150 }),
+  templateData: jsonb("template_data"),
+  lookupText: text("lookup_text"),
   submissionDate: timestamp("submission_date"),
   decisionDate: timestamp("decision_date"),
   startDate: timestamp("start_date"),
@@ -170,6 +206,24 @@ export const proposals = pgTable("proposals", {
   createdBy: uuid("created_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  proposalTypeIdx: index("proposals_proposal_type_idx").on(table.proposalType),
+  proposalStatusIdx: index("proposals_status_idx").on(table.status),
+  proposalDonorIdx: index("proposals_donor_id_idx").on(table.donorId),
+  proposalProjectIdx: index("proposals_project_id_idx").on(table.projectId),
+  proposalSubmissionDateIdx: index("proposals_submission_date_idx").on(table.submissionDate),
+  proposalCreatedAtIdx: index("proposals_created_at_idx").on(table.createdAt),
+}));
+
+export const proposalDocuments = pgTable("proposal_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  proposalId: uuid("proposal_id").references(() => proposals.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 100 }).notNull(),
+  url: text("url").notNull(),
+  size: integer("size").notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "completed"]);
@@ -257,9 +311,19 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   assignedTasks: many(tasks, { relationName: "assignedTasks" }),
   createdTasks: many(tasks, { relationName: "createdTasks" }),
   auditLogs: many(auditLogs),
+  proposalTemplates: many(proposalTemplates),
+  proposalDocuments: many(proposalDocuments),
   budgetAllocations: many(budgetAllocations),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  notifications: many(notifications),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
 }));
 
 export const profilesRelations = relations(profiles, ({ one }) => ({
@@ -353,7 +417,15 @@ export const projectDonorsRelations = relations(projectDonors, ({ one }) => ({
   }),
 }));
 
-export const proposalsRelations = relations(proposals, ({ one }) => ({
+export const proposalTemplatesRelations = relations(proposalTemplates, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [proposalTemplates.createdBy],
+    references: [users.id],
+  }),
+  proposals: many(proposals),
+}));
+
+export const proposalsRelations = relations(proposals, ({ one, many }) => ({
   donor: one(donors, {
     fields: [proposals.donorId],
     references: [donors.id],
@@ -364,6 +436,22 @@ export const proposalsRelations = relations(proposals, ({ one }) => ({
   }),
   creator: one(users, {
     fields: [proposals.createdBy],
+    references: [users.id],
+  }),
+  template: one(proposalTemplates, {
+    fields: [proposals.templateId],
+    references: [proposalTemplates.id],
+  }),
+  documents: many(proposalDocuments),
+}));
+
+export const proposalDocumentsRelations = relations(proposalDocuments, ({ one }) => ({
+  proposal: one(proposals, {
+    fields: [proposalDocuments.proposalId],
+    references: [proposals.id],
+  }),
+  uploader: one(users, {
+    fields: [proposalDocuments.uploadedBy],
     references: [users.id],
   }),
 }));
@@ -464,6 +552,10 @@ export type ProjectDonor = typeof projectDonors.$inferSelect;
 export type NewProjectDonor = typeof projectDonors.$inferInsert;
 export type Proposal = typeof proposals.$inferSelect;
 export type NewProposal = typeof proposals.$inferInsert;
+export type ProposalTemplate = typeof proposalTemplates.$inferSelect;
+export type NewProposalTemplate = typeof proposalTemplates.$inferInsert;
+export type ProposalDocument = typeof proposalDocuments.$inferSelect;
+export type NewProposalDocument = typeof proposalDocuments.$inferInsert;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type TaskDocument = typeof taskDocuments.$inferSelect;
@@ -492,3 +584,5 @@ export type ProjectMember = typeof projectMembers.$inferSelect;
 export type NewProjectMember = typeof projectMembers.$inferInsert;
 export type ProjectDocument = typeof projectDocuments.$inferSelect;
 export type NewProjectDocument = typeof projectDocuments.$inferInsert;
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;

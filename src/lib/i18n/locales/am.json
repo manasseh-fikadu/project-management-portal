@@ -49,6 +49,7 @@
     "donors": "ለጋሾች",
     "proposals": "ፕሮፖዛሎች",
     "financials": "ፋይናንስ",
+    "reports": "ሪፖርቶች",
     "profile": "ፕሮፋይል",
     "users": "ተጠቃሚዎች",
     "signOut": "ውጣ"
@@ -361,5 +362,42 @@
     "what_needs_to_be_done": "ምን መደረግ አለበት?",
     "withdrawn": "ተመለሰ",
     "work_plan_milestones": "የስራ እቅድ / ዋና ደረጃዎች"
+  },
+  "reports": {
+    "title": "ሪፖርት ፈጣሪ",
+    "description": "ውስጣዊ እና ለለጋሾች የተዘጋጁ ሪፖርቶችን በPDF ወይም Excel ያመንጩ።",
+    "project_summary": "የፕሮጀክት ማጠቃለያ",
+    "project_summary_desc": "የፕሮጀክት አጠቃላይ እይታ: ሁኔታ፣ ዋና ደረጃዎች፣ ተግባራት እና ቡድን።",
+    "financial_report": "የፋይናንስ ሪፖርት",
+    "financial_report_desc": "በጀት ከወጪ፣ ክፍያዎች እና የአፈፃፀም መመዘኛዎች።",
+    "donor_report": "የለጋሽ ሪፖርት",
+    "donor_report_desc": "ለለጋሽ የተዘጋጀ ሪፖርት ከፕሮጀክት ሂደት እና የፋይናንስ መረጃ ጋር።",
+    "configure": "ሪፖርት ያዋቅሩ",
+    "configure_desc": "ማጣሪያዎችዎን እና የውጤት ቅርጸት ይምረጡ፣ ከዚያ ያመንጩ።",
+    "project_label": "ፕሮጀክት",
+    "project_required": "ፕሮጀክት *",
+    "project_optional": "ፕሮጀክት (አማራጭ — ለፖርትፎሊዮ ይተዉ)",
+    "select_project": "ፕሮጀክት ይምረጡ",
+    "all_projects_portfolio": "ሁሉም ፕሮጀክቶች (ፖርትፎሊዮ)",
+    "donor_label": "ለጋሽ *",
+    "select_donor": "ለጋሽ ይምረጡ",
+    "format_label": "ቅርጸት",
+    "format_pdf": "PDF",
+    "format_excel": "Excel (.xlsx)",
+    "generating": "በማመንጨት ላይ...",
+    "generate_download": "አመንጭ እና አውርድ",
+    "error_select_project": "እባክዎ ፕሮጀክት ይምረጡ።",
+    "error_select_donor": "እባክዎ ለጋሽ ይምረጡ።",
+    "error_generate_failed": "ሪፖርት ማመንጨት አልተሳካም",
+    "error_generic": "ስህተት ተፈጥሯል"
+  },
+  "notifications": {
+    "title": "ማሳወቂያዎች",
+    "mark_all_read": "ሁሉንም እንደተነበቡ ምልክት አድርግ",
+    "no_notifications": "እስካሁን ምንም ማሳወቂያዎች የሉም።",
+    "just_now": "አሁን",
+    "minutes_ago": "ከ{{count}} ደቂቃ በፊት",
+    "hours_ago": "ከ{{count}} ሰዓት በፊት",
+    "days_ago": "ከ{{count}} ቀን በፊት"
   }
 }

@@ -19,6 +19,7 @@ import {
   Circle,
   ShieldCheck,
   UserCog,
+  FileBarChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -75,6 +76,11 @@ const navItems: NavItem[] = [
     titleKey: "sidebar.financials",
     href: "/financials",
     icon: HandCoins,
+  },
+  {
+    titleKey: "sidebar.reports",
+    href: "/reports",
+    icon: FileBarChart,
   },
   {
     titleKey: "sidebar.profile",
