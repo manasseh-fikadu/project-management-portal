@@ -58,10 +58,16 @@ export async function PUT(
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
 
+    const { name, description, category, sections, isActive } = body;
+
     const [template] = await db
       .update(proposalTemplates)
       .set({
-        ...body,
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(category !== undefined && { category }),
+        ...(sections !== undefined && { sections }),
+        ...(isActive !== undefined && { isActive }),
         updatedAt: new Date(),
       })
       .where(eq(proposalTemplates.id, id))
