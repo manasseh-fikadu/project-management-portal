@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar, SidebarProvider, MainContent } from "@/components/sidebar";
 import { useTranslation } from "react-i18next";
 import Link from "next/link";
@@ -23,6 +23,7 @@ export default function DashboardLayout({
 }) {
   const { t } = useTranslation();
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,11 +34,17 @@ export default function DashboardLayout({
         if (data.user) {
           setUser(data.user);
         } else {
-          router.push("/login");
+          router.replace("/login");
         }
       })
       .finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    if (user?.mustChangePassword && pathname !== "/profile") {
+      router.replace("/profile");
+    }
+  }, [pathname, router, user?.mustChangePassword]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -55,6 +62,14 @@ export default function DashboardLayout({
 
   if (!user) {
     return null;
+  }
+
+  if (user.mustChangePassword && pathname !== "/profile") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>{t("layout.loading")}</p>
+      </div>
+    );
   }
 
   return (

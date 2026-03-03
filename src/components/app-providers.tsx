@@ -9,9 +9,11 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function flattenStrings(input: unknown, output: string[]) {
+function flattenStrings(input: unknown, output: Map<string, string>, prefix = "") {
   if (typeof input === "string") {
-    output.push(input);
+    if (prefix) {
+      output.set(prefix, input);
+    }
     return;
   }
 
@@ -20,36 +22,41 @@ function flattenStrings(input: unknown, output: string[]) {
   }
 
   if (Array.isArray(input)) {
-    input.forEach((item) => flattenStrings(item, output));
+    input.forEach((item, index) => {
+      const nextPrefix = prefix ? `${prefix}[${index}]` : `[${index}]`;
+      flattenStrings(item, output, nextPrefix);
+    });
     return;
   }
 
-  Object.values(input).forEach((item) => flattenStrings(item, output));
+  Object.entries(input as Record<string, unknown>).forEach(([key, item]) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    flattenStrings(item, output, nextPrefix);
+  });
 }
 
 function buildTranslationMaps() {
-  const enValues: string[] = [];
-  const amValues: string[] = [];
+  const enValues = new Map<string, string>();
+  const amValues = new Map<string, string>();
 
   flattenStrings(en, enValues);
   flattenStrings(am, amValues);
 
   const enToAm = new Map<string, string>();
   const amToEn = new Map<string, string>();
-  const max = Math.min(enValues.length, amValues.length);
+  const keys = new Set([...enValues.keys(), ...amValues.keys()]);
 
-  for (let i = 0; i < max; i += 1) {
-    const source = normalizeText(enValues[i] ?? "");
-    const target = amValues[i] ?? "";
-    const reverseSource = normalizeText(amValues[i] ?? "");
-    const reverseTarget = enValues[i] ?? "";
+  for (const key of keys) {
+    const enValue = enValues.get(key);
+    const amValue = amValues.get(key);
+    if (!enValue || !amValue) continue;
 
-    if (source && target && source !== normalizeText(target)) {
-      enToAm.set(source, target);
-    }
+    const source = normalizeText(enValue);
+    const target = normalizeText(amValue);
 
-    if (reverseSource && reverseTarget && reverseSource !== normalizeText(reverseTarget)) {
-      amToEn.set(reverseSource, reverseTarget);
+    if (source && target && source !== target) {
+      enToAm.set(source, amValue);
+      amToEn.set(target, enValue);
     }
   }
 

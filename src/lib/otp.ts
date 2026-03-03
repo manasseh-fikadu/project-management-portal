@@ -1,11 +1,15 @@
 import "server-only";
+import { randomInt } from "crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { otpCodes, users } from "@/db/schema";
 import { sendOtpEmail } from "@/lib/email";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_HASH_ROUNDS = 10;
+const BCRYPT_HASH_PATTERN = /^\$2[aby]\$/;
 
 export class OtpError extends Error {
   constructor(
@@ -17,9 +21,7 @@ export class OtpError extends Error {
 }
 
 export function generateOtp(): string {
-  return Math.floor(Math.random() * 1_000_000)
-    .toString()
-    .padStart(6, "0");
+  return randomInt(1_000_000).toString().padStart(6, "0");
 }
 
 export async function getOtpResendCooldownRemaining(userId: string): Promise<number> {
@@ -54,6 +56,7 @@ export async function createOtpForUser(
   }
 
   const code = generateOtp();
+  const otpHash = await bcrypt.hash(code, OTP_HASH_ROUNDS);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
   await db.transaction(async (tx) => {
@@ -64,7 +67,7 @@ export async function createOtpForUser(
 
     await tx.insert(otpCodes).values({
       userId,
-      code,
+      otpHash,
       expiresAt,
     });
   });
@@ -81,11 +84,21 @@ export async function verifyOtp(userId: string, code: string): Promise<void> {
 
   await db.transaction(async (tx) => {
     const otp = await tx.query.otpCodes.findFirst({
-      where: and(eq(otpCodes.userId, userId), eq(otpCodes.code, normalizedCode), eq(otpCodes.used, false)),
+      where: and(eq(otpCodes.userId, userId), eq(otpCodes.used, false)),
       orderBy: (codes, { desc }) => [desc(codes.createdAt)],
     });
 
     if (!otp) {
+      throw new OtpError("Invalid verification code", "invalid_code");
+    }
+
+    if (!BCRYPT_HASH_PATTERN.test(otp.otpHash)) {
+      await tx.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, otp.id));
+      throw new OtpError("Invalid verification code", "invalid_code");
+    }
+
+    const isValid = await bcrypt.compare(normalizedCode, otp.otpHash);
+    if (!isValid) {
       throw new OtpError("Invalid verification code", "invalid_code");
     }
 

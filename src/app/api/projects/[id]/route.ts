@@ -83,6 +83,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params;
     const body = await request.json();
+    const payload =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
     const existingProject = await db.query.projects.findFirst({
       where: eq(projects.id, id),
     });
@@ -92,40 +96,76 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const updateData: Record<string, unknown> = {
-      ...body,
       updatedAt: new Date(),
     };
-    if (body.startDate !== undefined) {
-      updateData.startDate = body.startDate ? new Date(body.startDate) : null;
+
+    if (typeof payload.name === "string") {
+      updateData.name = payload.name;
     }
-    if (body.endDate !== undefined) {
-      updateData.endDate = body.endDate ? new Date(body.endDate) : null;
+    if (typeof payload.description === "string" || payload.description === null) {
+      updateData.description = payload.description;
+    }
+    if (typeof payload.status === "string") {
+      updateData.status = payload.status;
+    }
+    if (typeof payload.donorId === "string" || payload.donorId === null) {
+      updateData.donorId = payload.donorId;
+    }
+    if (typeof payload.managerId === "string") {
+      updateData.managerId = payload.managerId;
+    }
+    if (typeof payload.totalBudget === "number") {
+      updateData.totalBudget = payload.totalBudget;
+    }
+    if (typeof payload.spentBudget === "number") {
+      updateData.spentBudget = payload.spentBudget;
+    }
+    if (payload.startDate !== undefined) {
+      updateData.startDate =
+        typeof payload.startDate === "string" && payload.startDate
+          ? new Date(payload.startDate)
+          : null;
+    }
+    if (payload.endDate !== undefined) {
+      updateData.endDate =
+        typeof payload.endDate === "string" && payload.endDate
+          ? new Date(payload.endDate)
+          : null;
     }
 
-    const [updatedProject] = await db
-      .update(projects)
-      .set(updateData)
-      .where(eq(projects.id, id))
-      .returning();
+    const managerId = typeof payload.managerId === "string" ? payload.managerId : null;
+    const updatedProject = await db.transaction(async (tx) => {
+      const [project] = await tx
+        .update(projects)
+        .set(updateData)
+        .where(eq(projects.id, id))
+        .returning();
+
+      if (!project) {
+        return null;
+      }
+
+      if (managerId && managerId !== existingProject.managerId) {
+        await tx
+          .delete(projectMembers)
+          .where(
+            and(
+              eq(projectMembers.projectId, id),
+              eq(projectMembers.role, "manager")
+            )
+          );
+        await tx.insert(projectMembers).values({
+          projectId: id,
+          userId: managerId,
+          role: "manager",
+        });
+      }
+
+      return project;
+    });
 
     if (!updatedProject) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
-
-    if (body.managerId && body.managerId !== existingProject.managerId) {
-      await db
-        .delete(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, id),
-            eq(projectMembers.role, "manager")
-          )
-        );
-      await db.insert(projectMembers).values({
-        projectId: id,
-        userId: body.managerId,
-        role: "manager",
-      });
     }
 
     await logAuditEvent({

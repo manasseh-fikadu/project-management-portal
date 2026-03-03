@@ -19,7 +19,7 @@ import {
 import { Plus, Search, MoreVertical, Trash2, Edit, DollarSign, Calendar, Building2, FolderKanban, TrendingUp } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
-import type { CurrencyCode } from "@/lib/currency";
+import { SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
 
 type Donor = {
   id: string;
@@ -72,6 +72,12 @@ const statusLabels: Record<string, string> = {
   rejected: "Rejected",
   withdrawn: "Withdrawn",
 };
+
+const SUPPORTED_CURRENCY_SET = new Set<string>(SUPPORTED_CURRENCIES);
+
+function normalizeCurrency(currency: string): CurrencyCode {
+  return SUPPORTED_CURRENCY_SET.has(currency) ? (currency as CurrencyCode) : "ETB";
+}
 
 export default function ProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -239,7 +245,7 @@ export default function ProposalsPage() {
       status: proposal.status,
       amountRequested: proposal.amountRequested.toString(),
       amountApproved: proposal.amountApproved?.toString() || "",
-      currency: proposal.currency,
+      currency: normalizeCurrency(proposal.currency),
       submissionDate: proposal.submissionDate ? proposal.submissionDate.split("T")[0] : "",
       decisionDate: proposal.decisionDate ? proposal.decisionDate.split("T")[0] : "",
       startDate: proposal.startDate ? proposal.startDate.split("T")[0] : "",
@@ -251,7 +257,7 @@ export default function ProposalsPage() {
   }
 
   function formatCurrency(amount: number, currency: string) {
-    return formatCurrencyUtil(amount, currency as CurrencyCode);
+    return formatCurrencyUtil(amount, normalizeCurrency(currency));
   }
 
   function formatDate(date: string | null) {
@@ -381,7 +387,7 @@ export default function ProposalsPage() {
                     id="amountRequested"
                     value={formData.amountRequested}
                     onChange={(val) => setFormData(prev => ({ ...prev, amountRequested: val }))}
-                    currency={formData.currency as CurrencyCode}
+                    currency={normalizeCurrency(formData.currency)}
                     onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
                     required
                   />
@@ -395,7 +401,7 @@ export default function ProposalsPage() {
                     id="amountApproved"
                     value={formData.amountApproved}
                     onChange={(val) => setFormData(prev => ({ ...prev, amountApproved: val }))}
-                    currency={formData.currency as CurrencyCode}
+                    currency={normalizeCurrency(formData.currency)}
                     onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
                   />
                 </div>

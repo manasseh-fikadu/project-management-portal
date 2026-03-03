@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1772505600000,
+      "tag": "0000_projects_donor_id_uuid",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772509200000,
+      "tag": "0001_project_donors_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772512800000,
+      "tag": "0002_tasks_progress_range_check",
+      "breakpoints": true
+    }
+  ]
+}
