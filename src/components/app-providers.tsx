@@ -92,13 +92,37 @@ function translateTextNode(node: Node, map: Map<string, string>) {
 }
 
 function translateElementAttributes(element: Element, map: Map<string, string>) {
-  const attributes = ["placeholder", "title", "aria-label", "alt", "value"] as const;
+  const attributes = ["placeholder", "title", "aria-label", "alt"] as const;
   for (const name of attributes) {
     const value = element.getAttribute(name);
     if (!value) continue;
     const translated = map.get(normalizeText(value));
     if (translated && translated !== value) {
       element.setAttribute(name, translated);
+    }
+  }
+
+  if (element instanceof HTMLInputElement) {
+    const type = element.type.toLowerCase();
+    if (type === "button" || type === "submit" || type === "reset") {
+      const value = element.getAttribute("value");
+      if (!value) return;
+      const translated = map.get(normalizeText(value));
+      if (translated && translated !== value) {
+        element.setAttribute("value", translated);
+      }
+    }
+    return;
+  }
+
+  if (element instanceof HTMLButtonElement) {
+    const text = element.textContent;
+    if (!text) return;
+    const normalized = normalizeText(text);
+    if (!normalized) return;
+    const translated = map.get(normalized);
+    if (translated && translated !== normalized) {
+      element.textContent = translated;
     }
   }
 }
@@ -115,7 +139,9 @@ function applyGlobalTranslation(root: ParentNode, map: Map<string, string>) {
   }
 
   const elements = root.querySelectorAll("*");
-  elements.forEach((element) => translateElementAttributes(element, map));
+  elements.forEach((element) => {
+    translateElementAttributes(element, map);
+  });
 }
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -152,7 +178,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       subtree: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ["placeholder", "title", "aria-label", "alt", "value"],
+      attributeFilter: ["placeholder", "title", "aria-label", "alt"],
     });
 
     const onLanguageChange = () => {

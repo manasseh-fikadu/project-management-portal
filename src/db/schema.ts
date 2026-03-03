@@ -4,6 +4,7 @@ import { relations, sql } from "drizzle-orm";
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
 export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
 export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
+export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "sent", "failed"]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -36,6 +37,19 @@ export const otpCodes = pgTable("otp_codes", {
   expiresAt: timestamp("expires_at").notNull(),
   used: boolean("used").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const emailOutbox = pgTable("email_outbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  kind: varchar("kind", { length: 50 }).notNull(),
+  recipientEmail: varchar("recipient_email", { length: 255 }).notNull(),
+  payload: jsonb("payload").notNull(),
+  status: emailOutboxStatusEnum("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  lastError: text("last_error"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
@@ -260,6 +274,8 @@ export const otpCodesRelations = relations(otpCodes, ({ one }) => ({
   }),
 }));
 
+export const emailOutboxRelations = relations(emailOutbox, () => ({}));
+
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   actor: one(users, {
     fields: [auditLogs.actorUserId],
@@ -462,6 +478,8 @@ export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type OtpCode = typeof otpCodes.$inferSelect;
 export type NewOtpCode = typeof otpCodes.$inferInsert;
+export type EmailOutbox = typeof emailOutbox.$inferSelect;
+export type NewEmailOutbox = typeof emailOutbox.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type Project = typeof projects.$inferSelect;

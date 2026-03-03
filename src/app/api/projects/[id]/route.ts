@@ -5,6 +5,13 @@ import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
+const PROJECT_STATUSES = new Set(["planning", "active", "on_hold", "completed", "cancelled"]);
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
@@ -106,13 +113,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.description = payload.description;
     }
     if (typeof payload.status === "string") {
+      if (!PROJECT_STATUSES.has(payload.status)) {
+        return NextResponse.json({ error: "Invalid project status" }, { status: 400 });
+      }
       updateData.status = payload.status;
     }
     if (typeof payload.donorId === "string" || payload.donorId === null) {
+      if (typeof payload.donorId === "string" && !isValidUuid(payload.donorId)) {
+        return NextResponse.json({ error: "Invalid donorId format" }, { status: 400 });
+      }
       updateData.donorId = payload.donorId;
     }
-    if (typeof payload.managerId === "string") {
-      updateData.managerId = payload.managerId;
+    if (payload.managerId === null || typeof payload.managerId === "string") {
+      if (typeof payload.managerId === "string" && !isValidUuid(payload.managerId)) {
+        return NextResponse.json({ error: "Invalid managerId format" }, { status: 400 });
+      }
+      if (typeof payload.managerId === "string") {
+        updateData.managerId = payload.managerId;
+      }
     }
     if (typeof payload.totalBudget === "number") {
       updateData.totalBudget = payload.totalBudget;
@@ -121,12 +139,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.spentBudget = payload.spentBudget;
     }
     if (payload.startDate !== undefined) {
+      if (payload.startDate !== null && typeof payload.startDate !== "string") {
+        return NextResponse.json({ error: "Invalid startDate format" }, { status: 400 });
+      }
+      if (typeof payload.startDate === "string" && payload.startDate && Number.isNaN(Date.parse(payload.startDate))) {
+        return NextResponse.json({ error: "Invalid startDate value" }, { status: 400 });
+      }
       updateData.startDate =
         typeof payload.startDate === "string" && payload.startDate
           ? new Date(payload.startDate)
           : null;
     }
     if (payload.endDate !== undefined) {
+      if (payload.endDate !== null && typeof payload.endDate !== "string") {
+        return NextResponse.json({ error: "Invalid endDate format" }, { status: 400 });
+      }
+      if (typeof payload.endDate === "string" && payload.endDate && Number.isNaN(Date.parse(payload.endDate))) {
+        return NextResponse.json({ error: "Invalid endDate value" }, { status: 400 });
+      }
       updateData.endDate =
         typeof payload.endDate === "string" && payload.endDate
           ? new Date(payload.endDate)

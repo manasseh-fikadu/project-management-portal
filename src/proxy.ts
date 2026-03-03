@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const COOKIE_NAME = "session";
+const AUTH_ME_TIMEOUT_MS = Number(process.env.AUTH_ME_TIMEOUT_MS ?? "4000");
 
 async function verifySessionForEdge(token: string, secret: string): Promise<{ userId: string } | null> {
   try {
@@ -21,19 +22,28 @@ async function shouldForcePasswordChange(request: NextRequest): Promise<boolean>
   }
 
   try {
-    const response = await fetch(new URL("/api/auth/me", request.url), {
-      headers: { cookie },
-      cache: "no-store",
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AUTH_ME_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(new URL("/api/auth/me", request.url), {
+        headers: { cookie },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
-      return false;
+      return true;
     }
 
     const data = (await response.json()) as { user?: { mustChangePassword?: boolean } | null };
     return Boolean(data.user?.mustChangePassword);
   } catch {
-    return false;
+    return true;
   }
 }
 

@@ -22,6 +22,13 @@
       "when": 1772512800000,
       "tag": "0002_tasks_progress_range_check",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772520000000,
+      "tag": "0003_email_outbox",
+      "breakpoints": true
     }
   ]
 }

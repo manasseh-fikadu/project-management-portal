@@ -1,10 +1,9 @@
 import "server-only";
 import { randomInt } from "crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
-import { otpCodes, users } from "@/db/schema";
-import { sendOtpEmail } from "@/lib/email";
+import { emailOutbox, otpCodes, users } from "@/db/schema";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
@@ -48,18 +47,36 @@ export async function createOtpForUser(
   firstName: string,
   enforceCooldown = false
 ): Promise<void> {
-  if (enforceCooldown) {
-    const remainingSeconds = await getOtpResendCooldownRemaining(userId);
-    if (remainingSeconds > 0) {
-      throw new OtpError(`Please wait ${remainingSeconds} seconds before requesting a new code`, "cooldown");
-    }
-  }
-
-  const code = generateOtp();
-  const otpHash = await bcrypt.hash(code, OTP_HASH_ROUNDS);
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
-
   await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT id FROM ${users} WHERE id = ${userId} FOR UPDATE`
+    );
+
+    const latestOtpRows = await tx.execute<{ createdAt: Date }>(
+      sql`
+        SELECT created_at AS "createdAt"
+        FROM ${otpCodes}
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `
+    );
+
+    const latestOtp = latestOtpRows.rows[0];
+
+    if (enforceCooldown && latestOtp) {
+      const remainingMs = latestOtp.createdAt.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
+      if (remainingMs > 0) {
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        throw new OtpError(`Please wait ${remainingSeconds} seconds before requesting a new code`, "cooldown");
+      }
+    }
+
+    const code = generateOtp();
+    const otpHash = await bcrypt.hash(code, OTP_HASH_ROUNDS);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+
     await tx
       .update(otpCodes)
       .set({ used: true })
@@ -70,9 +87,17 @@ export async function createOtpForUser(
       otpHash,
       expiresAt,
     });
-  });
 
-  await sendOtpEmail(email, code, firstName);
+    await tx.insert(emailOutbox).values({
+      kind: "otp_verification",
+      recipientEmail: email,
+      payload: {
+        code,
+        firstName,
+      },
+      status: "pending",
+    });
+  });
 }
 
 export async function verifyOtp(userId: string, code: string): Promise<void> {
@@ -93,7 +118,15 @@ export async function verifyOtp(userId: string, code: string): Promise<void> {
     }
 
     if (!BCRYPT_HASH_PATTERN.test(otp.otpHash)) {
-      await tx.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, otp.id));
+      const invalidatedRows = await tx
+        .update(otpCodes)
+        .set({ used: true })
+        .where(and(eq(otpCodes.id, otp.id), eq(otpCodes.used, false)))
+        .returning({ id: otpCodes.id });
+
+      if (invalidatedRows.length === 0) {
+        throw new OtpError("Invalid verification code", "invalid_code");
+      }
       throw new OtpError("Invalid verification code", "invalid_code");
     }
 
@@ -106,7 +139,15 @@ export async function verifyOtp(userId: string, code: string): Promise<void> {
       throw new OtpError("Verification code has expired", "expired_code");
     }
 
-    await tx.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, otp.id));
+    const consumedRows = await tx
+      .update(otpCodes)
+      .set({ used: true })
+      .where(and(eq(otpCodes.id, otp.id), eq(otpCodes.used, false)))
+      .returning({ id: otpCodes.id });
+
+    if (consumedRows.length === 0) {
+      throw new OtpError("Invalid verification code", "invalid_code");
+    }
 
     await tx
       .update(users)
