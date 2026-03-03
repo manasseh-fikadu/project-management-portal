@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Progress } from "@/components/ui/progress";
 import {
   Plus,
   MoreVertical,
@@ -59,6 +60,7 @@ type Task = {
   description: string | null;
   status: string;
   priority: string;
+  progress: number;
   dueDate: string | null;
   completedAt: string | null;
   createdAt: string;
@@ -104,6 +106,7 @@ export default function TasksPage() {
     projectId: "",
     status: "pending",
     priority: "medium",
+    progress: 0,
     dueDate: "",
     assignedTo: "",
   });
@@ -162,6 +165,7 @@ export default function TasksPage() {
       projectId: "",
       status: "pending",
       priority: "medium",
+      progress: 0,
       dueDate: "",
       assignedTo: "",
     });
@@ -176,6 +180,7 @@ export default function TasksPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          progress: formData.progress,
           assignedTo: formData.assignedTo || null,
           dueDate: formData.dueDate || null,
         }),
@@ -231,6 +236,7 @@ export default function TasksPage() {
       projectId: selectedTask.project.id,
       status: selectedTask.status,
       priority: selectedTask.priority,
+      progress: selectedTask.progress ?? 0,
       dueDate: selectedTask.dueDate ? selectedTask.dueDate.split("T")[0] : "",
       assignedTo: selectedTask.assignee?.id || "",
     });
@@ -251,6 +257,7 @@ export default function TasksPage() {
           projectId: formData.projectId,
           status: formData.status,
           priority: formData.priority,
+          progress: formData.progress,
           dueDate: formData.dueDate || null,
           assignedTo: formData.assignedTo || null,
         }),
@@ -500,6 +507,23 @@ export default function TasksPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="progress">Progress ({formData.progress}%)</Label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="progress"
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={formData.progress}
+                      onChange={(e) => setFormData({ ...formData, progress: Number(e.target.value) })}
+                      className="flex-1 h-2 accent-primary"
+                    />
+                    <span className="text-sm font-medium w-10 text-right">{formData.progress}%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="assignedTo">Assignee</Label>
                   <Select
                     value={formData.assignedTo}
@@ -581,6 +605,10 @@ export default function TasksPage() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Progress value={task.progress} className="h-1.5 flex-1" />
+                      <span className="text-[10px] font-medium text-gray-500 w-7 text-right">{task.progress}%</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge className={`${priorityColors[task.priority]} text-xs`}>
@@ -703,6 +731,23 @@ export default function TasksPage() {
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-progress">Progress ({formData.progress}%)</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="edit-progress"
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={formData.progress}
+                        onChange={(e) => setFormData({ ...formData, progress: Number(e.target.value) })}
+                        className="flex-1 h-2 accent-primary"
+                      />
+                      <span className="text-sm font-medium w-10 text-right">{formData.progress}%</span>
+                    </div>
+                  </div>
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="edit-dueDate">Due Date</Label>
@@ -747,6 +792,14 @@ export default function TasksPage() {
                     <Badge className={statusColors[selectedTask.status]}>
                       {selectedTask.status.replace("_", " ")}
                     </Badge>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium mb-1.5">Progress</h4>
+                    <div className="flex items-center gap-3">
+                      <Progress value={selectedTask.progress} className="h-2 flex-1" />
+                      <span className="text-sm font-semibold">{selectedTask.progress}%</span>
+                    </div>
                   </div>
 
                   {selectedTask.description && (

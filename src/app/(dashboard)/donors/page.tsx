@@ -15,7 +15,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe, Power, PowerOff } from "lucide-react";
+import { CurrencyInput } from "@/components/currency-input";
+import { formatCurrency } from "@/lib/currency";
 
 type Donor = {
   id: string;
@@ -57,6 +59,7 @@ export default function DonorsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
   const [formData, setFormData] = useState({
@@ -71,6 +74,7 @@ export default function DonorsPage() {
     focusAreas: "",
     averageGrantSize: "",
     notes: "",
+    isActive: true,
   });
 
   useEffect(() => {
@@ -102,6 +106,7 @@ export default function DonorsPage() {
       focusAreas: "",
       averageGrantSize: "",
       notes: "",
+      isActive: true,
     });
     setEditingDonor(null);
   }
@@ -112,6 +117,7 @@ export default function DonorsPage() {
     const payload = {
       ...formData,
       averageGrantSize: formData.averageGrantSize ? parseInt(formData.averageGrantSize) : null,
+      isActive: formData.isActive,
     };
 
     try {
@@ -143,6 +149,22 @@ export default function DonorsPage() {
     }
   }
 
+  async function handleToggleActive(donor: Donor) {
+    try {
+      const res = await fetch(`/api/donors/${donor.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !donor.isActive }),
+      });
+      const data = await res.json();
+      if (data.donor) {
+        setDonors(donors.map((d) => (d.id === data.donor.id ? data.donor : d)));
+      }
+    } catch (error) {
+      console.error("Error toggling donor status:", error);
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this donor?")) return;
 
@@ -168,17 +190,14 @@ export default function DonorsPage() {
       focusAreas: donor.focusAreas || "",
       averageGrantSize: donor.averageGrantSize?.toString() || "",
       notes: donor.notes || "",
+      isActive: donor.isActive,
     });
     setIsAddDialogOpen(true);
   }
 
   function formatGrantSize(amount: number | null) {
     if (!amount) return "Not specified";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "ETB",
-      maximumFractionDigits: 0,
-    }).format(amount);
+    return formatCurrency(amount, "ETB");
   }
 
   const filteredDonors = donors.filter((donor) => {
@@ -187,8 +206,15 @@ export default function DonorsPage() {
       donor.contactPerson?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       donor.email?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = filterType === "all" || donor.type === filterType;
-    return matchesSearch && matchesType;
+    const matchesStatus =
+      filterStatus === "all" ||
+      (filterStatus === "active" && donor.isActive) ||
+      (filterStatus === "inactive" && !donor.isActive);
+    return matchesSearch && matchesType && matchesStatus;
   });
+
+  const activeDonorCount = donors.filter((d) => d.isActive).length;
+  const inactiveDonorCount = donors.filter((d) => !d.isActive).length;
 
   if (loading) {
     return (
@@ -319,14 +345,34 @@ export default function DonorsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="averageGrantSize">Average Grant Size (ETB)</Label>
-                <Input
+                <Label htmlFor="averageGrantSize">Average Grant Size</Label>
+                <CurrencyInput
                   id="averageGrantSize"
-                  type="number"
                   value={formData.averageGrantSize}
-                  onChange={(e) => setFormData({ ...formData, averageGrantSize: e.target.value })}
+                  onChange={(val) => setFormData({ ...formData, averageGrantSize: val })}
+                  currency="ETB"
                   placeholder="e.g., 500000"
                 />
+              </div>
+
+              <div className="flex items-center gap-3 p-3 border rounded-lg">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={formData.isActive}
+                  onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formData.isActive ? "bg-green-500" : "bg-gray-200"}`}
+                >
+                  <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${formData.isActive ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+                <div>
+                  <Label className="text-sm font-medium">
+                    {formData.isActive ? "Active" : "Non-Active"}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {formData.isActive ? "Donor is active and available for project assignments" : "Donor is non-active and hidden from project selections"}
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -360,6 +406,16 @@ export default function DonorsPage() {
             className="pl-9"
           />
         </div>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status ({donors.length})</SelectItem>
+            <SelectItem value="active">Active ({activeDonorCount})</SelectItem>
+            <SelectItem value="inactive">Non-Active ({inactiveDonorCount})</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={filterType} onValueChange={setFilterType}>
           <SelectTrigger className="w-40">
             <SelectValue />
@@ -392,7 +448,7 @@ export default function DonorsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredDonors.map((donor) => (
-            <Card key={donor.id} className="hover:shadow-md transition-shadow">
+            <Card key={donor.id} className={`hover:shadow-md transition-shadow ${!donor.isActive ? "opacity-60" : ""}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
@@ -401,9 +457,14 @@ export default function DonorsPage() {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{donor.name}</CardTitle>
-                      <Badge className={donorTypeColors[donor.type] + " mt-1"}>
-                        {donorTypeLabels[donor.type]}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Badge className={donorTypeColors[donor.type]}>
+                          {donorTypeLabels[donor.type]}
+                        </Badge>
+                        <Badge className={donor.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}>
+                          {donor.isActive ? "Active" : "Non-Active"}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                   <DropdownMenu>
@@ -415,6 +476,13 @@ export default function DonorsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEditDialog(donor)}>
                         <Edit className="h-4 w-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleToggleActive(donor)}>
+                        {donor.isActive ? (
+                          <><PowerOff className="h-4 w-4 mr-2" /> Set Non-Active</>
+                        ) : (
+                          <><Power className="h-4 w-4 mr-2" /> Set Active</>
+                        )}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-red-600">
                         <Trash2 className="h-4 w-4 mr-2" /> Delete

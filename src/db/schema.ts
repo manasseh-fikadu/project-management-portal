@@ -1,9 +1,10 @@
-import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
 export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
 export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
+export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "processing", "sent", "failed"]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -14,6 +15,9 @@ export const users = pgTable("users", {
   role: roleEnum("role").default("user").notNull(),
   department: varchar("department", { length: 100 }),
   isActive: boolean("is_active").default(true).notNull(),
+  mustChangePassword: boolean("must_change_password").default(false).notNull(),
+  passwordChangedAt: timestamp("password_changed_at"),
+  firstLoginAt: timestamp("first_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -22,6 +26,30 @@ export const profiles = pgTable("profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
   role: profileRoleEnum("role").default("beneficiary").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const otpCodes = pgTable("otp_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  otpHash: varchar("otp_hash", { length: 128 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const emailOutbox = pgTable("email_outbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  kind: varchar("kind", { length: 50 }).notNull(),
+  recipientEmail: varchar("recipient_email", { length: 255 }).notNull(),
+  payload: jsonb("payload").notNull(),
+  status: emailOutboxStatusEnum("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  processorId: varchar("processor_id", { length: 100 }),
+  processingStartedAt: timestamp("processing_started_at"),
+  lastError: text("last_error"),
+  sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -44,7 +72,7 @@ export const projects = pgTable("projects", {
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   status: projectStatusEnum("status").default("planning").notNull(),
-  donorId: varchar("donor_id", { length: 255 }),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
   totalBudget: integer("total_budget").default(0),
   spentBudget: integer("spent_budget").default(0),
   startDate: timestamp("start_date"),
@@ -88,6 +116,8 @@ export const projectMembers = pgTable("project_members", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const donorStatusEnum = pgEnum("donor_status", ["active", "pending", "completed", "withdrawn"]);
+
 export const donorTypeEnum = pgEnum("donor_type", ["government", "foundation", "corporate", "individual", "multilateral", "ngo"]);
 
 export const donors = pgTable("donors", {
@@ -107,6 +137,18 @@ export const donors = pgTable("donors", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const projectDonors = pgTable("project_donors", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "cascade" }).notNull(),
+  status: donorStatusEnum("status").default("active").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectDonorUnique: uniqueIndex("project_donors_project_id_donor_id_key").on(table.projectId, table.donorId),
+}));
 
 export const proposalStatusEnum = pgEnum("proposal_status", ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]);
 
@@ -142,11 +184,14 @@ export const tasks = pgTable("tasks", {
   dueDate: timestamp("due_date"),
   assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id).notNull(),
+  progress: integer("progress").default(0).notNull(),
   completedAt: timestamp("completed_at"),
   order: integer("order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  progressRangeCheck: check("tasks_progress_range_check", sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+}));
 
 export const taskDocuments = pgTable("task_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -206,6 +251,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [profiles.userId],
   }),
+  otpCodes: many(otpCodes),
   projects: many(projects),
   projectMemberships: many(projectMembers),
   assignedTasks: many(tasks, { relationName: "assignedTasks" }),
@@ -223,6 +269,15 @@ export const profilesRelations = relations(profiles, ({ one }) => ({
   }),
 }));
 
+export const otpCodesRelations = relations(otpCodes, ({ one }) => ({
+  user: one(users, {
+    fields: [otpCodes.userId],
+    references: [users.id],
+  }),
+}));
+
+export const emailOutboxRelations = relations(emailOutbox, () => ({}));
+
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   actor: one(users, {
     fields: [auditLogs.actorUserId],
@@ -235,6 +290,11 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     fields: [projects.managerId],
     references: [users.id],
   }),
+  donor: one(donors, {
+    fields: [projects.donorId],
+    references: [donors.id],
+  }),
+  projectDonors: many(projectDonors),
   milestones: many(milestones),
   members: many(projectMembers),
   documents: many(projectDocuments),
@@ -275,9 +335,22 @@ export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
 }));
 
 export const donorsRelations = relations(donors, ({ many }) => ({
+  projects: many(projects),
+  projectDonors: many(projectDonors),
   proposals: many(proposals),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+}));
+
+export const projectDonorsRelations = relations(projectDonors, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectDonors.projectId],
+    references: [projects.id],
+  }),
+  donor: one(donors, {
+    fields: [projectDonors.donorId],
+    references: [donors.id],
+  }),
 }));
 
 export const proposalsRelations = relations(proposals, ({ one }) => ({
@@ -387,6 +460,8 @@ export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) =
 
 export type Donor = typeof donors.$inferSelect;
 export type NewDonor = typeof donors.$inferInsert;
+export type ProjectDonor = typeof projectDonors.$inferSelect;
+export type NewProjectDonor = typeof projectDonors.$inferInsert;
 export type Proposal = typeof proposals.$inferSelect;
 export type NewProposal = typeof proposals.$inferInsert;
 export type Task = typeof tasks.$inferSelect;
@@ -403,6 +478,10 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
+export type OtpCode = typeof otpCodes.$inferSelect;
+export type NewOtpCode = typeof otpCodes.$inferInsert;
+export type EmailOutbox = typeof emailOutbox.$inferSelect;
+export type NewEmailOutbox = typeof emailOutbox.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type Project = typeof projects.$inferSelect;

@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar, User, DollarSign } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Calendar, User, DollarSign, HandCoins, Search } from "lucide-react";
+import { formatCurrency } from "@/lib/currency";
 
 type Milestone = {
   id: string;
@@ -14,12 +16,20 @@ type Milestone = {
   dueDate: string | null;
 };
 
+type ProjectDonorLink = {
+  donorId: string;
+  status: string;
+  donor: { id: string; name: string; type: string };
+};
+
 type Project = {
   id: string;
   name: string;
   description: string | null;
   status: string;
   donorId: string | null;
+  donor: { id: string; name: string; type: string } | null;
+  projectDonors?: ProjectDonorLink[];
   totalBudget: number;
   startDate: string | null;
   endDate: string | null;
@@ -44,6 +54,7 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetch("/api/projects")
@@ -62,7 +73,7 @@ export default function ProjectsPage() {
   }
 
   function formatBudget(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB" }).format(amount);
+    return formatCurrency(amount, "ETB");
   }
 
   function getMilestoneProgress(milestones: Milestone[]) {
@@ -70,6 +81,22 @@ export default function ProjectsPage() {
     const completed = milestones.filter((m) => m.status === "completed").length;
     return Math.round((completed / milestones.length) * 100);
   }
+
+  const filteredProjects = projects.filter((project) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const managerName = `${project.manager.firstName} ${project.manager.lastName}`.toLowerCase();
+    const donorNames = project.projectDonors?.map((pd) => pd.donor.name.toLowerCase()).join(" ") ?? "";
+    const primaryDonor = project.donor?.name.toLowerCase() ?? "";
+    return (
+      project.name.toLowerCase().includes(q) ||
+      (project.description?.toLowerCase().includes(q) ?? false) ||
+      project.status.toLowerCase().includes(q) ||
+      managerName.includes(q) ||
+      donorNames.includes(q) ||
+      primaryDonor.includes(q)
+    );
+  });
 
   if (loading) {
     return (
@@ -91,18 +118,36 @@ export default function ProjectsPage() {
         </Button>
       </div>
 
-      {projects.length === 0 ? (
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search projects by name, description, manager, donor..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 max-w-md"
+        />
+      </div>
+
+      {filteredProjects.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-gray-500 mb-4">No projects found</p>
-            <Button onClick={() => router.push("/projects/new")}>
-              <Plus className="h-4 w-4 mr-2" /> Create your first project
-            </Button>
+            <p className="text-gray-500 mb-4">
+              {searchQuery.trim() ? "No projects match your search" : "No projects found"}
+            </p>
+            {searchQuery.trim() ? (
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
+                Clear search
+              </Button>
+            ) : (
+              <Button onClick={() => router.push("/projects/new")}>
+                <Plus className="h-4 w-4 mr-2" /> Create your first project
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
+          {filteredProjects.map((project) => (
             <Card
               key={project.id}
               className="cursor-pointer hover:shadow-md transition-shadow"
@@ -125,11 +170,22 @@ export default function ProjectsPage() {
                   </span>
                 </div>
 
-                {project.donorId && (
+                {project.projectDonors && project.projectDonors.length > 0 ? (
                   <div className="text-sm text-gray-600">
-                    <span className="font-medium">Donor ID:</span> {project.donorId}
+                    <span className="font-medium">Donors:</span>{" "}
+                    <span className="inline-flex flex-wrap gap-1">
+                      {project.projectDonors.map((pd) => (
+                        <Badge key={pd.donorId} variant="outline" className="text-xs">
+                          {pd.donor.name}
+                        </Badge>
+                      ))}
+                    </span>
                   </div>
-                )}
+                ) : project.donor ? (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Donor:</span> {project.donor.name}
+                  </div>
+                ) : null}
 
                 <div className="flex items-center gap-4 text-sm">
                   {project.totalBudget > 0 && (

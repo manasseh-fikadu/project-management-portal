@@ -11,6 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { DollarSign, ReceiptText, Scale } from "lucide-react";
+import { CurrencyInput } from "@/components/currency-input";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
 
 type Project = { id: string; name: string; totalBudget: number | null };
 type Donor = { id: string; name: string; type: string };
@@ -160,9 +162,7 @@ export default function FinancialsPage() {
   }, [budgetAllocations, expenditureForm.projectId]);
 
   function formatCurrency(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB", maximumFractionDigits: 0 }).format(
-      amount || 0
-    );
+    return formatCurrencyUtil(amount, "ETB");
   }
 
   async function submitBudget(e: React.FormEvent) {
@@ -381,12 +381,12 @@ export default function FinancialsPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="disbursement-amount">Amount *</Label>
-                  <Input
+                  <CurrencyInput
                     id="disbursement-amount"
-                    type="number"
-                    min={1}
                     value={disbursementForm.amount}
-                    onChange={(e) => setDisbursementForm((prev) => ({ ...prev, amount: e.target.value }))}
+                    onChange={(val) => setDisbursementForm((prev) => ({ ...prev, amount: val }))}
+                    currency="ETB"
+                    min={1}
                     required
                   />
                 </div>
@@ -488,12 +488,12 @@ export default function FinancialsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="budget-amount">Planned Amount *</Label>
-                    <Input
+                    <CurrencyInput
                       id="budget-amount"
-                      type="number"
-                      min={1}
                       value={budgetForm.plannedAmount}
-                      onChange={(e) => setBudgetForm((prev) => ({ ...prev, plannedAmount: e.target.value }))}
+                      onChange={(val) => setBudgetForm((prev) => ({ ...prev, plannedAmount: val }))}
+                      currency="ETB"
+                      min={1}
                       required
                     />
                   </div>
@@ -575,12 +575,12 @@ export default function FinancialsPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="expenditure-amount">Amount *</Label>
-                    <Input
+                    <CurrencyInput
                       id="expenditure-amount"
-                      type="number"
-                      min={1}
                       value={expenditureForm.amount}
-                      onChange={(e) => setExpenditureForm((prev) => ({ ...prev, amount: e.target.value }))}
+                      onChange={(val) => setExpenditureForm((prev) => ({ ...prev, amount: val }))}
+                      currency="ETB"
+                      min={1}
                       required
                     />
                   </div>

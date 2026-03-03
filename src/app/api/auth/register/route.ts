@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { registerUser, createSession, setSessionCookie } from "@/lib/auth";
+import { registerUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,10 +20,9 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await registerUser(email, password, firstName, lastName, role ?? "beneficiary", department);
-    const token = await createSession(user.id);
-    await setSessionCookie(token);
 
     return NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,

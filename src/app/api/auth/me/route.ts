@@ -17,6 +17,7 @@ export async function GET() {
         lastName: session.user.lastName,
         role: session.user.role,
         department: session.user.department,
+        mustChangePassword: session.user.mustChangePassword,
       },
     });
   } catch {

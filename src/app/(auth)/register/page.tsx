@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,14 +38,14 @@ export default function RegisterPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Registration failed");
+        setError(data.error || t("auth.registrationFailed"));
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/login");
       router.refresh();
     } catch {
-      setError("An error occurred. Please try again.");
+      setError(t("auth.genericError"));
     } finally {
       setLoading(false);
     }
@@ -50,10 +53,14 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-8">
-      <Card className="w-full max-w-md">
+      <div className="w-full max-w-md space-y-3">
+        <div className="flex justify-end">
+          <LanguageSwitcher />
+        </div>
+        <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create Account</CardTitle>
-          <CardDescription>Register for the Project Management Portal</CardDescription>
+          <CardTitle className="text-2xl">{t("auth.createAccount")}</CardTitle>
+          <CardDescription>{t("auth.registerDescription")}</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -64,7 +71,7 @@ export default function RegisterPage() {
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
+                <Label htmlFor="firstName">{t("auth.firstName")}</Label>
                 <Input
                   id="firstName"
                   name="firstName"
@@ -74,7 +81,7 @@ export default function RegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
+                <Label htmlFor="lastName">{t("auth.lastName")}</Label>
                 <Input
                   id="lastName"
                   name="lastName"
@@ -85,28 +92,28 @@ export default function RegisterPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.email")}</Label>
               <Input
                 id="email"
                 name="email"
                 type="email"
-                placeholder="email@government.gov"
+                placeholder={t("auth.emailPlaceholder")}
                 required
                 disabled={loading}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
+              <Label htmlFor="department">{t("auth.department")}</Label>
               <Input
                 id="department"
                 name="department"
                 type="text"
-                placeholder="e.g., Finance, IT, Planning"
+                placeholder={t("auth.departmentPlaceholder")}
                 disabled={loading}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("auth.password")}</Label>
               <Input
                 id="password"
                 name="password"
@@ -115,22 +122,23 @@ export default function RegisterPage() {
                 minLength={8}
                 disabled={loading}
               />
-              <p className="text-xs text-gray-500">Minimum 8 characters</p>
+              <p className="text-xs text-gray-500">{t("auth.minimumPassword")}</p>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating Account..." : "Create Account"}
+              {loading ? t("auth.creatingAccount") : t("auth.createAccount")}
             </Button>
             <p className="text-sm text-gray-600">
-              Already have an account?{" "}
+              {t("auth.alreadyHaveAccount")}{" "}
               <Link href="/login" className="text-blue-600 hover:underline">
-                Sign In
+                {t("auth.signIn")}
               </Link>
             </p>
           </CardFooter>
         </form>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

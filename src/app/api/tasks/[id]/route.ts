@@ -80,8 +80,16 @@ export async function PUT(
       updateData.dueDate = new Date(body.dueDate);
     }
 
-    if (body.status === "completed" && !body.completedAt) {
-      updateData.completedAt = new Date();
+    if (typeof body.progress === "number" && Number.isFinite(body.progress)) {
+      const normalizedProgress = Math.round(body.progress);
+      updateData.progress = Math.min(100, Math.max(0, normalizedProgress));
+    }
+
+    if (body.status === "completed") {
+      updateData.progress = 100;
+      if (!body.completedAt) {
+        updateData.completedAt = new Date();
+      }
     }
 
     const [updatedTask] = await db

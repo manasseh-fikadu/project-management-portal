@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, RefreshCcw } from "lucide-react";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
 import {
   Bar,
   BarChart,
@@ -157,9 +158,7 @@ export default function DashboardPage() {
   const performanceGap = Math.max(0, (totals?.financialPerformance || 0) - (totals?.physicalPerformance || 0));
 
   function formatCurrency(amount: number) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "ETB", maximumFractionDigits: 0 }).format(
-      amount || 0
-    );
+    return formatCurrencyUtil(amount, "ETB");
   }
 
   function formatDateTime(value: Date | null) {

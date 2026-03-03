@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, projects, milestones, projectMembers } from "@/db";
+import { db, projects, milestones, projectMembers, projectDonors } from "@/db";
 import { desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
@@ -16,6 +16,16 @@ export async function GET() {
       with: {
         manager: {
           columns: { id: true, firstName: true, lastName: true, email: true },
+        },
+        donor: {
+          columns: { id: true, name: true, type: true },
+        },
+        projectDonors: {
+          with: {
+            donor: {
+              columns: { id: true, name: true, type: true },
+            },
+          },
         },
         milestones: {
           columns: { id: true, title: true, status: true, dueDate: true },
@@ -41,11 +51,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, donorId, totalBudget, startDate, endDate, milestones: inputMilestones } = body;
+    const { name, description, donorId, donorIds, totalBudget, startDate, endDate, managerId, milestones: inputMilestones } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Project name is required" }, { status: 400 });
     }
+
+    const assignedManagerId = managerId || session.userId;
 
     const [newProject] = await db
       .insert(projects)
@@ -56,9 +68,23 @@ export async function POST(request: NextRequest) {
         totalBudget: totalBudget || 0,
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
-        managerId: session.userId,
+        managerId: assignedManagerId,
       })
       .returning();
+
+    const resolvedDonorIds: string[] = donorIds && donorIds.length > 0
+      ? donorIds
+      : donorId ? [donorId] : [];
+
+    if (resolvedDonorIds.length > 0) {
+      await db.insert(projectDonors).values(
+        resolvedDonorIds.map((id: string) => ({
+          projectId: newProject.id,
+          donorId: id,
+          status: "active" as const,
+        }))
+      );
+    }
 
     if (inputMilestones && inputMilestones.length > 0) {
       await db.insert(milestones).values(
@@ -74,7 +100,7 @@ export async function POST(request: NextRequest) {
 
     await db.insert(projectMembers).values({
       projectId: newProject.id,
-      userId: session.userId,
+      userId: assignedManagerId,
       role: "manager",
     });
 
