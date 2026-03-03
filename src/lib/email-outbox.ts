@@ -23,16 +23,16 @@ async function claimPendingRows(workerId: string, limit: number) {
     )
     UPDATE ${emailOutbox}
     SET
-      ${emailOutbox.status} = 'processing'::email_outbox_status,
-      ${emailOutbox.processorId} = ${workerId},
-      ${emailOutbox.processingStartedAt} = NOW(),
-      ${emailOutbox.updatedAt} = NOW()
+      "status" = 'processing'::email_outbox_status,
+      "processor_id" = ${workerId},
+      "processing_started_at" = NOW(),
+      "updated_at" = NOW()
     FROM rows_to_claim
     WHERE ${emailOutbox.id} = rows_to_claim.id
     RETURNING
       ${emailOutbox.id},
       ${emailOutbox.kind},
-      ${emailOutbox.recipientEmail},
+      ${emailOutbox.recipientEmail} AS "recipientEmail",
       ${emailOutbox.payload}
   `);
 
