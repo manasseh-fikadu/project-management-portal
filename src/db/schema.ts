@@ -5,6 +5,11 @@ export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
 export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
 export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
 export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "processing", "sent", "failed"]);
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "deadline_approaching", "deadline_overdue",
+  "approval_pending", "approval_decision",
+  "task_assigned", "milestone_updated"
+]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -52,6 +57,18 @@ export const emailOutbox = pgTable("email_outbox", {
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  type: notificationTypeEnum("type").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  entityType: varchar("entity_type", { length: 50 }),
+  entityId: uuid("entity_id"),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
@@ -299,6 +316,14 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   budgetAllocations: many(budgetAllocations),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  notifications: many(notifications),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
 }));
 
 export const profilesRelations = relations(profiles, ({ one }) => ({
@@ -559,3 +584,5 @@ export type ProjectMember = typeof projectMembers.$inferSelect;
 export type NewProjectMember = typeof projectMembers.$inferInsert;
 export type ProjectDocument = typeof projectDocuments.$inferSelect;
 export type NewProjectDocument = typeof projectDocuments.$inferInsert;
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;

@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { emailOutbox } from "@/db/schema";
-import { sendOtpEmail } from "@/lib/email";
+import { sendOtpEmail, sendNotificationEmail } from "@/lib/email";
 
 const MAX_RETRIES = 5;
 
@@ -49,10 +49,22 @@ type OtpPayload = {
   firstName: string;
 };
 
+type NotificationPayload = {
+  firstName: string;
+  title: string;
+  message: string;
+};
+
 function isOtpPayload(payload: unknown): payload is OtpPayload {
   if (!payload || typeof payload !== "object") return false;
   const value = payload as Record<string, unknown>;
   return typeof value.code === "string" && typeof value.firstName === "string";
+}
+
+function isNotificationPayload(payload: unknown): payload is NotificationPayload {
+  if (!payload || typeof payload !== "object") return false;
+  const value = payload as Record<string, unknown>;
+  return typeof value.firstName === "string" && typeof value.title === "string" && typeof value.message === "string";
 }
 
 export async function processPendingEmailOutbox(limit = 25): Promise<number> {
@@ -65,6 +77,13 @@ export async function processPendingEmailOutbox(limit = 25): Promise<number> {
     try {
       if (row.kind === "otp_verification" && isOtpPayload(row.payload)) {
         await sendOtpEmail(row.recipientEmail, row.payload.code, row.payload.firstName);
+      } else if (row.kind === "notification" && isNotificationPayload(row.payload)) {
+        await sendNotificationEmail(
+          row.recipientEmail,
+          row.payload.firstName,
+          row.payload.title,
+          row.payload.message,
+        );
       } else {
         throw new Error("Unsupported outbox payload");
       }

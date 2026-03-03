@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 
 export async function GET(
   request: NextRequest,
@@ -110,6 +111,27 @@ export async function PUT(
       changes: { before: existingTask, after: updatedTask },
       request,
     });
+
+    // Notify new assignee if assignment changed (best-effort)
+    if (
+      body.assignedTo &&
+      body.assignedTo !== existingTask.assignedTo &&
+      body.assignedTo !== session.userId
+    ) {
+      try {
+        await createNotification({
+          userId: body.assignedTo,
+          type: "task_assigned",
+          title: "Task reassigned to you",
+          message: `You have been assigned "${updatedTask.title}".`,
+          entityType: "task",
+          entityId: id,
+          sendEmail: true,
+        });
+      } catch (notifError) {
+        console.error(`Failed to notify assignee ${body.assignedTo} for task ${updatedTask.id} ("${updatedTask.title}"):`, notifError);
+      }
+    }
 
     const taskWithRelations = await db.query.tasks.findFirst({
       where: eq(tasks.id, updatedTask.id),

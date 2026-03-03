@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar, SidebarProvider, MainContent } from "@/components/sidebar";
+import { NotificationBell } from "@/components/notification-bell";
 import { useTranslation } from "react-i18next";
 import Link from "next/link";
 
@@ -81,6 +82,9 @@ export default function DashboardLayout({
         userRole={user.role}
       />
       <MainContent>
+        <div className="flex justify-end px-6 pt-4">
+          <NotificationBell />
+        </div>
         {user.mustChangePassword && (
           <div className="mx-6 mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-amber-800">
             <p className="text-sm">

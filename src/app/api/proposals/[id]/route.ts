@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { createNotification, getAdminUserIds } from "@/lib/notifications";
 
 const allowedStatusTransitions: Record<string, string[]> = {
   draft: ["submitted", "withdrawn"],
@@ -140,6 +141,40 @@ export async function PUT(
       changes: { before: existingProposal, after: updatedProposal },
       request,
     });
+
+    // Notify on status changes
+    if (body.status && body.status !== existingProposal.status) {
+      const newStatus = body.status as string;
+
+      // Notify creator on approval/rejection
+      if (newStatus === "approved" || newStatus === "rejected") {
+        await createNotification({
+          userId: existingProposal.createdBy,
+          type: "approval_decision",
+          title: `Proposal ${newStatus}`,
+          message: `Your proposal "${updatedProposal.title}" has been ${newStatus}.`,
+          entityType: "proposal",
+          entityId: id,
+          sendEmail: true,
+        });
+      }
+
+      // Notify admins when submitted
+      if (newStatus === "submitted") {
+        const adminIds = await getAdminUserIds();
+        for (const adminId of adminIds) {
+          await createNotification({
+            userId: adminId,
+            type: "approval_pending",
+            title: "Proposal submitted for review",
+            message: `"${updatedProposal.title}" has been submitted and requires review.`,
+            entityType: "proposal",
+            entityId: id,
+            sendEmail: true,
+          });
+        }
+      }
+    }
 
     return NextResponse.json({ proposal: updatedProposal });
   } catch (error) {

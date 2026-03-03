@@ -4,6 +4,7 @@ import { and, desc, ilike, or, eq, sql, type SQL } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { createNotification, getAdminUserIds } from "@/lib/notifications";
 
 type ProposalStatus = "draft" | "submitted" | "under_review" | "approved" | "rejected" | "withdrawn";
 type ProposalType = "grant" | "tor";
@@ -192,6 +193,26 @@ export async function POST(request: NextRequest) {
       changes: { after: newProposal },
       request,
     });
+
+    // Notify admins when a proposal is submitted (best-effort — never fail the request)
+    if (safeStatus === "submitted") {
+      const adminIds = await getAdminUserIds();
+      for (const adminId of adminIds) {
+        try {
+          await createNotification({
+            userId: adminId,
+            type: "approval_pending",
+            title: "New proposal submitted for review",
+            message: `"${title}" has been submitted and requires review.`,
+            entityType: "proposal",
+            entityId: newProposal.id,
+            sendEmail: true,
+          });
+        } catch (notifError) {
+          console.error(`Failed to notify admin ${adminId} for proposal ${newProposal.id}:`, notifError);
+        }
+      }
+    }
 
     return NextResponse.json({ proposal: newProposal }, { status: 201 });
   } catch (error) {
