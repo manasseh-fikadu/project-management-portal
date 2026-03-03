@@ -1,10 +1,48 @@
 import "server-only";
-import { and, asc, eq, lt } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { emailOutbox } from "@/db/schema";
 import { sendOtpEmail } from "@/lib/email";
 
 const MAX_RETRIES = 5;
+
+function buildWorkerId(): string {
+  return `email-outbox-worker-${process.pid}-${crypto.randomUUID()}`;
+}
+
+async function claimPendingRows(workerId: string, limit: number) {
+  const result = await db.execute(sql`
+    WITH rows_to_claim AS (
+      SELECT id
+      FROM ${emailOutbox}
+      WHERE ${emailOutbox.status} = 'pending'::email_outbox_status
+        AND ${emailOutbox.attempts} < ${MAX_RETRIES}
+      ORDER BY ${emailOutbox.createdAt}
+      FOR UPDATE SKIP LOCKED
+      LIMIT ${limit}
+    )
+    UPDATE ${emailOutbox}
+    SET
+      ${emailOutbox.status} = 'processing'::email_outbox_status,
+      ${emailOutbox.processorId} = ${workerId},
+      ${emailOutbox.processingStartedAt} = NOW(),
+      ${emailOutbox.updatedAt} = NOW()
+    FROM rows_to_claim
+    WHERE ${emailOutbox.id} = rows_to_claim.id
+    RETURNING
+      ${emailOutbox.id},
+      ${emailOutbox.kind},
+      ${emailOutbox.recipientEmail},
+      ${emailOutbox.payload}
+  `);
+
+  return result.rows as Array<{
+    id: string;
+    kind: string;
+    recipientEmail: string;
+    payload: unknown;
+  }>;
+}
 
 type OtpPayload = {
   code: string;
@@ -18,11 +56,8 @@ function isOtpPayload(payload: unknown): payload is OtpPayload {
 }
 
 export async function processPendingEmailOutbox(limit = 25): Promise<number> {
-  const pendingRows = await db.query.emailOutbox.findMany({
-    where: and(eq(emailOutbox.status, "pending"), lt(emailOutbox.attempts, MAX_RETRIES)),
-    orderBy: [asc(emailOutbox.createdAt)],
-    limit,
-  });
+  const workerId = buildWorkerId();
+  const pendingRows = await claimPendingRows(workerId, limit);
 
   let processed = 0;
 
@@ -34,27 +69,53 @@ export async function processPendingEmailOutbox(limit = 25): Promise<number> {
         throw new Error("Unsupported outbox payload");
       }
 
-      await db
+      const finalizedRows = await db
         .update(emailOutbox)
         .set({
           status: "sent",
           sentAt: new Date(),
+          processorId: null,
+          processingStartedAt: null,
           lastError: null,
           updatedAt: new Date(),
         })
-        .where(eq(emailOutbox.id, row.id));
-      processed += 1;
+        .where(
+          and(
+            eq(emailOutbox.id, row.id),
+            eq(emailOutbox.status, "processing"),
+            eq(emailOutbox.processorId, workerId),
+          ),
+        )
+        .returning({ id: emailOutbox.id });
+
+      if (finalizedRows.length === 1) {
+        processed += 1;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to process outbox email";
       await db
         .update(emailOutbox)
         .set({
-          status: row.attempts + 1 >= MAX_RETRIES ? "failed" : "pending",
-          attempts: row.attempts + 1,
+          status: sql`
+            CASE
+              WHEN ${emailOutbox.attempts} + 1 >= ${MAX_RETRIES}
+              THEN 'failed'::email_outbox_status
+              ELSE 'pending'::email_outbox_status
+            END
+          `,
+          attempts: sql`${emailOutbox.attempts} + 1`,
+          processorId: null,
+          processingStartedAt: null,
           lastError: message,
           updatedAt: new Date(),
         })
-        .where(eq(emailOutbox.id, row.id));
+        .where(
+          and(
+            eq(emailOutbox.id, row.id),
+            eq(emailOutbox.status, "processing"),
+            eq(emailOutbox.processorId, workerId),
+          ),
+        );
     }
   }
 

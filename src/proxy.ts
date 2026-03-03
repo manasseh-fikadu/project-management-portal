@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const COOKIE_NAME = "session";
-const AUTH_ME_TIMEOUT_MS = Number(process.env.AUTH_ME_TIMEOUT_MS ?? "4000");
+const DEFAULT_AUTH_ME_TIMEOUT_MS = 4000;
+const MIN_AUTH_ME_TIMEOUT_MS = 100;
+
+const parsedAuthMeTimeoutMs = Number.parseInt(process.env.AUTH_ME_TIMEOUT_MS ?? "", 10);
+const AUTH_ME_TIMEOUT_MS =
+  Number.isFinite(parsedAuthMeTimeoutMs) && parsedAuthMeTimeoutMs > 0
+    ? Math.max(parsedAuthMeTimeoutMs, MIN_AUTH_ME_TIMEOUT_MS)
+    : DEFAULT_AUTH_ME_TIMEOUT_MS;
 
 async function verifySessionForEdge(token: string, secret: string): Promise<{ userId: string } | null> {
   try {
@@ -54,8 +61,8 @@ export async function proxy(request: NextRequest) {
 
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isDashboardPage = pathname.startsWith("/dashboard");
-  const isApiAuth = pathname.startsWith("/api/auth");
-  const isApiRoute = pathname.startsWith("/api");
+  const isApiAuth = pathname === "/api/auth" || pathname.startsWith("/api/auth/");
+  const isApiRoute = pathname === "/api" || pathname.startsWith("/api/");
 
   if (isApiAuth) {
     return NextResponse.next();

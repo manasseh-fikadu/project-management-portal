@@ -4,7 +4,7 @@ import { relations, sql } from "drizzle-orm";
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
 export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
 export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
-export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "sent", "failed"]);
+export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "processing", "sent", "failed"]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -46,6 +46,8 @@ export const emailOutbox = pgTable("email_outbox", {
   payload: jsonb("payload").notNull(),
   status: emailOutboxStatusEnum("status").default("pending").notNull(),
   attempts: integer("attempts").default(0).notNull(),
+  processorId: varchar("processor_id", { length: 100 }),
+  processingStartedAt: timestamp("processing_started_at"),
   lastError: text("last_error"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -29,6 +29,13 @@
       "when": 1772520000000,
       "tag": "0003_email_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772611200000,
+      "tag": "0004_email_outbox_claim_processing",
+      "breakpoints": true
     }
   ]
 }
