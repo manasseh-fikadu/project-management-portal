@@ -5,6 +5,28 @@ import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
+const allowedStatusTransitions: Record<string, string[]> = {
+  draft: ["submitted", "withdrawn"],
+  submitted: ["under_review", "withdrawn"],
+  under_review: ["approved", "rejected", "withdrawn"],
+  approved: [],
+  rejected: [],
+  withdrawn: [],
+};
+
+function buildLookupText(payload: {
+  title?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  torCode?: string | null;
+  torSubmissionRef?: string | null;
+}) {
+  return [payload.title, payload.description, payload.notes, payload.torCode, payload.torSubmissionRef]
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .join(" ")
+    .trim();
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,6 +43,15 @@ export async function GET(
       with: {
         donor: true,
         project: true,
+        template: true,
+        documents: {
+          with: {
+            uploader: {
+              columns: { id: true, firstName: true, lastName: true },
+            },
+          },
+          orderBy: (docs, { desc }) => [desc(docs.createdAt)],
+        },
         creator: {
           columns: { id: true, firstName: true, lastName: true, email: true },
         },
@@ -60,6 +91,23 @@ export async function PUT(
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
     }
 
+    if (body.status && body.status !== existingProposal.status) {
+      const nextStates = allowedStatusTransitions[existingProposal.status] || [];
+      if (!nextStates.includes(body.status)) {
+        return NextResponse.json(
+          { error: `Invalid status transition from ${existingProposal.status} to ${body.status}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const nextTitle = typeof body.title === "string" ? body.title : existingProposal.title;
+    const nextDescription = typeof body.description === "string" ? body.description : existingProposal.description;
+    const nextNotes = typeof body.notes === "string" ? body.notes : existingProposal.notes;
+    const nextTorCode = typeof body.torCode === "string" ? body.torCode : existingProposal.torCode;
+    const nextTorSubmissionRef =
+      typeof body.torSubmissionRef === "string" ? body.torSubmissionRef : existingProposal.torSubmissionRef;
+
     const [updatedProposal] = await db
       .update(proposals)
       .set({
@@ -68,6 +116,13 @@ export async function PUT(
         decisionDate: body.decisionDate ? new Date(body.decisionDate) : undefined,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
+        lookupText: buildLookupText({
+          title: nextTitle,
+          description: nextDescription,
+          notes: nextNotes,
+          torCode: nextTorCode,
+          torSubmissionRef: nextTorSubmissionRef,
+        }),
         updatedAt: new Date(),
       })
       .where(eq(proposals.id, id))
