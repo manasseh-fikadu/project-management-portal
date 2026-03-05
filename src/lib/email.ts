@@ -134,3 +134,52 @@ export async function sendOtpEmail(to: string, code: string, firstName: string):
     throw error;
   }
 }
+
+export async function sendDonorInviteEmail(
+  to: string,
+  donorName: string,
+  portalUrl: string,
+  expiresAt: Date,
+): Promise<void> {
+  const subject = "You have been invited to the MoTRI Project Portal";
+  const formattedExpiry = expiresAt.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #111827;">
+      <h2 style="margin-bottom: 8px;">Project Portal Access</h2>
+      <p style="margin-top: 0;">Dear ${escapeHtml(donorName)},</p>
+      <p>You have been invited to view the progress of projects you are associated with on the MoTRI Project Management Portal.</p>
+      <p>Click the button below to access your read-only project dashboard:</p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${escapeHtml(portalUrl)}" style="display: inline-block; background-color: #111827; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">View Projects</a>
+      </div>
+      <p style="color: #6b7280; font-size: 13px;">Or copy and paste this link into your browser:</p>
+      <p style="color: #6b7280; font-size: 13px; word-break: break-all;">${escapeHtml(portalUrl)}</p>
+      <p style="color: #6b7280; font-size: 13px;">This link expires on ${escapeHtml(formattedExpiry)}.</p>
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="color: #6b7280; font-size: 12px;">This is an automated invitation from the MoTRI Project Management Portal. If you did not expect this email, you can safely ignore it.</p>
+    </div>
+  `;
+
+  try {
+    if (EMAIL_PROVIDER === "smtp") {
+      const smtp = getSmtpClient();
+      await smtp.sendMail({ from: FROM_EMAIL, to, subject, html });
+      return;
+    }
+
+    if (EMAIL_PROVIDER === "resend") {
+      const resend = getResendClient();
+      const { error } = await resend.emails.send({ from: FROM_EMAIL, to, subject, html });
+      if (error) throw new Error("Failed to send donor invite email");
+      return;
+    }
+
+    throw new Error(`Unsupported EMAIL_PROVIDER: ${EMAIL_PROVIDER}`);
+  } catch (error) {
+    throw error;
+  }
+}

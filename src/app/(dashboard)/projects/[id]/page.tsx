@@ -36,6 +36,7 @@ import {
   AlertCircle,
   HandCoins,
   X,
+  Send,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
@@ -217,6 +218,7 @@ export default function ProjectProfilePage() {
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
+  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -553,6 +555,28 @@ export default function ProjectProfilePage() {
       });
     } catch (error) {
       console.error("Failed to remove donor:", error);
+    }
+  }
+
+  async function handleSendPortalInvite(donorId: string) {
+    setSendingInvite(donorId);
+    try {
+      const res = await fetch("/api/donor-portal/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ donorId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Portal invite sent successfully! The donor will receive an email with access instructions.");
+      } else {
+        alert(data.error || "Failed to send invite");
+      }
+    } catch (error) {
+      console.error("Failed to send portal invite:", error);
+      alert("Failed to send portal invite");
+    } finally {
+      setSendingInvite(null);
     }
   }
 
@@ -1148,6 +1172,14 @@ export default function ProjectProfilePage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "withdrawn")}>
                             Set Withdrawn
+                          </DropdownMenuItem>
+                          <Separator className="my-1" />
+                          <DropdownMenuItem
+                            onClick={() => handleSendPortalInvite(pd.donorId)}
+                            disabled={sendingInvite === pd.donorId || !pd.donor.email}
+                          >
+                            <Send className="h-4 w-4 mr-2" />
+                            {sendingInvite === pd.donorId ? "Sending..." : "Send Portal Invite"}
                           </DropdownMenuItem>
                           <Separator className="my-1" />
                           <DropdownMenuItem

@@ -15,7 +15,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe, Power, PowerOff } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe, Power, PowerOff, Send } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency } from "@/lib/currency";
 
@@ -62,6 +63,7 @@ export default function DonorsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
+  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     type: "",
@@ -193,6 +195,28 @@ export default function DonorsPage() {
       isActive: donor.isActive,
     });
     setIsAddDialogOpen(true);
+  }
+
+  async function handleSendPortalInvite(donorId: string) {
+    setSendingInvite(donorId);
+    try {
+      const res = await fetch("/api/donor-portal/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ donorId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Portal invite sent successfully! The donor will receive an email with access instructions.");
+      } else {
+        alert(data.error || "Failed to send invite");
+      }
+    } catch (error) {
+      console.error("Failed to send portal invite:", error);
+      alert("Failed to send portal invite");
+    } finally {
+      setSendingInvite(null);
+    }
   }
 
   function formatGrantSize(amount: number | null) {
@@ -484,6 +508,19 @@ export default function DonorsPage() {
                           <><Power className="h-4 w-4 mr-2" /> Set Active</>
                         )}
                       </DropdownMenuItem>
+                      {donor.email && (
+                        <>
+                          <Separator className="my-1" />
+                          <DropdownMenuItem
+                            onClick={() => handleSendPortalInvite(donor.id)}
+                            disabled={sendingInvite === donor.id}
+                          >
+                            <Send className="h-4 w-4 mr-2" />
+                            {sendingInvite === donor.id ? "Sending..." : "Send Portal Invite"}
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      <Separator className="my-1" />
                       <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-red-600">
                         <Trash2 className="h-4 w-4 mr-2" /> Delete
                       </DropdownMenuItem>

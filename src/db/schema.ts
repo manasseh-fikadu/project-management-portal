@@ -300,6 +300,17 @@ export const disbursementLogs = pgTable("disbursement_logs", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const donorAccessTokens = pgTable("donor_access_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "cascade" }).notNull(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  isRevoked: boolean("is_revoked").default(false).notNull(),
+  lastAccessedAt: timestamp("last_accessed_at"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, {
     fields: [users.id],
@@ -404,6 +415,18 @@ export const donorsRelations = relations(donors, ({ many }) => ({
   proposals: many(proposals),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  accessTokens: many(donorAccessTokens),
+}));
+
+export const donorAccessTokensRelations = relations(donorAccessTokens, ({ one }) => ({
+  donor: one(donors, {
+    fields: [donorAccessTokens.donorId],
+    references: [donors.id],
+  }),
+  creator: one(users, {
+    fields: [donorAccessTokens.createdBy],
+    references: [users.id],
+  }),
 }));
 
 export const projectDonorsRelations = relations(projectDonors, ({ one }) => ({
@@ -586,3 +609,5 @@ export type ProjectDocument = typeof projectDocuments.$inferSelect;
 export type NewProjectDocument = typeof projectDocuments.$inferInsert;
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
+export type DonorAccessToken = typeof donorAccessTokens.$inferSelect;
+export type NewDonorAccessToken = typeof donorAccessTokens.$inferInsert;
