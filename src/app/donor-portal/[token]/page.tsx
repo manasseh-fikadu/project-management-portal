@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatCurrency } from "@/lib/currency";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -117,14 +118,6 @@ const taskPriorityColors: Record<string, string> = {
 function formatDate(date: string | null) {
   if (!date) return "Not set";
   return new Date(date).toLocaleDateString();
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "ETB",
-    maximumFractionDigits: 0,
-  }).format(amount || 0);
 }
 
 function formatFileSize(bytes: number) {

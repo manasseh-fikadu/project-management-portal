@@ -97,11 +97,16 @@ export async function processPendingEmailOutbox(limit = 25): Promise<number> {
           row.payload.message,
         );
       } else if (row.kind === "donor_invite" && isDonorInvitePayload(row.payload)) {
+        const expires = new Date(row.payload.expiresAt);
+        if (isNaN(expires.getTime())) {
+          console.error(`Donor invite email (outbox id=${row.id}) has invalid expiresAt: "${row.payload.expiresAt}", skipping`);
+          throw new Error("Invalid expiresAt date in donor_invite payload");
+        }
         await sendDonorInviteEmail(
           row.recipientEmail,
           row.payload.donorName,
           row.payload.portalUrl,
-          new Date(row.payload.expiresAt),
+          expires,
         );
       } else {
         throw new Error("Unsupported outbox payload");

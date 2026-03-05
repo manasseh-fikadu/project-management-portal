@@ -8,6 +8,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { createHash, randomBytes } from "crypto";
 
 const DEFAULT_EXPIRY_DAYS = 30;
+const MAX_EXPIRY_DAYS = 90;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -41,7 +42,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Donor does not have an email address" }, { status: 400 });
     }
 
-    const days = typeof expiryDays === "number" && expiryDays > 0 ? expiryDays : DEFAULT_EXPIRY_DAYS;
+    const days = Math.max(1, Math.min(
+      typeof expiryDays === "number" && expiryDays > 0 ? expiryDays : DEFAULT_EXPIRY_DAYS,
+      MAX_EXPIRY_DAYS,
+    ));
     const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     const rawToken = randomBytes(32).toString("hex");
@@ -103,6 +107,8 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
+    const accessError = ensureEditAccess(session?.user);
+    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -115,6 +121,14 @@ export async function GET(request: NextRequest) {
     }
 
     const tokens = await db.query.donorAccessTokens.findMany({
+      columns: {
+        id: true,
+        donorId: true,
+        expiresAt: true,
+        isRevoked: true,
+        lastAccessedAt: true,
+        createdAt: true,
+      },
       where: and(
         eq(donorAccessTokens.donorId, donorId),
         eq(donorAccessTokens.isRevoked, false),
