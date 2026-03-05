@@ -9,6 +9,7 @@ import { createHash, randomBytes } from "crypto";
 
 const DEFAULT_EXPIRY_DAYS = 30;
 const MAX_EXPIRY_DAYS = 90;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -26,8 +27,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { donorId, expiryDays } = body;
 
-    if (!donorId || typeof donorId !== "string") {
-      return NextResponse.json({ error: "donorId is required" }, { status: 400 });
+    if (!donorId || typeof donorId !== "string" || !UUID_RE.test(donorId)) {
+      return NextResponse.json({ error: "donorId is required and must be a valid UUID" }, { status: 400 });
     }
 
     const donor = await db.query.donors.findFirst({
@@ -50,44 +51,51 @@ export async function POST(request: NextRequest) {
 
     const rawToken = randomBytes(32).toString("hex");
     const tokenHash = hashToken(rawToken);
-
-    const [accessToken] = await db
-      .insert(donorAccessTokens)
-      .values({
-        donorId,
-        tokenHash,
-        expiresAt,
-        createdBy: session.userId,
-      })
-      .returning();
-
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
     const portalUrl = `${baseUrl}/donor-portal/${rawToken}`;
 
-    await db.insert(emailOutbox).values({
-      kind: "donor_invite",
-      recipientEmail: donor.email,
-      payload: {
-        donorName: donor.name,
-        portalUrl,
-        expiresAt: expiresAt.toISOString(),
-      },
-    });
-
-    await logAuditEvent({
-      actorUserId: session.userId,
-      action: "create",
-      entityType: "donor_access_token",
-      entityId: accessToken.id,
-      changes: {
-        after: {
+    const accessToken = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(donorAccessTokens)
+        .values({
           donorId,
+          tokenHash,
+          expiresAt,
+          createdBy: session.userId,
+        })
+        .returning();
+
+      await tx.insert(emailOutbox).values({
+        kind: "donor_invite",
+        recipientEmail: donor.email,
+        payload: {
           donorName: donor.name,
+          portalUrl,
           expiresAt: expiresAt.toISOString(),
         },
-      },
-      request,
+      });
+
+      return created;
     });
+
+    try {
+      await logAuditEvent({
+        actorUserId: session.userId,
+        action: "create",
+        entityType: "donor_access_token",
+        entityId: accessToken.id,
+        changes: {
+          after: {
+            donorId,
+            donorName: donor.name,
+            expiresAt: expiresAt.toISOString(),
+          },
+        },
+        request,
+      });
+    } catch (auditError) {
+      console.error("Non-critical: failed to log audit event for token creation:", auditError);
+    }
 
     return NextResponse.json({
       token: {
@@ -116,8 +124,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const donorId = searchParams.get("donorId");
 
-    if (!donorId) {
-      return NextResponse.json({ error: "donorId query parameter is required" }, { status: 400 });
+    if (!donorId || !UUID_RE.test(donorId)) {
+      return NextResponse.json({ error: "donorId query parameter is required and must be a valid UUID" }, { status: 400 });
     }
 
     const tokens = await db.query.donorAccessTokens.findMany({
@@ -160,8 +168,8 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const tokenId = searchParams.get("tokenId");
 
-    if (!tokenId) {
-      return NextResponse.json({ error: "tokenId query parameter is required" }, { status: 400 });
+    if (!tokenId || !UUID_RE.test(tokenId)) {
+      return NextResponse.json({ error: "tokenId query parameter is required and must be a valid UUID" }, { status: 400 });
     }
 
     const [revoked] = await db

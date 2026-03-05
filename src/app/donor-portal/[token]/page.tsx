@@ -126,6 +126,16 @@ function formatFileSize(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+/** Only allow http(s) schemes to prevent javascript: / data: XSS via document URLs. */
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export default function DonorPortalPage() {
   const params = useParams();
   const token = params.token as string;
@@ -469,24 +479,28 @@ export default function DonorPortalPage() {
                         <p className="text-sm text-gray-500">No documents uploaded yet.</p>
                       ) : (
                         <div className="space-y-2">
-                          {project.documents.map((doc) => (
-                            <a
-                              key={doc.id}
-                              href={doc.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 transition-colors group"
-                            >
-                              <FileText className="h-5 w-5 text-gray-400 shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate group-hover:underline">{doc.name}</p>
-                                <p className="text-xs text-gray-400">
-                                  {formatFileSize(doc.size)} &middot; {formatDate(doc.createdAt)}
-                                </p>
-                              </div>
-                              <Download className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                            </a>
-                          ))}
+                          {project.documents.map((doc) => {
+                            const safe = isSafeUrl(doc.url);
+                            const Wrapper = safe ? "a" : "span";
+                            return (
+                              <Wrapper
+                                key={doc.id}
+                                {...(safe ? { href: doc.url, target: "_blank", rel: "noopener noreferrer" } : {})}
+                                className={`flex items-center gap-3 p-3 border rounded-lg transition-colors group ${safe ? "hover:bg-gray-50 cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
+                              >
+                                <FileText className="h-5 w-5 text-gray-400 shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium truncate ${safe ? "group-hover:underline" : ""}`}>{doc.name}</p>
+                                  <p className="text-xs text-gray-400">
+                                    {formatFileSize(doc.size)} &middot; {formatDate(doc.createdAt)}
+                                  </p>
+                                </div>
+                                {safe && (
+                                  <Download className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                )}
+                              </Wrapper>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
