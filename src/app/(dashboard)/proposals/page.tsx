@@ -6,17 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreVertical, Trash2, Edit, DollarSign, Calendar, Building2, FolderKanban, TrendingUp, Upload, FileText } from "lucide-react";
+import {
+  Plus,
+  Search,
+  MoreVertical,
+  Trash2,
+  Edit,
+  DollarSign,
+  Calendar,
+  Building2,
+  FolderKanban,
+  TrendingUp,
+  Upload,
+  FileText,
+  Leaf,
+  X,
+} from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
 import { SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
@@ -101,22 +113,26 @@ type Proposal = {
   };
 };
 
-const statusColors: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-800",
-  submitted: "bg-blue-100 text-blue-800",
-  under_review: "bg-yellow-100 text-yellow-800",
-  approved: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-  withdrawn: "bg-purple-100 text-purple-800",
+const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  draft: { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground", label: "Draft" },
+  submitted: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "Submitted" },
+  under_review: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "Under Review" },
+  approved: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "Approved" },
+  rejected: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "Rejected" },
+  withdrawn: { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground", label: "Withdrawn" },
 };
 
-const statusLabels: Record<string, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  under_review: "Under Review",
-  approved: "Approved",
-  rejected: "Rejected",
-  withdrawn: "Withdrawn",
+const typeConfig: Record<string, { bg: string; text: string; label: string }> = {
+  grant: { bg: "bg-sage-pale", text: "text-primary", label: "Grant" },
+  tor: { bg: "bg-lavender-pale", text: "text-lavender", label: "ToR" },
+};
+
+const pipelineColumnConfig: Record<string, { bg: string; headerBg: string; dotColor: string }> = {
+  draft: { bg: "bg-muted/50", headerBg: "bg-card", dotColor: "bg-muted-foreground" },
+  submitted: { bg: "bg-lavender-pale/30", headerBg: "bg-card", dotColor: "bg-lavender" },
+  under_review: { bg: "bg-amber-pale/30", headerBg: "bg-card", dotColor: "bg-amber-warm" },
+  approved: { bg: "bg-sage-pale/30", headerBg: "bg-card", dotColor: "bg-primary" },
+  rejected: { bg: "bg-rose-pale/30", headerBg: "bg-card", dotColor: "bg-rose-muted" },
 };
 
 const SUPPORTED_CURRENCY_SET = new Set<string>(SUPPORTED_CURRENCIES);
@@ -136,6 +152,7 @@ export default function ProposalsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"list" | "pipeline">("list");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
   const [documentsDialogProposal, setDocumentsDialogProposal] = useState<Proposal | null>(null);
@@ -573,6 +590,12 @@ export default function ProposalsPage() {
     return new Date(date).toLocaleDateString();
   }
 
+  function formatFileSize(bytes: number) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
   const activeTemplates = templates.filter((template) => template.isActive);
   const filteredTemplates = templates.filter((template) => {
     const q = templateSearch.trim().toLowerCase();
@@ -598,624 +621,653 @@ export default function ProposalsPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="h-6 w-6 animate-pulse text-primary" />
+          <p className="text-sm text-muted-foreground">Loading proposals…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Proposal and ToR Tracker</h1>
-          <p className="text-muted-foreground">Monitor proposals and ToR submissions from draft to decision</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Dialog open={isTemplateDialogOpen} onOpenChange={(open) => { setIsTemplateDialogOpen(open); if (!open) resetTemplateForm(); }}>
-            <DialogTrigger asChild>
-              <Button variant="outline">Manage Templates</Button>
-            </DialogTrigger>
-            <DialogContent className="w-[96vw] sm:max-w-[1200px] max-h-[88vh] overflow-hidden p-0 gap-0">
-              <DialogHeader className="px-6 py-3 border-b">
-                <DialogTitle>Template Manager</DialogTitle>
-                <p className="text-sm text-muted-foreground">
-                  Create reusable ToR templates in two steps: define template details, then add sections users will fill.
-                </p>
-              </DialogHeader>
-              <div className="grid lg:grid-cols-[320px_1fr] min-h-0">
-                <aside className="border-b lg:border-b-0 lg:border-r p-4 space-y-3 overflow-y-auto max-h-[72vh]">
-                  <div className="space-y-2">
-                    <Label htmlFor="template-search">Find template</Label>
-                    <Input
-                      id="template-search"
-                      placeholder="Search by name or category"
-                      value={templateSearch}
-                      onChange={(e) => setTemplateSearch(e.target.value)}
-                    />
-                  </div>
-                  <Button className="w-full" variant="outline" onClick={() => openTemplateEditor()}>
-                    <Plus className="h-4 w-4 mr-2" /> New Template
-                  </Button>
-                  <div className="space-y-2">
-                    {filteredTemplates.length === 0 ? (
-                      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                        No templates found. Create your first template to make ToR entry faster.
-                      </div>
-                    ) : (
-                      filteredTemplates.map((template) => (
-                        <div
-                          key={template.id}
-                          className={`w-full rounded-md border p-3 transition-colors ${
-                            editingTemplate?.id === template.id ? "border-primary bg-muted" : "hover:bg-muted/60"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openTemplateEditor(template)}
-                              className="min-w-0 text-left flex-1"
-                            >
-                              <p className="font-medium truncate">{template.name}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {(template.category || "General")} - {template.sections?.length || 0} sections
-                              </p>
-                            </button>
-                            <div className="flex items-center gap-1">
-                              <Badge variant={template.isActive ? "default" : "secondary"}>
-                                {template.isActive ? "Active" : "Inactive"}
-                              </Badge>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                disabled={deletingTemplateId === template.id}
-                                onClick={() => handleDeleteTemplate(template.id)}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </aside>
-
-                <section className="p-4 sm:p-5 overflow-y-auto max-h-[72vh]">
-                  <form onSubmit={saveTemplate} className="space-y-6">
-                    <div className="space-y-1">
-                      <h3 className="text-base font-semibold">
-                        {editingTemplate ? "Edit Template" : "Create Template"}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        Step 1: Basic details. Step 2: Section fields users complete in ToR forms.
-                      </p>
+    <div className="p-6 lg:p-10">
+      <header className="mb-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
+              Proposals & ToR
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Monitor proposals and ToR submissions from draft to decision
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <Dialog open={isTemplateDialogOpen} onOpenChange={(open) => { setIsTemplateDialogOpen(open); if (!open) resetTemplateForm(); }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="rounded-xl">Manage Templates</Button>
+              </DialogTrigger>
+              <DialogContent className="w-[96vw] sm:max-w-[1200px] max-h-[88vh] overflow-hidden p-0 gap-0">
+                <DialogHeader className="px-6 py-4 border-b border-border">
+                  <DialogTitle className="font-serif text-xl">Template Manager</DialogTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Create reusable ToR templates in two steps: define template details, then add sections users will fill.
+                  </p>
+                </DialogHeader>
+                <div className="grid lg:grid-cols-[320px_1fr] min-h-0">
+                  <aside className="border-b lg:border-b-0 lg:border-r border-border p-4 space-y-3 overflow-y-auto max-h-[72vh]">
+                    <div className="space-y-2">
+                      <Label htmlFor="template-search">Find template</Label>
+                      <Input
+                        id="template-search"
+                        placeholder="Search by name or category"
+                        value={templateSearch}
+                        onChange={(e) => setTemplateSearch(e.target.value)}
+                        className="rounded-xl"
+                      />
                     </div>
-
-                    <div className="rounded-lg border p-4 space-y-4">
-                      <p className="text-sm font-medium">Step 1 - Template Info</p>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="template-name">Template Name *</Label>
-                          <Input
-                            id="template-name"
-                            value={templateForm.name}
-                            onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
-                            placeholder="Example: Procurement ToR"
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="template-category">Category</Label>
-                          <Input
-                            id="template-category"
-                            value={templateForm.category}
-                            onChange={(e) => setTemplateForm((prev) => ({ ...prev, category: e.target.value }))}
-                            placeholder="Procurement, Consultancy, Construction"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid md:grid-cols-[1fr_180px] gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="template-description">Description</Label>
-                          <Textarea
-                            id="template-description"
-                            value={templateForm.description}
-                            onChange={(e) => setTemplateForm((prev) => ({ ...prev, description: e.target.value }))}
-                            rows={2}
-                            placeholder="Explain when this template should be used."
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="template-active">Status</Label>
-                          <Select
-                            value={templateForm.isActive ? "active" : "inactive"}
-                            onValueChange={(value) => setTemplateForm((prev) => ({ ...prev, isActive: value === "active" }))}
-                          >
-                            <SelectTrigger id="template-active">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="active">Active</SelectItem>
-                              <SelectItem value="inactive">Inactive</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border p-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">Step 2 - Template Sections *</p>
-                          <p className="text-xs text-muted-foreground">
-                            Each section appears as an input in the ToR form.
-                          </p>
-                        </div>
-                        <Button type="button" size="sm" onClick={addTemplateSection}>
-                          <Plus className="h-4 w-4 mr-1" /> Add Section
-                        </Button>
-                      </div>
-
-                      {templateForm.sections.length === 0 ? (
-                        <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                          Add your first section, e.g. Objective, Scope of Work, Deliverables.
+                    <Button className="w-full rounded-xl" variant="outline" onClick={() => openTemplateEditor()}>
+                      <Plus className="h-4 w-4 mr-2" /> New Template
+                    </Button>
+                    <div className="space-y-2">
+                      {filteredTemplates.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                          No templates found. Create your first template to make ToR entry faster.
                         </div>
                       ) : (
-                        <div className="space-y-3">
-                          {templateForm.sections.map((section, index) => (
-                            <div key={`${section.key}-${index}`} className="rounded-md border p-3 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium">Section {index + 1}</p>
+                        filteredTemplates.map((template) => (
+                          <div
+                            key={template.id}
+                            className={`w-full rounded-xl border border-border p-3 transition-colors ${
+                              editingTemplate?.id === template.id ? "border-primary bg-sage-pale/50" : "hover:bg-muted/60"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openTemplateEditor(template)}
+                                className="min-w-0 text-left flex-1"
+                              >
+                                <p className="font-medium text-foreground truncate">{template.name}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {(template.category || "General")} · {template.sections?.length || 0} sections
+                                </p>
+                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  template.isActive ? "bg-sage-pale text-primary" : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {template.isActive ? "Active" : "Inactive"}
+                                </span>
                                 <Button
                                   type="button"
-                                  size="sm"
+                                  size="icon"
                                   variant="ghost"
-                                  onClick={() => removeTemplateSection(index)}
+                                  className="h-7 w-7 text-destructive"
+                                  disabled={deletingTemplateId === template.id}
+                                  onClick={() => handleDeleteTemplate(template.id)}
                                 >
-                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
-                              <div className="grid md:grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                  <Label>Label *</Label>
-                                  <Input
-                                    placeholder="Section label shown to user"
-                                    value={section.label}
-                                    onChange={(e) => updateTemplateSection(index, { label: e.target.value })}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Key</Label>
-                                  <Input
-                                    placeholder="Internal field key"
-                                    value={section.key}
-                                    onChange={(e) => updateTemplateSection(index, { key: e.target.value })}
-                                  />
-                                </div>
-                              </div>
-                              <div className="grid md:grid-cols-3 gap-3">
-                                <div className="space-y-2">
-                                  <Label>Input type</Label>
-                                  <Select
-                                    value={section.type}
-                                    onValueChange={(value: "text" | "textarea") =>
-                                      updateTemplateSection(index, { type: value })
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="text">Single line</SelectItem>
-                                      <SelectItem value="textarea">Multi line</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Required</Label>
-                                  <Select
-                                    value={section.required ? "required" : "optional"}
-                                    onValueChange={(value) =>
-                                      updateTemplateSection(index, { required: value === "required" })
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="optional">Optional</SelectItem>
-                                      <SelectItem value="required">Required</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Placeholder</Label>
-                                  <Input
-                                    placeholder="Helper text inside field"
-                                    value={section.placeholder}
-                                    onChange={(e) =>
-                                      updateTemplateSection(index, { placeholder: e.target.value })
-                                    }
-                                  />
-                                </div>
-                              </div>
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))
                       )}
                     </div>
+                  </aside>
 
-                    {templateFormError ? (
-                      <p className="text-sm text-red-600">{templateFormError}</p>
-                    ) : null}
+                  <section className="p-4 sm:p-5 overflow-y-auto max-h-[72vh]">
+                    <form onSubmit={saveTemplate} className="space-y-6">
+                      <div className="space-y-1">
+                        <h3 className="font-serif text-lg text-foreground">
+                          {editingTemplate ? "Edit Template" : "Create Template"}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          Step 1: Basic details. Step 2: Section fields users complete in ToR forms.
+                        </p>
+                      </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex gap-2">
-                        {editingTemplate ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => handleDeleteTemplate(editingTemplate.id)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" /> Delete Template
+                      <div className="rounded-xl border border-border p-4 space-y-4">
+                        <p className="text-sm font-medium text-foreground">Step 1 — Template Info</p>
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="template-name">Template Name *</Label>
+                            <Input
+                              id="template-name"
+                              value={templateForm.name}
+                              onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
+                              placeholder="Example: Procurement ToR"
+                              required
+                              className="rounded-xl"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="template-category">Category</Label>
+                            <Input
+                              id="template-category"
+                              value={templateForm.category}
+                              onChange={(e) => setTemplateForm((prev) => ({ ...prev, category: e.target.value }))}
+                              placeholder="Procurement, Consultancy, Construction"
+                              className="rounded-xl"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid md:grid-cols-[1fr_180px] gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="template-description">Description</Label>
+                            <Textarea
+                              id="template-description"
+                              value={templateForm.description}
+                              onChange={(e) => setTemplateForm((prev) => ({ ...prev, description: e.target.value }))}
+                              rows={2}
+                              placeholder="Explain when this template should be used."
+                              className="rounded-xl"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="template-active">Status</Label>
+                            <Select
+                              value={templateForm.isActive ? "active" : "inactive"}
+                              onValueChange={(value) => setTemplateForm((prev) => ({ ...prev, isActive: value === "active" }))}
+                            >
+                              <SelectTrigger id="template-active" className="rounded-xl">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="active">Active</SelectItem>
+                                <SelectItem value="inactive">Inactive</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-border p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Step 2 — Template Sections *</p>
+                            <p className="text-xs text-muted-foreground">
+                              Each section appears as an input in the ToR form.
+                            </p>
+                          </div>
+                          <Button type="button" size="sm" onClick={addTemplateSection} className="rounded-xl">
+                            <Plus className="h-4 w-4 mr-1" /> Add Section
                           </Button>
-                        ) : null}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button type="button" variant="outline" onClick={resetTemplateForm}>
-                          Clear
-                        </Button>
-                        <Button type="submit" disabled={isTemplateSaving}>
-                          {isTemplateSaving
-                            ? (editingTemplate ? "Updating..." : "Creating...")
-                            : (editingTemplate ? "Update Template" : "Create Template")}
-                        </Button>
-                      </div>
-                    </div>
-                  </form>
-                </section>
-              </div>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" /> New Entry
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingProposal ? "Edit Entry" : "Create New Entry"}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Proposal Title *</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  required
-                />
-              </div>
+                        </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="proposalType">Entry Type</Label>
-                  <Select
-                    value={formData.proposalType}
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        proposalType: value,
-                        templateId: value === "tor" ? prev.templateId : "",
-                        templateData: value === "tor" ? prev.templateData : {},
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="grant">Grant Proposal</SelectItem>
-                      <SelectItem value="tor">ToR Submission</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {formData.proposalType === "tor" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="templateId">Template</Label>
-                    <Select
-                      value={formData.templateId}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          templateId: value,
-                          templateData: {},
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select template" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {activeTemplates.map((template) => (
-                          <SelectItem key={template.id} value={template.id}>
-                            {template.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-
-              {formData.proposalType === "tor" && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="torCode">ToR Code</Label>
-                    <Input
-                      id="torCode"
-                      value={formData.torCode}
-                      onChange={(e) => setFormData({ ...formData, torCode: e.target.value })}
-                      placeholder="TOR-2026-001"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="torSubmissionRef">Submission Reference</Label>
-                    <Input
-                      id="torSubmissionRef"
-                      value={formData.torSubmissionRef}
-                      onChange={(e) => setFormData({ ...formData, torSubmissionRef: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {formData.proposalType === "tor" && selectedTemplate?.sections?.length ? (
-                <div className="space-y-3 rounded-md border p-3">
-                  <p className="text-sm font-medium">Template Sections</p>
-                  {selectedTemplate.sections.map((section, index) => {
-                    const fieldKey = section.key || section.name || `section_${index}`;
-                    const fieldLabel = section.label || section.name || `Section ${index + 1}`;
-                    const isLongText = section.type === "textarea" || section.type === "long_text";
-                    return (
-                      <div key={fieldKey} className="space-y-2">
-                        <Label htmlFor={`template-${fieldKey}`}>
-                          {fieldLabel}
-                          {section.required ? " *" : ""}
-                        </Label>
-                        {isLongText ? (
-                          <Textarea
-                            id={`template-${fieldKey}`}
-                            value={formData.templateData[fieldKey] || ""}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                templateData: { ...prev.templateData, [fieldKey]: e.target.value },
-                              }))
-                            }
-                            placeholder={section.placeholder || ""}
-                            rows={3}
-                          />
+                        {templateForm.sections.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                            Add your first section, e.g. Objective, Scope of Work, Deliverables.
+                          </div>
                         ) : (
-                          <Input
-                            id={`template-${fieldKey}`}
-                            value={formData.templateData[fieldKey] || ""}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                templateData: { ...prev.templateData, [fieldKey]: e.target.value },
-                              }))
-                            }
-                            placeholder={section.placeholder || ""}
-                          />
+                          <div className="space-y-3">
+                            {templateForm.sections.map((section, index) => (
+                              <div key={`${section.key}-${index}`} className="rounded-xl border border-border p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-medium text-foreground">Section {index + 1}</p>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => removeTemplateSection(index)}
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                                <div className="grid md:grid-cols-2 gap-3">
+                                  <div className="space-y-2">
+                                    <Label>Label *</Label>
+                                    <Input
+                                      placeholder="Section label shown to user"
+                                      value={section.label}
+                                      onChange={(e) => updateTemplateSection(index, { label: e.target.value })}
+                                      className="rounded-xl"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Key</Label>
+                                    <Input
+                                      placeholder="Internal field key"
+                                      value={section.key}
+                                      onChange={(e) => updateTemplateSection(index, { key: e.target.value })}
+                                      className="rounded-xl"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="grid md:grid-cols-3 gap-3">
+                                  <div className="space-y-2">
+                                    <Label>Input type</Label>
+                                    <Select
+                                      value={section.type}
+                                      onValueChange={(value: "text" | "textarea") =>
+                                        updateTemplateSection(index, { type: value })
+                                      }
+                                    >
+                                      <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="text">Single line</SelectItem>
+                                        <SelectItem value="textarea">Multi line</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Required</Label>
+                                    <Select
+                                      value={section.required ? "required" : "optional"}
+                                      onValueChange={(value) =>
+                                        updateTemplateSection(index, { required: value === "required" })
+                                      }
+                                    >
+                                      <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="optional">Optional</SelectItem>
+                                        <SelectItem value="required">Required</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Placeholder</Label>
+                                    <Input
+                                      placeholder="Helper text inside field"
+                                      value={section.placeholder}
+                                      onChange={(e) =>
+                                        updateTemplateSection(index, { placeholder: e.target.value })
+                                      }
+                                      className="rounded-xl"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : null}
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="donorId">Donor</Label>
-                  <Select
-                    value={formData.donorId}
-                    onValueChange={(value) => setFormData({ ...formData, donorId: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select donor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {donors.map((donor) => (
-                        <SelectItem key={donor.id} value={donor.id}>
-                          {donor.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="projectId">Related Project</Label>
-                  <Select
-                    value={formData.projectId}
-                    onValueChange={(value) => setFormData({ ...formData, projectId: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          {project.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                      {templateFormError ? (
+                        <p className="text-sm text-destructive">{templateFormError}</p>
+                      ) : null}
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData({ ...formData, status: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="submitted">Submitted</SelectItem>
-                      <SelectItem value="under_review">Under Review</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                      <SelectItem value="withdrawn">Withdrawn</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      <div className="flex items-center justify-between">
+                        <div className="flex gap-2">
+                          {editingTemplate ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => handleDeleteTemplate(editingTemplate.id)}
+                              className="text-destructive hover:text-destructive hover:bg-rose-pale rounded-xl"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1.5" /> Delete Template
+                            </Button>
+                          ) : null}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button type="button" variant="ghost" onClick={resetTemplateForm}>
+                            Clear
+                          </Button>
+                          <Button type="submit" disabled={isTemplateSaving} className="rounded-xl">
+                            {isTemplateSaving
+                              ? (editingTemplate ? "Updating…" : "Creating…")
+                              : (editingTemplate ? "Update Template" : "Create Template")}
+                          </Button>
+                        </div>
+                      </div>
+                    </form>
+                  </section>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="amountRequested">Amount Requested *</Label>
-                  <CurrencyInput
-                    id="amountRequested"
-                    value={formData.amountRequested}
-                    onChange={(val) => setFormData(prev => ({ ...prev, amountRequested: val }))}
-                    currency={normalizeCurrency(formData.currency)}
-                    onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
-                    required
-                  />
-                </div>
-              </div>
-
-              {formData.status === "approved" && (
-                <div className="space-y-2">
-                  <Label htmlFor="amountApproved">Amount Approved</Label>
-                  <CurrencyInput
-                    id="amountApproved"
-                    value={formData.amountApproved}
-                    onChange={(val) => setFormData(prev => ({ ...prev, amountApproved: val }))}
-                    currency={normalizeCurrency(formData.currency)}
-                    onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
-                  />
-                </div>
-              )}
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="submissionDate">Submission Date</Label>
-                  <Input
-                    id="submissionDate"
-                    type="date"
-                    value={formData.submissionDate}
-                    onChange={(e) => setFormData({ ...formData, submissionDate: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="decisionDate">Decision Date</Label>
-                  <Input
-                    id="decisionDate"
-                    type="date"
-                    value={formData.decisionDate}
-                    onChange={(e) => setFormData({ ...formData, decisionDate: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">Project Start Date</Label>
-                  <Input
-                    id="startDate"
-                    type="date"
-                    value={formData.startDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">Project End Date</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={formData.endDate}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={2}
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                  Cancel
+              </DialogContent>
+            </Dialog>
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
+              <DialogTrigger asChild>
+                <Button className="rounded-xl">
+                  <Plus className="h-4 w-4 mr-2" /> New Entry
                 </Button>
-                <Button type="submit">{editingProposal ? "Update" : "Create"} Entry</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="font-serif text-xl">
+                    {editingProposal ? "Edit Entry" : "Create New Entry"}
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="title">Proposal Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      required
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="proposalType">Entry Type</Label>
+                      <Select
+                        value={formData.proposalType}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            proposalType: value,
+                            templateId: value === "tor" ? prev.templateId : "",
+                            templateData: value === "tor" ? prev.templateData : {},
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="grant">Grant Proposal</SelectItem>
+                          <SelectItem value="tor">ToR Submission</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {formData.proposalType === "tor" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="templateId">Template</Label>
+                        <Select
+                          value={formData.templateId}
+                          onValueChange={(value) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              templateId: value,
+                              templateData: {},
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="rounded-xl">
+                            <SelectValue placeholder="Select template" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeTemplates.map((template) => (
+                              <SelectItem key={template.id} value={template.id}>
+                                {template.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  {formData.proposalType === "tor" && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="torCode">ToR Code</Label>
+                        <Input
+                          id="torCode"
+                          value={formData.torCode}
+                          onChange={(e) => setFormData({ ...formData, torCode: e.target.value })}
+                          placeholder="TOR-2026-001"
+                          className="rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="torSubmissionRef">Submission Reference</Label>
+                        <Input
+                          id="torSubmissionRef"
+                          value={formData.torSubmissionRef}
+                          onChange={(e) => setFormData({ ...formData, torSubmissionRef: e.target.value })}
+                          className="rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {formData.proposalType === "tor" && selectedTemplate?.sections?.length ? (
+                    <div className="space-y-3 rounded-xl border border-border p-4">
+                      <p className="text-sm font-medium text-foreground">Template Sections</p>
+                      {selectedTemplate.sections.map((section, index) => {
+                        const fieldKey = section.key || section.name || `section_${index}`;
+                        const fieldLabel = section.label || section.name || `Section ${index + 1}`;
+                        const isLongText = section.type === "textarea" || section.type === "long_text";
+                        return (
+                          <div key={fieldKey} className="space-y-2">
+                            <Label htmlFor={`template-${fieldKey}`}>
+                              {fieldLabel}
+                              {section.required ? " *" : ""}
+                            </Label>
+                            {isLongText ? (
+                              <Textarea
+                                id={`template-${fieldKey}`}
+                                value={formData.templateData[fieldKey] || ""}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    templateData: { ...prev.templateData, [fieldKey]: e.target.value },
+                                  }))
+                                }
+                                placeholder={section.placeholder || ""}
+                                rows={3}
+                                className="rounded-xl"
+                              />
+                            ) : (
+                              <Input
+                                id={`template-${fieldKey}`}
+                                value={formData.templateData[fieldKey] || ""}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    templateData: { ...prev.templateData, [fieldKey]: e.target.value },
+                                  }))
+                                }
+                                placeholder={section.placeholder || ""}
+                                className="rounded-xl"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="donorId">Donor</Label>
+                      <Select
+                        value={formData.donorId}
+                        onValueChange={(value) => setFormData({ ...formData, donorId: value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Select donor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {donors.map((donor) => (
+                            <SelectItem key={donor.id} value={donor.id}>
+                              {donor.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="projectId">Related Project</Label>
+                      <Select
+                        value={formData.projectId}
+                        onValueChange={(value) => setFormData({ ...formData, projectId: value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Select project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Status</Label>
+                      <Select
+                        value={formData.status}
+                        onValueChange={(value) => setFormData({ ...formData, status: value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="draft">Draft</SelectItem>
+                          <SelectItem value="submitted">Submitted</SelectItem>
+                          <SelectItem value="under_review">Under Review</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                          <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="amountRequested">Amount Requested *</Label>
+                      <CurrencyInput
+                        id="amountRequested"
+                        value={formData.amountRequested}
+                        onChange={(val) => setFormData(prev => ({ ...prev, amountRequested: val }))}
+                        currency={normalizeCurrency(formData.currency)}
+                        onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {formData.status === "approved" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="amountApproved">Amount Approved</Label>
+                      <CurrencyInput
+                        id="amountApproved"
+                        value={formData.amountApproved}
+                        onChange={(val) => setFormData(prev => ({ ...prev, amountApproved: val }))}
+                        currency={normalizeCurrency(formData.currency)}
+                        onCurrencyChange={(c) => setFormData(prev => ({ ...prev, currency: c }))}
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="submissionDate">Submission Date</Label>
+                      <Input
+                        id="submissionDate"
+                        type="date"
+                        value={formData.submissionDate}
+                        onChange={(e) => setFormData({ ...formData, submissionDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="decisionDate">Decision Date</Label>
+                      <Input
+                        id="decisionDate"
+                        type="date"
+                        value={formData.decisionDate}
+                        onChange={(e) => setFormData({ ...formData, decisionDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="startDate">Project Start Date</Label>
+                      <Input
+                        id="startDate"
+                        type="date"
+                        value={formData.startDate}
+                        onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="endDate">Project End Date</Label>
+                      <Input
+                        id="endDate"
+                        type="date"
+                        value={formData.endDate}
+                        onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      rows={3}
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      rows={2}
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="rounded-xl">
+                      {editingProposal ? "Update" : "Create"} Entry
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </header>
+
+      {/* Summary strip */}
+      <div className="flex gap-3 mb-8 flex-wrap">
+        <div className="px-4 py-2.5 bg-card rounded-xl">
+          <span className="text-xs text-muted-foreground">Total</span>
+          <p className="font-serif text-lg text-foreground">{pipelineStats.total}</p>
+        </div>
+        <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
+          <span className="text-xs text-muted-foreground">Pipeline Value</span>
+          <p className="font-serif text-lg text-primary">{formatCurrency(pipelineStats.totalAmount, "ETB")}</p>
+        </div>
+        <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
+          <span className="text-xs text-muted-foreground">Approved</span>
+          <p className="font-serif text-lg text-primary">{pipelineStats.approved}</p>
+        </div>
+        <div className="px-4 py-2.5 bg-lavender-pale rounded-xl">
+          <span className="text-xs text-muted-foreground">Approved Value</span>
+          <p className="font-serif text-lg text-lavender">{formatCurrency(pipelineStats.approvedAmount, "ETB")}</p>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4 mb-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Proposals</CardDescription>
-            <CardTitle className="text-2xl">{pipelineStats.total}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Pipeline Value</CardDescription>
-            <CardTitle className="text-2xl">{formatCurrency(pipelineStats.totalAmount, "ETB")}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Approved</CardDescription>
-            <CardTitle className="text-2xl text-green-600">{pipelineStats.approved}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Approved Value</CardDescription>
-            <CardTitle className="text-2xl text-green-600">{formatCurrency(pipelineStats.approvedAmount, "ETB")}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      <div className="flex gap-4 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      {/* Filters */}
+      <div className="flex gap-3 mb-8 flex-wrap">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search entries..."
+            placeholder="Search proposals…"
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setPagination((prev) => ({ ...prev, page: 1 }));
             }}
-            className="pl-9"
+            className="pl-10 rounded-xl bg-card"
           />
         </div>
         <Select
@@ -1225,7 +1277,7 @@ export default function ProposalsPage() {
             setPagination((prev) => ({ ...prev, page: 1 }));
           }}
         >
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40 rounded-xl">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1245,7 +1297,7 @@ export default function ProposalsPage() {
             setPagination((prev) => ({ ...prev, page: 1 }));
           }}
         >
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-36 rounded-xl">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1254,77 +1306,100 @@ export default function ProposalsPage() {
             <SelectItem value="tor">ToR</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex rounded-xl border border-border overflow-hidden">
+          <button
+            onClick={() => setViewMode("list")}
+            className={`px-3.5 py-2 text-xs font-medium transition-colors ${
+              viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            List
+          </button>
+          <button
+            onClick={() => setViewMode("pipeline")}
+            className={`px-3.5 py-2 text-xs font-medium transition-colors ${
+              viewMode === "pipeline" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Pipeline
+          </button>
+        </div>
       </div>
 
-      <Tabs defaultValue="list">
-        <TabsList className="mb-4">
-          <TabsTrigger value="list">List View</TabsTrigger>
-          <TabsTrigger value="pipeline">Pipeline View</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="list">
+      {/* List View */}
+      {viewMode === "list" && (
+        <>
           {proposals.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-gray-500 mb-4">
-                  {searchQuery || filterStatus !== "all" || filterType !== "all" ? "No entries match your search" : "No entries found"}
-                </p>
-                {!searchQuery && filterStatus === "all" && filterType === "all" && (
-                  <Button onClick={() => setIsAddDialogOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" /> Create your first entry
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+            <div className="py-20 text-center">
+              <TrendingUp className="h-10 w-10 mx-auto mb-3 text-primary/25" />
+              <p className="text-sm text-muted-foreground mb-5">
+                {searchQuery || filterStatus !== "all" || filterType !== "all"
+                  ? "No entries match your filters"
+                  : "No proposals yet — create your first entry"}
+              </p>
+              {!searchQuery && filterStatus === "all" && filterType === "all" && (
+                <Button onClick={() => setIsAddDialogOpen(true)} className="rounded-xl">
+                  <Plus className="h-4 w-4 mr-2" /> Create your first entry
+                </Button>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
-              {proposals.map((proposal) => (
-                <Card key={proposal.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="p-2 bg-gray-100 rounded-lg">
-                          <TrendingUp className="h-5 w-5 text-gray-600" />
+              {proposals.map((proposal) => {
+                const status = statusConfig[proposal.status] || statusConfig.draft;
+                const type = typeConfig[proposal.proposalType] || typeConfig.grant;
+                return (
+                  <div
+                    key={proposal.id}
+                    className="bg-card rounded-2xl p-5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4 min-w-0">
+                        <div className={`p-2.5 rounded-xl shrink-0 ${type.bg}`}>
+                          <TrendingUp className={`h-5 w-5 ${type.text}`} />
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-medium">{proposal.title}</h3>
-                            <Badge variant="outline">
-                              {proposal.proposalType === "tor" ? "ToR" : "Grant"}
-                            </Badge>
-                            <Badge className={statusColors[proposal.status]}>
-                              {statusLabels[proposal.status]}
-                            </Badge>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <h3 className="font-serif text-lg text-foreground leading-snug">
+                              {proposal.title}
+                            </h3>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${type.bg} ${type.text}`}>
+                              {type.label}
+                            </span>
+                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${status.bg} ${status.text}`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                              {status.label}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                          <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground">
                             {proposal.donor && (
-                              <div className="flex items-center gap-1">
-                                <Building2 className="h-3 w-3" />
-                                <span>{proposal.donor.name}</span>
-                              </div>
+                              <span className="flex items-center gap-1.5">
+                                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                {proposal.donor.name}
+                              </span>
                             )}
                             {proposal.project && (
-                              <div className="flex items-center gap-1">
-                                <FolderKanban className="h-3 w-3" />
-                                <span>{proposal.project.name}</span>
-                              </div>
+                              <span className="flex items-center gap-1.5">
+                                <FolderKanban className="h-3.5 w-3.5 shrink-0" />
+                                {proposal.project.name}
+                              </span>
                             )}
-                            <div className="flex items-center gap-1">
-                              <DollarSign className="h-3 w-3" />
-                              <span>{formatCurrency(proposal.amountRequested, proposal.currency)}</span>
-                            </div>
+                            <span className="flex items-center gap-1.5">
+                              <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                              {formatCurrency(proposal.amountRequested, proposal.currency)}
+                            </span>
                             {proposal.submissionDate && (
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                <span>{formatDate(proposal.submissionDate)}</span>
-                              </div>
+                              <span className="flex items-center gap-1.5">
+                                <Calendar className="h-3.5 w-3.5 shrink-0" />
+                                {formatDate(proposal.submissionDate)}
+                              </span>
                             )}
                           </div>
                         </div>
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -1347,25 +1422,28 @@ export default function ProposalsPage() {
                           <DropdownMenuItem onClick={() => handleStatusChange(proposal.id, "rejected")}>
                             Mark as Rejected
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete(proposal.id)} className="text-red-600">
+                          <DropdownMenuItem onClick={() => handleDelete(proposal.id)} className="text-destructive">
                             <Trash2 className="h-4 w-4 mr-2" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing page {pagination.page} of {Math.max(1, Math.ceil((pagination.total || 1) / pagination.limit))}
+
+          {/* Pagination */}
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Page {pagination.page} of {Math.max(1, Math.ceil((pagination.total || 1) / pagination.limit))}
             </p>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
+                className="rounded-xl"
                 disabled={pagination.page <= 1}
                 onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
               >
@@ -1374,6 +1452,7 @@ export default function ProposalsPage() {
               <Button
                 variant="outline"
                 size="sm"
+                className="rounded-xl"
                 disabled={pagination.page >= Math.ceil((pagination.total || 1) / pagination.limit)}
                 onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
               >
@@ -1381,64 +1460,119 @@ export default function ProposalsPage() {
               </Button>
             </div>
           </div>
-        </TabsContent>
+        </>
+      )}
 
-        <TabsContent value="pipeline">
-          <div className="grid gap-4 md:grid-cols-5">
-            {["draft", "submitted", "under_review", "approved", "rejected"].map((status) => (
-              <div key={status} className="space-y-2">
-                <div className="flex items-center justify-between p-2 bg-gray-100 rounded-lg">
-                  <span className="font-medium text-sm">{statusLabels[status]}</span>
-                  <Badge variant="secondary">
-                    {proposals.filter((p) => p.status === status).length}
-                  </Badge>
+      {/* Pipeline View */}
+      {viewMode === "pipeline" && (
+        <div className="grid gap-5 md:grid-cols-5">
+          {(["draft", "submitted", "under_review", "approved", "rejected"] as const).map((status) => {
+            const col = pipelineColumnConfig[status];
+            const sc = statusConfig[status];
+            const columnProposals = proposals.filter((p) => p.status === status);
+            return (
+              <div key={status} className={`rounded-2xl ${col.bg}`}>
+                <div className={`flex items-center justify-between p-4 ${col.headerBg} rounded-t-2xl`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className={`h-2 w-2 rounded-full ${col.dotColor}`} />
+                    <h2 className="font-medium text-sm text-foreground">{sc.label}</h2>
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    {columnProposals.length}
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  {proposals
-                    .filter((p) => p.status === status)
-                    .map((proposal) => (
-                      <Card key={proposal.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                        <CardContent className="p-3">
-                          <p className="font-medium text-sm truncate">{proposal.title}</p>
-                          <p className="text-xs text-gray-500 mt-1">
+                <div className="p-2.5 min-h-[180px] space-y-2.5">
+                  {columnProposals.map((proposal) => {
+                    const type = typeConfig[proposal.proposalType] || typeConfig.grant;
+                    return (
+                      <div
+                        key={proposal.id}
+                        className="bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
+                        onClick={() => openEditDialog(proposal)}
+                      >
+                        <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug mb-2">
+                          {proposal.title}
+                        </h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${type.bg} ${type.text}`}>
+                            {type.label}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
                             {formatCurrency(proposal.amountRequested, proposal.currency)}
+                          </span>
+                        </div>
+                        {proposal.donor && (
+                          <p className="text-[11px] text-muted-foreground mt-1.5 truncate">
+                            {proposal.donor.name}
                           </p>
-                          {proposal.donor && (
-                            <p className="text-xs text-gray-400 mt-1 truncate">{proposal.donor.name}</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
+                        )}
+                      </div>
+                    );
+                  })}
+                  {columnProposals.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <TrendingUp className="h-6 w-6 text-primary/15 mb-2" />
+                      <p className="text-xs text-muted-foreground">No entries</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        </TabsContent>
-      </Tabs>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Documents Dialog */}
       <Dialog open={!!documentsDialogProposal} onOpenChange={(open) => !open && setDocumentsDialogProposal(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              Documents {documentsDialogProposal ? `- ${documentsDialogProposal.title}` : ""}
+            <DialogTitle className="font-serif text-xl">
+              Documents {documentsDialogProposal ? `— ${documentsDialogProposal.title}` : ""}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <label className="inline-flex items-center gap-2 border rounded-md px-3 py-2 cursor-pointer hover:bg-muted/60">
-              <Upload className="h-4 w-4" />
-              <span className="text-sm">Upload document</span>
-              <input type="file" className="hidden" onChange={handleDocumentUpload} />
-            </label>
+          <div className="space-y-4 mt-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Attachments</p>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <Button size="sm" variant="outline" className="rounded-xl h-7 text-xs" asChild>
+                  <span>
+                    <Upload className="h-3 w-3 mr-1.5" /> Upload
+                  </span>
+                </Button>
+                <input type="file" className="hidden" onChange={handleDocumentUpload} />
+              </label>
+            </div>
+
             {documents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No documents uploaded for this entry.</p>
+              <div className="py-8 text-center">
+                <FileText className="h-6 w-6 mx-auto mb-1.5 text-primary/15" />
+                <p className="text-xs text-muted-foreground">No documents uploaded for this entry</p>
+              </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between rounded border p-2 gap-3">
-                    <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm hover:underline truncate">
-                      {doc.name}
-                    </a>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteDocument(doc.id)}>
-                      <Trash2 className="h-4 w-4 text-red-600" />
+                  <div key={doc.id} className="flex items-center gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-foreground hover:text-primary truncate block transition-colors"
+                      >
+                        {doc.name}
+                      </a>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 h-6 w-6 text-destructive transition-opacity"
+                      onClick={() => handleDeleteDocument(doc.id)}
+                    >
+                      <X className="h-3 w-3" />
                     </Button>
                   </div>
                 ))}

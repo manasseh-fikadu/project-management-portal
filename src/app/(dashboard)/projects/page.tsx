@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Calendar, User, DollarSign, HandCoins, Search } from "lucide-react";
+import { Plus, Calendar, User, DollarSign, Search, Leaf, FolderKanban } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
 type Milestone = {
@@ -42,12 +40,12 @@ type Project = {
   milestones: Milestone[];
 };
 
-const statusColors: Record<string, string> = {
-  planning: "bg-yellow-100 text-yellow-800",
-  active: "bg-green-100 text-green-800",
-  on_hold: "bg-orange-100 text-orange-800",
-  completed: "bg-blue-100 text-blue-800",
-  cancelled: "bg-red-100 text-red-800",
+const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  planning: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "Planning" },
+  active: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "Active" },
+  on_hold: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "On Hold" },
+  completed: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "Completed" },
+  cancelled: { bg: "bg-destructive/10", text: "text-destructive", dot: "bg-destructive", label: "Cancelled" },
 };
 
 export default function ProjectsPage() {
@@ -70,10 +68,6 @@ export default function ProjectsPage() {
   function formatDate(date: string | null) {
     if (!date) return "Not set";
     return new Date(date).toLocaleDateString();
-  }
-
-  function formatBudget(amount: number) {
-    return formatCurrency(amount, "ETB");
   }
 
   function getMilestoneProgress(milestones: Milestone[]) {
@@ -100,123 +94,133 @@ export default function ProjectsPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="h-6 w-6 animate-pulse text-primary" />
+          <p className="text-sm text-muted-foreground">Loading projects…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Projects</h1>
-          <p className="text-muted-foreground">Manage your projects and track progress</p>
+    <div className="p-6 lg:p-10">
+      <header className="mb-10">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
+              Projects
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Track progress and manage your active initiatives
+            </p>
+          </div>
+          <Button onClick={() => router.push("/projects/new")} className="rounded-xl shrink-0">
+            <Plus className="h-4 w-4 mr-2" /> New Project
+          </Button>
         </div>
-        <Button onClick={() => router.push("/projects/new")}>
-          <Plus className="h-4 w-4 mr-2" /> New Project
-        </Button>
-      </div>
+      </header>
 
-      <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="relative mb-8 max-w-lg">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search projects by name, description, manager, donor..."
+          placeholder="Search by name, manager, donor…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9 max-w-md"
+          className="pl-10 rounded-xl bg-card border-border"
         />
       </div>
 
       {filteredProjects.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-gray-500 mb-4">
-              {searchQuery.trim() ? "No projects match your search" : "No projects found"}
-            </p>
-            {searchQuery.trim() ? (
-              <Button variant="outline" onClick={() => setSearchQuery("")}>
-                Clear search
-              </Button>
-            ) : (
-              <Button onClick={() => router.push("/projects/new")}>
-                <Plus className="h-4 w-4 mr-2" /> Create your first project
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <div className="py-20 text-center">
+          <FolderKanban className="h-10 w-10 mx-auto mb-3 text-primary/25" />
+          <p className="text-sm text-muted-foreground mb-5">
+            {searchQuery.trim() ? "No projects match your search" : "No projects yet — start by creating one"}
+          </p>
+          {searchQuery.trim() ? (
+            <Button variant="outline" onClick={() => setSearchQuery("")} className="rounded-xl">
+              Clear search
+            </Button>
+          ) : (
+            <Button onClick={() => router.push("/projects/new")} className="rounded-xl">
+              <Plus className="h-4 w-4 mr-2" /> Create your first project
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredProjects.map((project) => (
-            <Card
-              key={project.id}
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => router.push(`/projects/${project.id}`)}
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-lg">{project.name}</CardTitle>
-                  <Badge className={statusColors[project.status]}>{project.status.replace("_", " ")}</Badge>
-                </div>
-                <CardDescription className="line-clamp-2">
-                  {project.description || "No description"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <User className="h-4 w-4" />
-                  <span>
-                    {project.manager.firstName} {project.manager.lastName}
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredProjects.map((project, i) => {
+            const status = statusConfig[project.status] || statusConfig.planning;
+            const progress = getMilestoneProgress(project.milestones);
+
+            return (
+              <button
+                key={project.id}
+                onClick={() => router.push(`/projects/${project.id}`)}
+                className="text-left bg-card rounded-2xl p-5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group"
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <h3 className="font-serif text-lg text-foreground group-hover:text-primary transition-colors leading-snug">
+                    {project.name}
+                  </h3>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap shrink-0 ${status.bg} ${status.text}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                    {status.label}
                   </span>
                 </div>
 
-                {project.projectDonors && project.projectDonors.length > 0 ? (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Donors:</span>{" "}
-                    <span className="inline-flex flex-wrap gap-1">
-                      {project.projectDonors.map((pd) => (
-                        <Badge key={pd.donorId} variant="outline" className="text-xs">
-                          {pd.donor.name}
-                        </Badge>
-                      ))}
+                {project.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
+                    {project.description}
+                  </p>
+                )}
+
+                <div className="space-y-2.5 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <User className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {project.manager.firstName} {project.manager.lastName}
                     </span>
                   </div>
-                ) : project.donor ? (
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Donor:</span> {project.donor.name}
-                  </div>
-                ) : null}
 
-                <div className="flex items-center gap-4 text-sm">
-                  {project.totalBudget > 0 && (
-                    <div className="flex items-center gap-1 text-gray-600">
-                      <DollarSign className="h-4 w-4" />
-                      <span>{formatBudget(project.totalBudget)}</span>
+                  {project.projectDonors && project.projectDonors.length > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {project.projectDonors.map((pd) => pd.donor.name).join(", ")}
+                      </span>
                     </div>
                   )}
-                  <div className="flex items-center gap-1 text-gray-600">
-                    <Calendar className="h-4 w-4" />
-                    <span>{formatDate(project.startDate)}</span>
-                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
+                  {project.totalBudget > 0 && (
+                    <span>{formatCurrency(project.totalBudget, "ETB")}</span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {formatDate(project.startDate)}
+                  </span>
                 </div>
 
                 {project.milestones.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>Milestones</span>
-                      <span>{getMilestoneProgress(project.milestones)}%</span>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span className="text-muted-foreground">Milestones</span>
+                      <span className="font-medium text-foreground">{progress}%</span>
                     </div>
-                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-sage-pale overflow-hidden">
                       <div
-                        className="h-full bg-green-500 transition-all"
-                        style={{ width: `${getMilestoneProgress(project.milestones)}%` }}
+                        className="h-full rounded-full bg-primary transition-all duration-500"
+                        style={{ width: `${progress}%` }}
                       />
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          ))}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
