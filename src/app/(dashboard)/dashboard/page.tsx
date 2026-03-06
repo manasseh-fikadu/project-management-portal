@@ -257,16 +257,17 @@ function ProgressRow({ label, value, colorClass, bgClass }: {
   colorClass: string;
   bgClass: string;
 }) {
+  const displayValue = Math.max(0, Math.min(100, Number(value) || 0));
   return (
     <div className="mb-4">
       <div className="flex justify-between mb-2">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <span className={`text-xs font-semibold ${colorClass.replace("bg-", "text-")}`}>{value}%</span>
+        <span className={`text-xs font-semibold ${colorClass.replace("bg-", "text-")}`}>{displayValue}%</span>
       </div>
       <div className={`h-2.5 rounded-full ${bgClass} overflow-hidden`}>
         <div
           className={`h-full rounded-full ${colorClass} transition-all duration-700`}
-          style={{ width: `${value}%`, transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
+          style={{ width: `${displayValue}%`, transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
         />
       </div>
     </div>

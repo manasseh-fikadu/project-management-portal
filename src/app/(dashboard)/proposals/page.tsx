@@ -1485,10 +1485,12 @@ export default function ProposalsPage() {
                   {columnProposals.map((proposal) => {
                     const type = typeConfig[proposal.proposalType] || typeConfig.grant;
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={proposal.id}
-                        className="bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
+                        className="w-full text-left bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         onClick={() => openEditDialog(proposal)}
+                        aria-label={`Edit proposal: ${proposal.title}`}
                       >
                         <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug mb-2">
                           {proposal.title}
@@ -1506,7 +1508,7 @@ export default function ProposalsPage() {
                             {proposal.donor.name}
                           </p>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                   {columnProposals.length === 0 && (

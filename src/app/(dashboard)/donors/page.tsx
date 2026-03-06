@@ -51,7 +51,7 @@ export default function DonorsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
-  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
+  const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({
     name: "",
     type: "",
@@ -186,7 +186,7 @@ export default function DonorsPage() {
   }
 
   async function handleSendPortalInvite(donorId: string) {
-    setSendingInvite(donorId);
+    setSendingInvites((prev) => new Set(prev).add(donorId));
     try {
       const res = await fetch("/api/donor-portal/tokens", {
         method: "POST",
@@ -203,7 +203,11 @@ export default function DonorsPage() {
       console.error("Failed to send portal invite:", error);
       alert("Failed to send portal invite");
     } finally {
-      setSendingInvite(null);
+      setSendingInvites((prev) => {
+        const next = new Set(prev);
+        next.delete(donorId);
+        return next;
+      });
     }
   }
 
@@ -390,13 +394,14 @@ export default function DonorsPage() {
                     type="button"
                     role="switch"
                     aria-checked={formData.isActive}
+                    aria-labelledby="active-status-label"
                     onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formData.isActive ? "bg-primary" : "bg-border"}`}
                   >
                     <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${formData.isActive ? "translate-x-5" : "translate-x-0"}`} />
                   </button>
                   <div>
-                    <Label className="text-sm font-medium">
+                    <Label id="active-status-label" className="text-sm font-medium">
                       {formData.isActive ? "Active" : "Non-Active"}
                     </Label>
                     <p className="text-xs text-muted-foreground">
@@ -550,10 +555,10 @@ export default function DonorsPage() {
                       {donor.email && (
                         <DropdownMenuItem
                           onClick={() => handleSendPortalInvite(donor.id)}
-                          disabled={sendingInvite === donor.id}
+                          disabled={sendingInvites.has(donor.id)}
                         >
                           <Send className="h-4 w-4 mr-2" />
-                          {sendingInvite === donor.id ? "Sending…" : "Send Portal Invite"}
+                          {sendingInvites.has(donor.id) ? "Sending…" : "Send Portal Invite"}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-destructive">

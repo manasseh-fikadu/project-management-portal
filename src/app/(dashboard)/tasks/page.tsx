@@ -133,6 +133,7 @@ export default function TasksPage() {
     dueDate: "",
     assignedTo: "",
   });
+  const [projectIdError, setProjectIdError] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -192,10 +193,16 @@ export default function TasksPage() {
       dueDate: "",
       assignedTo: "",
     });
+    setProjectIdError(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!formData.projectId) {
+      setProjectIdError("Please select a project.");
+      return;
+    }
 
     try {
       const res = await fetch("/api/tasks", {
@@ -482,10 +489,13 @@ export default function TasksPage() {
                     <Label htmlFor="projectId">Project *</Label>
                     <Select
                       value={formData.projectId}
-                      onValueChange={(value) => setFormData({ ...formData, projectId: value })}
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, projectId: value });
+                        setProjectIdError(null);
+                      }}
                       required
                     >
-                      <SelectTrigger className="rounded-xl">
+                      <SelectTrigger className={`rounded-xl ${projectIdError ? "border-destructive" : ""}`}>
                         <SelectValue placeholder="Select project" />
                       </SelectTrigger>
                       <SelectContent>
@@ -496,6 +506,9 @@ export default function TasksPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {projectIdError && (
+                      <p className="text-xs text-destructive">{projectIdError}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">

@@ -209,7 +209,7 @@ export default function ProjectProfilePage() {
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
-  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
+  const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -550,7 +550,7 @@ export default function ProjectProfilePage() {
   }
 
   async function handleSendPortalInvite(donorId: string) {
-    setSendingInvite(donorId);
+    setSendingInvites((prev) => new Set(prev).add(donorId));
     try {
       const res = await fetch("/api/donor-portal/tokens", {
         method: "POST",
@@ -567,7 +567,11 @@ export default function ProjectProfilePage() {
       console.error("Failed to send portal invite:", error);
       alert("Failed to send portal invite");
     } finally {
-      setSendingInvite(null);
+      setSendingInvites((prev) => {
+        const next = new Set(prev);
+        next.delete(donorId);
+        return next;
+      });
     }
   }
 
@@ -1200,10 +1204,10 @@ export default function ProjectProfilePage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleSendPortalInvite(pd.donorId)}
-                            disabled={sendingInvite === pd.donorId || !pd.donor.email}
+                            disabled={sendingInvites.has(pd.donorId) || !pd.donor.email}
                           >
                             <Send className="h-4 w-4 mr-2" />
-                            {sendingInvite === pd.donorId ? "Sending…" : "Send Portal Invite"}
+                            {sendingInvites.has(pd.donorId) ? "Sending…" : "Send Portal Invite"}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleRemoveDonor(pd.donorId)}

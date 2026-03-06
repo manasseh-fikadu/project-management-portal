@@ -158,7 +158,6 @@ export default function ProjectsPage() {
                 key={project.id}
                 onClick={() => router.push(`/projects/${project.id}`)}
                 className="text-left bg-card rounded-2xl p-5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group"
-                style={{ animationDelay: `${i * 40}ms` }}
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <h3 className="font-serif text-lg text-foreground group-hover:text-primary transition-colors leading-snug">

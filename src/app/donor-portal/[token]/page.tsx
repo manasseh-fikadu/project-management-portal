@@ -248,7 +248,7 @@ export default function DonorPortalPage() {
             };
             const budgetRemaining = project.totalBudget - project.spentBudget;
             const budgetPercent = project.totalBudget > 0
-              ? Math.round((project.spentBudget / project.totalBudget) * 100)
+              ? Math.max(0, Math.min(100, Math.round((project.spentBudget / project.totalBudget) * 100)))
               : 0;
 
             return (

@@ -389,7 +389,8 @@
     "error_select_project": "Please select a project.",
     "error_select_donor": "Please select a donor.",
     "error_generate_failed": "Failed to generate report",
-    "error_generic": "An error occurred"
+    "error_generic": "An error occurred",
+    "loading": "Loading reports…"
   },
   "notifications": {
     "title": "Notifications",

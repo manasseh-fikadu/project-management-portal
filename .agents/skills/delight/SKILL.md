@@ -18,8 +18,8 @@ You cannot do a great job without having necessary context, such as target audie
 
 Attempt to gather these from the current thread or codebase.
 
-1. If you don't find *exact* information and have to infer from existing design and functionality, you MUST STOP and STOP and call the AskUserQuestionTool to clarify. whether you got it right.
-2. Otherwise, if you can't fully infer or your level of confidence is medium or lower, you MUST STOP and call the AskUserQuestionTool to clarify. clarifying questions first to complete your context.
+1. If you don't find *exact* information and have to infer from existing design and functionality, you MUST STOP and call the AskUserQuestionTool to confirm whether you got it right.
+2. If you can't fully infer or your level of confidence is medium or lower, you MUST STOP and call the AskUserQuestionTool to ask clarifying questions first to complete your context.
 
 Do NOT proceed until you have answers. Delight that's wrong for the context is worse than no delight at all.
 
@@ -132,7 +132,7 @@ Add personality and joy through these methods:
 ### Personality in Copy
 
 **Playful error messages**:
-```
+```text
 "Error 404"
 "This page is playing hide and seek. (And winning)"
 
@@ -141,7 +141,7 @@ Add personality and joy through these methods:
 ```
 
 **Encouraging empty states**:
-```
+```text
 "No projects"
 "Your canvas awaits. Create something amazing."
 
@@ -150,7 +150,7 @@ Add personality and joy through these methods:
 ```
 
 **Playful labels & tooltips**:
-```
+```text
 "Delete"
 "Send to void" (for playful brand)
 
@@ -252,7 +252,7 @@ Add personality and joy through these methods:
 - Fun facts or tips while waiting
 - Countdown with encouraging messages
 
-```
+```text
 Loading messages rotation:
 - "Waking up the servers..."
 - "Teaching robots to dance..."

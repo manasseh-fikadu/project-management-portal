@@ -151,6 +151,8 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="p-2 rounded-full text-muted-foreground hover:text-sidebar-foreground transition-colors"
+            aria-label={isCollapsed ? "Open sidebar" : "Close sidebar"}
+            aria-expanded={!isCollapsed}
           >
             {isCollapsed ? (
               <Menu className="h-4 w-4" />

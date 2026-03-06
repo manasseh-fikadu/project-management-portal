@@ -97,7 +97,7 @@ export default function ReportsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading reports…</p>
+          <p className="text-sm text-muted-foreground">{t("reports.loading")}</p>
         </div>
       </div>
     );

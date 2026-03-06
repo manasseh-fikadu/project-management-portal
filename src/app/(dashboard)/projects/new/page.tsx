@@ -88,6 +88,11 @@ const statusLabels: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+function formatLocalDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString();
+}
+
 export default function NewProjectPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -913,7 +918,7 @@ export default function NewProjectPage() {
                   <div>
                     <p className="text-xs text-muted-foreground mb-0.5">Start Date</p>
                     <p className="text-sm text-foreground">
-                      {new Date(formData.startDate).toLocaleDateString()}
+                      {formatLocalDate(formData.startDate)}
                     </p>
                   </div>
                 )}
@@ -921,7 +926,7 @@ export default function NewProjectPage() {
                   <div>
                     <p className="text-xs text-muted-foreground mb-0.5">End Date</p>
                     <p className="text-sm text-foreground">
-                      {new Date(formData.endDate).toLocaleDateString()}
+                      {formatLocalDate(formData.endDate)}
                     </p>
                   </div>
                 )}
@@ -941,7 +946,7 @@ export default function NewProjectPage() {
                           <span className="text-foreground">{m.title}</span>
                           {m.dueDate && (
                             <span className="text-muted-foreground text-xs">
-                              — {new Date(m.dueDate).toLocaleDateString()}
+                              — {formatLocalDate(m.dueDate)}
                             </span>
                           )}
                         </div>
@@ -983,7 +988,7 @@ export default function NewProjectPage() {
                             })()}
                             {task.dueDate && (
                               <span className="text-xs text-muted-foreground">
-                                Due {new Date(task.dueDate).toLocaleDateString()}
+                                Due {formatLocalDate(task.dueDate)}
                               </span>
                             )}
                             {task.assignedTo && (
