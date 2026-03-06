@@ -285,7 +285,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
             <div className="mt-4 flex items-center gap-2 px-1">
               <Leaf className="h-3.5 w-3.5 text-primary/40" />
               <span className="text-[11px] text-muted-foreground/60">
-                Grow with purpose
+                {t("sidebar.growWithPurpose")}
               </span>
             </div>
           )}

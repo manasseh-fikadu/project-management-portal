@@ -133,6 +133,7 @@ const pipelineColumnConfig: Record<string, { bg: string; headerBg: string; dotCo
   under_review: { bg: "bg-amber-pale/30", headerBg: "bg-card", dotColor: "bg-amber-warm" },
   approved: { bg: "bg-sage-pale/30", headerBg: "bg-card", dotColor: "bg-primary" },
   rejected: { bg: "bg-rose-pale/30", headerBg: "bg-card", dotColor: "bg-rose-muted" },
+  withdrawn: { bg: "bg-muted/50", headerBg: "bg-card", dotColor: "bg-muted-foreground" },
 };
 
 const SUPPORTED_CURRENCY_SET = new Set<string>(SUPPORTED_CURRENCIES);
@@ -607,16 +608,22 @@ export default function ProposalsPage() {
   });
   const selectedTemplate = templates.find((template) => template.id === formData.templateId);
 
+  const totalsByCurrency: Record<string, { pipelineValue: number; approvedValue: number }> = {};
+  for (const p of proposals) {
+    const c = normalizeCurrency(p.currency);
+    if (!totalsByCurrency[c]) totalsByCurrency[c] = { pipelineValue: 0, approvedValue: 0 };
+    totalsByCurrency[c].pipelineValue += p.amountRequested;
+    if (p.status === "approved") {
+      totalsByCurrency[c].approvedValue += p.amountApproved ?? p.amountRequested;
+    }
+  }
   const pipelineStats = {
     total: proposals.length,
     draft: proposals.filter((p) => p.status === "draft").length,
     submitted: proposals.filter((p) => p.status === "submitted").length,
     underReview: proposals.filter((p) => p.status === "under_review").length,
     approved: proposals.filter((p) => p.status === "approved").length,
-    totalAmount: proposals.reduce((sum, p) => sum + p.amountRequested, 0),
-    approvedAmount: proposals
-      .filter((p) => p.status === "approved")
-      .reduce((sum, p) => sum + (p.amountApproved || p.amountRequested), 0),
+    totalsByCurrency,
   };
 
   if (loading) {
@@ -957,6 +964,8 @@ export default function ProposalsPage() {
                             proposalType: value,
                             templateId: value === "tor" ? prev.templateId : "",
                             templateData: value === "tor" ? prev.templateData : {},
+                            torCode: value === "tor" ? prev.torCode : "",
+                            torSubmissionRef: value === "tor" ? prev.torSubmissionRef : "",
                           }))
                         }
                       >
@@ -1244,7 +1253,14 @@ export default function ProposalsPage() {
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
           <span className="text-xs text-muted-foreground">Pipeline Value</span>
-          <p className="font-serif text-lg text-primary">{formatCurrency(pipelineStats.totalAmount, "ETB")}</p>
+          <p className="font-serif text-lg text-primary">
+            {Object.keys(pipelineStats.totalsByCurrency).length === 0
+              ? "—"
+              : Object.entries(pipelineStats.totalsByCurrency)
+                  .filter(([, v]) => v.pipelineValue > 0)
+                  .map(([currency, v]) => formatCurrency(v.pipelineValue, currency))
+                  .join(" · ")}
+          </p>
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
           <span className="text-xs text-muted-foreground">Approved</span>
@@ -1252,7 +1268,14 @@ export default function ProposalsPage() {
         </div>
         <div className="px-4 py-2.5 bg-lavender-pale rounded-xl">
           <span className="text-xs text-muted-foreground">Approved Value</span>
-          <p className="font-serif text-lg text-lavender">{formatCurrency(pipelineStats.approvedAmount, "ETB")}</p>
+          <p className="font-serif text-lg text-lavender">
+            {Object.keys(pipelineStats.totalsByCurrency).length === 0
+              ? "—"
+              : Object.entries(pipelineStats.totalsByCurrency)
+                  .filter(([, v]) => v.approvedValue > 0)
+                  .map(([currency, v]) => formatCurrency(v.approvedValue, currency))
+                  .join(" · ")}
+          </p>
         </div>
       </div>
 
@@ -1465,8 +1488,8 @@ export default function ProposalsPage() {
 
       {/* Pipeline View */}
       {viewMode === "pipeline" && (
-        <div className="grid gap-5 md:grid-cols-5">
-          {(["draft", "submitted", "under_review", "approved", "rejected"] as const).map((status) => {
+        <div className="grid gap-5 md:grid-cols-6">
+          {(["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"] as const).map((status) => {
             const col = pipelineColumnConfig[status];
             const sc = statusConfig[status];
             const columnProposals = proposals.filter((p) => p.status === status);

@@ -258,6 +258,8 @@ export default function DonorPortalPage() {
                   type="button"
                   onClick={() => setExpandedProject(isExpanded ? null : project.id)}
                   className="w-full text-left"
+                  aria-expanded={isExpanded}
+                  aria-controls={`project-${project.id}-content`}
                 >
                   <CardHeader className="hover:bg-gray-50/50 transition-colors">
                     <div className="flex items-start justify-between gap-4">
@@ -299,7 +301,7 @@ export default function DonorPortalPage() {
 
                 {/* Expanded Content */}
                 {isExpanded && (
-                  <CardContent className="pt-0 space-y-8">
+                  <CardContent id={`project-${project.id}-content`} className="pt-0 space-y-8">
                     <Separator />
 
                     {/* Budget Overview */}

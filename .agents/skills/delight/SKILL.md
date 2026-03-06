@@ -14,7 +14,7 @@ Identify opportunities to add moments of joy, personality, and unexpected polish
 
 ### Context Gathering (Do This First)
 
-You cannot do a great job without having necessary context, such as target audience (critical), desired use-cases (critical), brand personality (playful vs professional vs quirky vs elegant), and what's appropriate for the domain.
+You cannot do a great job without having the necessary context, such as target audience (critical), desired use-cases (critical), brand personality (playful vs professional vs quirky vs elegant), and what's appropriate for the domain.
 
 Attempt to gather these from the current thread or codebase.
 

@@ -152,6 +152,15 @@ type Project = {
   }>;
 };
 
+function isValidExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
   planning: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "Planning" },
   active: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "Active" },
@@ -1064,14 +1073,20 @@ export default function ProjectProfilePage() {
                   <div key={doc.id} className="flex items-start gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
                     <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <a
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium text-foreground truncate hover:text-primary block transition-colors"
-                      >
-                        {doc.name}
-                      </a>
+                      {isValidExternalUrl(doc.url) ? (
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-foreground truncate hover:text-primary block transition-colors"
+                        >
+                          {doc.name}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-medium text-foreground truncate block">
+                          {doc.name}
+                        </span>
+                      )}
                       <p className="text-[11px] text-muted-foreground">
                         {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
                       </p>

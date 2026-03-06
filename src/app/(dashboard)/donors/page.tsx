@@ -43,6 +43,15 @@ const donorTypeConfig: Record<string, { bg: string; text: string; label: string 
   ngo: { bg: "bg-sage-pale", text: "text-primary", label: "NGO" },
 };
 
+function isSafeWebsiteUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export default function DonorsPage() {
   const [donors, setDonors] = useState<Donor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -592,9 +601,13 @@ export default function DonorsPage() {
                   {donor.website && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Globe className="h-3.5 w-3.5 shrink-0" />
-                      <a href={donor.website} target="_blank" rel="noopener noreferrer" className="hover:text-primary truncate transition-colors">
-                        {donor.website}
-                      </a>
+                      {isSafeWebsiteUrl(donor.website) ? (
+                        <a href={donor.website} target="_blank" rel="noopener noreferrer" className="hover:text-primary truncate transition-colors">
+                          {donor.website}
+                        </a>
+                      ) : (
+                        <span className="truncate">{donor.website}</span>
+                      )}
                     </div>
                   )}
                   {donor.focusAreas && (
