@@ -3,12 +3,9 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
-import { LanguageSwitcher } from "@/components/language-switcher";
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -160,82 +157,79 @@ function VerifyOtpPageContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md space-y-3">
-        <div className="flex justify-end">
-          <LanguageSwitcher />
+    <div>
+      <div className="mb-8">
+        <h2 className="font-serif text-[26px] text-foreground tracking-tight leading-tight">
+          {t("auth.otpTitle")}
+        </h2>
+        <p className="mt-2.5 text-[15px] text-muted-foreground leading-relaxed">
+          {t("auth.otpDescription")}
+        </p>
+      </div>
+
+      <form onSubmit={handleVerify} className="space-y-6">
+        {error && (
+          <div className="bg-rose-pale text-destructive px-4 py-3 rounded-xl text-sm">
+            {error}
+          </div>
+        )}
+        {info && (
+          <div className="bg-sage-pale text-secondary-foreground px-4 py-3 rounded-xl text-sm">
+            {info}
+          </div>
+        )}
+
+        <div className="flex items-center justify-center gap-2.5">
+          {digits.map((digit, index) => (
+            <Input
+              key={`otp-${index}`}
+              ref={(element) => {
+                inputRefs.current[index] = element;
+              }}
+              value={digit}
+              onChange={(event) => updateDigit(index, event.target.value)}
+              onKeyDown={(event) => handleKeyDown(index, event)}
+              onPaste={handlePaste}
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              className="h-12 w-12 text-center text-lg rounded-xl"
+              maxLength={1}
+              disabled={verifying || resending}
+              aria-label={`${t("auth.otpPlaceholder")} ${index + 1}`}
+            />
+          ))}
         </div>
-        <Card className="w-full">
-          <CardHeader className="text-center space-y-4">
-            <div className="flex justify-center">
-              <Image
-                src="/motri.png"
-                alt="MoTRI Logo"
-                width={96}
-                height={96}
-                className="rounded-full"
-                priority
-              />
-            </div>
-            <div>
-              <CardTitle className="text-2xl">{t("auth.otpTitle")}</CardTitle>
-              <CardDescription className="mt-1">{t("auth.otpDescription")}</CardDescription>
-            </div>
-          </CardHeader>
 
-          <form onSubmit={handleVerify}>
-            <CardContent className="space-y-4">
-              {error && <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">{error}</div>}
-              {info && <div className="bg-green-50 text-green-700 p-3 rounded-md text-sm">{info}</div>}
+        <Button
+          type="submit"
+          className="w-full h-11 rounded-xl text-[14px] font-medium"
+          disabled={verifying || resending}
+        >
+          {verifying ? t("auth.verifying") : t("auth.verifyCode")}
+        </Button>
+      </form>
 
-              <div className="flex items-center justify-center gap-2">
-                {digits.map((digit, index) => (
-                  <Input
-                    key={`otp-${index}`}
-                    ref={(element) => {
-                      inputRefs.current[index] = element;
-                    }}
-                    value={digit}
-                    onChange={(event) => updateDigit(index, event.target.value)}
-                    onKeyDown={(event) => handleKeyDown(index, event)}
-                    onPaste={handlePaste}
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    className="h-12 w-12 text-center text-lg"
-                    maxLength={1}
-                    disabled={verifying || resending}
-                    aria-label={`${t("auth.otpPlaceholder")} ${index + 1}`}
-                  />
-                ))}
-              </div>
-            </CardContent>
+      <div className="mt-6 text-center space-y-3">
+        <div className="text-sm text-muted-foreground">
+          <button
+            type="button"
+            onClick={handleResend}
+            className="text-primary hover:underline font-medium disabled:text-muted-foreground disabled:no-underline"
+            disabled={cooldown > 0 || resending || verifying}
+          >
+            {resending ? t("auth.resendingCode") : t("auth.resendCode")}
+          </button>
+          {cooldown > 0 && (
+            <p className="mt-1 text-xs">{`${t("auth.resendIn")} ${cooldown}s`}</p>
+          )}
+        </div>
 
-            <CardFooter className="flex flex-col gap-4 pt-4">
-              <Button type="submit" className="w-full" disabled={verifying || resending}>
-                {verifying ? t("auth.verifying") : t("auth.verifyCode")}
-              </Button>
-
-              <div className="text-sm text-gray-600 text-center">
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  className="text-primary hover:underline disabled:text-gray-400 disabled:no-underline"
-                  disabled={cooldown > 0 || resending || verifying}
-                >
-                  {resending ? t("auth.resendingCode") : t("auth.resendCode")}
-                </button>
-                {cooldown > 0 && <p className="mt-1">{`${t("auth.resendIn")} ${cooldown}s`}</p>}
-              </div>
-
-              <p className="text-sm text-gray-600">
-                <Link href="/login" className="text-primary hover:underline">
-                  {t("auth.signIn")}
-                </Link>
-              </p>
-            </CardFooter>
-          </form>
-        </Card>
+        <p className="text-sm text-muted-foreground">
+          <Link href="/login" className="text-primary font-medium hover:underline">
+            {t("auth.signIn")}
+          </Link>
+        </p>
       </div>
     </div>
   );
@@ -243,33 +237,17 @@ function VerifyOtpPageContent() {
 
 function VerifyOtpFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md space-y-3">
-        <div className="flex justify-end">
-          <LanguageSwitcher />
-        </div>
-        <Card className="w-full">
-          <CardHeader className="text-center space-y-4">
-            <div className="flex justify-center">
-              <Image
-                src="/motri.png"
-                alt="MoTRI Logo"
-                width={96}
-                height={96}
-                className="rounded-full"
-                priority
-              />
-            </div>
-            <div>
-              <CardTitle className="text-2xl">Loading...</CardTitle>
-              <CardDescription className="mt-1">Preparing verification…</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-12 rounded-md bg-muted animate-pulse" />
-          </CardContent>
-        </Card>
+    <div>
+      <div className="mb-8">
+        <div className="h-8 w-48 rounded-lg bg-muted animate-pulse" />
+        <div className="mt-3 h-5 w-64 rounded-lg bg-muted animate-pulse" />
       </div>
+      <div className="flex items-center justify-center gap-2.5">
+        {Array.from({ length: OTP_LENGTH }).map((_, i) => (
+          <div key={i} className="h-12 w-12 rounded-xl bg-muted animate-pulse" />
+        ))}
+      </div>
+      <div className="mt-6 h-11 rounded-xl bg-muted animate-pulse" />
     </div>
   );
 }
