@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
     if (!donor.email) {
       return NextResponse.json({ error: "Donor does not have an email address" }, { status: 400 });
     }
+    const recipientEmail = donor.email;
 
     const days = Math.max(1, Math.min(
       typeof expiryDays === "number" && expiryDays > 0 ? expiryDays : DEFAULT_EXPIRY_DAYS,
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
 
       await tx.insert(emailOutbox).values({
         kind: "donor_invite",
-        recipientEmail: donor.email,
+        recipientEmail,
         payload: {
           donorName: donor.name,
           portalUrl,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -14,6 +14,14 @@ const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function VerifyOtpPage() {
+  return (
+    <Suspense fallback={<VerifyOtpFallback />}>
+      <VerifyOtpPageContent />
+    </Suspense>
+  );
+}
+
+function VerifyOtpPageContent() {
   const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -227,6 +235,39 @@ export default function VerifyOtpPage() {
               </p>
             </CardFooter>
           </form>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function VerifyOtpFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md space-y-3">
+        <div className="flex justify-end">
+          <LanguageSwitcher />
+        </div>
+        <Card className="w-full">
+          <CardHeader className="text-center space-y-4">
+            <div className="flex justify-center">
+              <Image
+                src="/motri.png"
+                alt="MoTRI Logo"
+                width={96}
+                height={96}
+                className="rounded-full"
+                priority
+              />
+            </div>
+            <div>
+              <CardTitle className="text-2xl">Loading...</CardTitle>
+              <CardDescription className="mt-1">Preparing verification…</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-12 rounded-md bg-muted animate-pulse" />
+          </CardContent>
         </Card>
       </div>
     </div>
