@@ -615,7 +615,12 @@ export default function ProjectProfilePage() {
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground"
+              aria-label="More project options"
+            >
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -821,7 +826,12 @@ export default function ProjectProfilePage() {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            aria-label="More milestone options"
+                          >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -998,7 +1008,12 @@ export default function ProjectProfilePage() {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            aria-label="More task options"
+                          >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -1094,8 +1109,9 @@ export default function ProjectProfilePage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 text-destructive"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity h-6 w-6 text-destructive focus-visible:ring-2 focus-visible:ring-destructive/40 focus-visible:ring-offset-2"
                       onClick={() => handleDeleteDocument(doc.id)}
+                      aria-label="Delete document"
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -1200,7 +1216,12 @@ export default function ProjectProfilePage() {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            aria-label="More donor options"
+                          >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>

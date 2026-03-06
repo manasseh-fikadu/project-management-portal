@@ -144,12 +144,14 @@ function normalizeCurrency(currency: string): CurrencyCode {
 
 export default function ProposalsPage() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [pipelineProposals, setPipelineProposals] = useState<Proposal[]>([]);
   const [donors, setDonors] = useState<Donor[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [templates, setTemplates] = useState<ProposalTemplate[]>([]);
   const [documents, setDocuments] = useState<ProposalDocument[]>([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 25 });
-  const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
@@ -205,16 +207,21 @@ export default function ProposalsPage() {
     }
   }, [templates, formData.templateId]);
 
+  const buildProposalParams = useCallback((page: number, limit: number) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterType !== "all") params.set("proposalType", filterType);
+    return params;
+  }, [searchQuery, filterStatus, filterType]);
+
   const fetchProposals = useCallback(async () => {
     try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: String(pagination.page),
-        limit: String(pagination.limit),
-      });
-      if (searchQuery.trim()) params.set("q", searchQuery.trim());
-      if (filterStatus !== "all") params.set("status", filterStatus);
-      if (filterType !== "all") params.set("proposalType", filterType);
+      setListLoading(true);
+      const params = buildProposalParams(pagination.page, pagination.limit);
       const res = await fetch(`/api/proposals?${params.toString()}`);
       const data = await res.json();
       if (data.proposals) {
@@ -229,13 +236,62 @@ export default function ProposalsPage() {
         }));
       }
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
-  }, [searchQuery, filterStatus, filterType, pagination.page, pagination.limit]);
+  }, [buildProposalParams, pagination.page, pagination.limit]);
+
+  const fetchAllProposals = useCallback(async () => {
+    const pageSize = 100;
+
+    try {
+      setPipelineLoading(true);
+
+      const firstPageParams = buildProposalParams(1, pageSize);
+      const firstPageRes = await fetch(`/api/proposals?${firstPageParams.toString()}`);
+      const firstPageData = await firstPageRes.json();
+      const firstPageProposals: Proposal[] = firstPageData.proposals ?? [];
+      const total = firstPageData.pagination?.total ?? firstPageProposals.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+      if (totalPages === 1) {
+        setPipelineProposals(firstPageProposals);
+        return;
+      }
+
+      const remainingPages = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, index) => {
+          const page = index + 2;
+          const params = buildProposalParams(page, pageSize);
+          return fetch(`/api/proposals?${params.toString()}`).then((response) => response.json());
+        })
+      );
+
+      setPipelineProposals([
+        ...firstPageProposals,
+        ...remainingPages.flatMap((pageData) => pageData.proposals ?? []),
+      ]);
+    } finally {
+      setPipelineLoading(false);
+    }
+  }, [buildProposalParams]);
+
+  const refreshProposalData = useCallback(async () => {
+    if (viewMode === "pipeline") {
+      await Promise.all([fetchProposals(), fetchAllProposals()]);
+      return;
+    }
+
+    await fetchProposals();
+  }, [viewMode, fetchProposals, fetchAllProposals]);
 
   useEffect(() => {
-    fetchProposals();
-  }, [fetchProposals]);
+    if (viewMode === "pipeline") {
+      void Promise.all([fetchProposals(), fetchAllProposals()]);
+      return;
+    }
+
+    void fetchProposals();
+  }, [viewMode, fetchProposals, fetchAllProposals]);
 
   async function fetchDonors() {
     try {
@@ -468,7 +524,7 @@ export default function ProposalsPage() {
         });
         const data = await res.json();
         if (data.proposal) {
-          await fetchProposals();
+          await refreshProposalData();
         }
       } else {
         const res = await fetch("/api/proposals", {
@@ -478,7 +534,7 @@ export default function ProposalsPage() {
         });
         const data = await res.json();
         if (data.proposal) {
-          await fetchProposals();
+          await refreshProposalData();
         }
       }
       resetForm();
@@ -493,7 +549,7 @@ export default function ProposalsPage() {
 
     try {
       await fetch(`/api/proposals/${id}`, { method: "DELETE" });
-      await fetchProposals();
+      await refreshProposalData();
     } catch (error) {
       console.error("Error deleting proposal:", error);
     }
@@ -508,7 +564,7 @@ export default function ProposalsPage() {
       });
       const data = await res.json();
       if (data.proposal) {
-        await fetchProposals();
+        await refreshProposalData();
       }
     } catch (error) {
       console.error("Error updating proposal status:", error);
@@ -608,8 +664,9 @@ export default function ProposalsPage() {
   });
   const selectedTemplate = templates.find((template) => template.id === formData.templateId);
 
+  const summaryProposals = viewMode === "pipeline" ? pipelineProposals : proposals;
   const totalsByCurrency: Record<string, { pipelineValue: number; approvedValue: number }> = {};
-  for (const p of proposals) {
+  for (const p of summaryProposals) {
     const c = normalizeCurrency(p.currency);
     if (!totalsByCurrency[c]) totalsByCurrency[c] = { pipelineValue: 0, approvedValue: 0 };
     totalsByCurrency[c].pipelineValue += p.amountRequested;
@@ -618,13 +675,17 @@ export default function ProposalsPage() {
     }
   }
   const pipelineStats = {
-    total: proposals.length,
-    draft: proposals.filter((p) => p.status === "draft").length,
-    submitted: proposals.filter((p) => p.status === "submitted").length,
-    underReview: proposals.filter((p) => p.status === "under_review").length,
-    approved: proposals.filter((p) => p.status === "approved").length,
+    isPageScoped: viewMode !== "pipeline",
+    total: summaryProposals.length,
+    draft: summaryProposals.filter((p) => p.status === "draft").length,
+    submitted: summaryProposals.filter((p) => p.status === "submitted").length,
+    underReview: summaryProposals.filter((p) => p.status === "under_review").length,
+    approved: summaryProposals.filter((p) => p.status === "approved").length,
     totalsByCurrency,
   };
+  const summaryLabelPrefix = pipelineStats.isPageScoped ? "This Page - " : "";
+  const pipelineViewProposals = viewMode === "pipeline" ? pipelineProposals : proposals;
+  const loading = listLoading || (viewMode === "pipeline" && pipelineLoading);
 
   if (loading) {
     return (
@@ -711,6 +772,7 @@ export default function ProposalsPage() {
                                   size="icon"
                                   variant="ghost"
                                   className="h-7 w-7 text-destructive"
+                                  aria-label={`Delete template ${template.name || template.id}`}
                                   disabled={deletingTemplateId === template.id}
                                   onClick={() => handleDeleteTemplate(template.id)}
                                 >
@@ -1248,11 +1310,11 @@ export default function ProposalsPage() {
       {/* Summary strip */}
       <div className="flex gap-3 mb-8 flex-wrap">
         <div className="px-4 py-2.5 bg-card rounded-xl">
-          <span className="text-xs text-muted-foreground">Total</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Total</span>
           <p className="font-serif text-lg text-foreground">{pipelineStats.total}</p>
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">Pipeline Value</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Pipeline Value</span>
           <p className="font-serif text-lg text-primary">
             {Object.keys(pipelineStats.totalsByCurrency).length === 0
               ? "—"
@@ -1263,11 +1325,11 @@ export default function ProposalsPage() {
           </p>
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">Approved</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Approved</span>
           <p className="font-serif text-lg text-primary">{pipelineStats.approved}</p>
         </div>
         <div className="px-4 py-2.5 bg-lavender-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">Approved Value</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Approved Value</span>
           <p className="font-serif text-lg text-lavender">
             {Object.keys(pipelineStats.totalsByCurrency).length === 0
               ? "—"
@@ -1492,7 +1554,7 @@ export default function ProposalsPage() {
           {(["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"] as const).map((status) => {
             const col = pipelineColumnConfig[status];
             const sc = statusConfig[status];
-            const columnProposals = proposals.filter((p) => p.status === status);
+            const columnProposals = pipelineViewProposals.filter((p) => p.status === status);
             return (
               <div key={status} className={`rounded-2xl ${col.bg}`}>
                 <div className={`flex items-center justify-between p-4 ${col.headerBg} rounded-t-2xl`}>

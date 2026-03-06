@@ -139,6 +139,7 @@ function isSafeUrl(url: string): boolean {
 export default function DonorPortalPage() {
   const params = useParams();
   const token = params.token as string;
+  const encodedToken = encodeURIComponent(token);
 
   const [data, setData] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,10 +149,38 @@ export default function DonorPortalPage() {
   useEffect(() => {
     async function fetchPortalData() {
       try {
-        const res = await fetch(`/api/donor-portal/${token}`);
+        const res = await fetch(`/api/donor-portal/${encodedToken}`);
         if (!res.ok) {
-          const errData = await res.json();
-          setError(errData.error || "Failed to load portal");
+          const contentType = res.headers.get("content-type") || "";
+          const fallbackResponse = res.clone();
+          let errorMessage = `Failed to load portal (${res.status} ${res.statusText})`;
+
+          if (contentType.includes("application/json")) {
+            try {
+              const errData = await res.json();
+              const jsonMessage =
+                typeof errData?.error === "string"
+                  ? errData.error
+                  : typeof errData?.message === "string"
+                    ? errData.message
+                    : "";
+              if (jsonMessage.trim()) {
+                errorMessage = `${jsonMessage} (${res.status} ${res.statusText})`;
+              }
+            } catch {
+              const fallbackText = (await fallbackResponse.text()).trim();
+              if (fallbackText) {
+                errorMessage = `${errorMessage}: ${fallbackText}`;
+              }
+            }
+          } else {
+            const fallbackText = (await res.text()).trim();
+            if (fallbackText) {
+              errorMessage = `${errorMessage}: ${fallbackText}`;
+            }
+          }
+
+          setError(errorMessage);
           return;
         }
         const result = await res.json();
@@ -168,7 +197,7 @@ export default function DonorPortalPage() {
     }
 
     fetchPortalData();
-  }, [token]);
+  }, [encodedToken]);
 
   if (loading) {
     return (
