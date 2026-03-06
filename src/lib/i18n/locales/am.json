@@ -52,7 +52,8 @@
     "reports": "ሪፖርቶች",
     "profile": "ፕሮፋይል",
     "users": "ተጠቃሚዎች",
-    "signOut": "ውጣ"
+    "signOut": "ውጣ",
+    "growWithPurpose": "በዓላማ ያድጉ"
   },
   "profile": {
     "title": "ፕሮፋይል",
@@ -389,7 +390,8 @@
     "error_select_project": "እባክዎ ፕሮጀክት ይምረጡ።",
     "error_select_donor": "እባክዎ ለጋሽ ይምረጡ።",
     "error_generate_failed": "ሪፖርት ማመንጨት አልተሳካም",
-    "error_generic": "ስህተት ተፈጥሯል"
+    "error_generic": "ስህተት ተፈጥሯል",
+    "loading": "ሪፖርቶችን በመጫን ላይ…"
   },
   "notifications": {
     "title": "ማሳወቂያዎች",

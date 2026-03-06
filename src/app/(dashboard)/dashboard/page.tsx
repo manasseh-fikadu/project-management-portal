@@ -1,385 +1,274 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, RefreshCcw } from "lucide-react";
-import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
+import { useMemo } from "react";
+import { Leaf, Flower2 } from "lucide-react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { useDashboardData, formatCurrency } from "@/lib/dashboard-data";
 
-type Milestone = {
-  id: string;
-  title: string;
-  status: string;
-  dueDate: string | null;
-};
-
-type Project = {
-  id: string;
-  name: string;
-  status: string;
-  milestones: Milestone[];
-};
-
-type FinancialRow = {
-  projectId: string;
-  projectName: string;
-  plannedBudget: number;
-  spentAmount: number;
-  physicalPerformance: number;
-  financialPerformance: number;
-  variance: number;
-  status: "aligned" | "overspending_risk" | "under_spending";
-};
-
-type FinancialTotals = {
-  plannedBudget: number;
-  spentAmount: number;
-  physicalPerformance: number;
-  financialPerformance: number;
-};
-
-type DelayedMilestone = Milestone & { projectName: string };
-
-const STATUS_COLORS: Record<string, string> = {
-  planning: "#f59e0b",
-  active: "#16a34a",
-  on_hold: "#f97316",
-  completed: "#0284c7",
-  cancelled: "#dc2626",
-};
-
-const PIE_COLORS = ["#16a34a", "#f59e0b", "#f97316", "#0284c7", "#dc2626"];
+const PIE_COLORS = ["#7A9B6D", "#C4A63A", "#C4908F", "#8B7EB8", "#B85C5C"];
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [comparison, setComparison] = useState<FinancialRow[]>([]);
-  const [totals, setTotals] = useState<FinancialTotals | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const d = useDashboardData();
 
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      const [projectsRes, financialsRes] = await Promise.all([fetch("/api/projects"), fetch("/api/financials")]);
-      const [projectsData, financialsData] = await Promise.all([projectsRes.json(), financialsRes.json()]);
-      setProjects(projectsData.projects || []);
-      setComparison(financialsData.comparison || []);
-      setTotals(financialsData.totals || null);
-      setLastUpdated(new Date());
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-    const intervalId = window.setInterval(() => {
-      fetchDashboardData();
-    }, 30000);
-
-    return () => window.clearInterval(intervalId);
-  }, [fetchDashboardData]);
-
-  const delayedMilestones = useMemo<DelayedMilestone[]>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return projects.flatMap((project) =>
-      project.milestones
-        .filter((milestone) => {
-          if (!milestone.dueDate || milestone.status === "completed" || milestone.status === "cancelled") {
-            return false;
-          }
-          return new Date(milestone.dueDate) < today;
-        })
-        .map((milestone) => ({ ...milestone, projectName: project.name }))
-    );
-  }, [projects]);
-
-  const overspentProjects = useMemo(() => {
-    return comparison.filter((row) => row.plannedBudget > 0 && row.spentAmount > row.plannedBudget);
-  }, [comparison]);
-
-  const activeProjects = useMemo(() => projects.filter((project) => project.status === "active").length, [projects]);
-
-  const totalMilestones = useMemo(() => {
-    return projects.reduce((sum, project) => sum + project.milestones.length, 0);
-  }, [projects]);
-
-  const completedMilestones = useMemo(() => {
-    return projects.reduce(
-      (sum, project) => sum + project.milestones.filter((milestone) => milestone.status === "completed").length,
-      0
-    );
-  }, [projects]);
-
-  const milestoneCompletionRate = totalMilestones > 0 ? Math.round((completedMilestones / totalMilestones) * 100) : 0;
-
-  const budgetChartData = useMemo(() => {
-    return [...comparison]
-      .sort((a, b) => b.spentAmount - a.spentAmount)
-      .slice(0, 6)
-      .map((row) => ({
-        name: row.projectName.length > 18 ? `${row.projectName.slice(0, 18)}...` : row.projectName,
-        planned: row.plannedBudget,
-        spent: row.spentAmount,
-      }));
-  }, [comparison]);
-
-  const projectStatusData = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const project of projects) {
-      counts.set(project.status, (counts.get(project.status) ?? 0) + 1);
-    }
-
-    return Array.from(counts.entries()).map(([status, value]) => ({
-      name: status.replace("_", " "),
-      value,
-      color: STATUS_COLORS[status] ?? "#64748b",
+  const statusColors = useMemo(() => {
+    const map: Record<string, string> = {
+      planning: "#C4A63A", active: "#7A9B6D", on_hold: "#C4908F",
+      completed: "#8B7EB8", cancelled: "#B85C5C",
+    };
+    return d.projectStatusData.map((entry, i) => ({
+      ...entry,
+      color: map[entry.name.replace(" ", "_")] || PIE_COLORS[i % PIE_COLORS.length],
     }));
-  }, [projects]);
+  }, [d.projectStatusData]);
 
-  const performanceGap = Math.max(0, (totals?.financialPerformance || 0) - (totals?.physicalPerformance || 0));
-
-  function formatCurrency(amount: number) {
-    return formatCurrencyUtil(amount, "ETB");
-  }
-
-  function formatDateTime(value: Date | null) {
-    if (!value) return "Not yet synced";
-    return value.toLocaleString();
-  }
-
-  if (loading) {
+  if (d.loading) {
     return (
-      <div className="p-6">
-        <p>Loading dashboard...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="h-6 w-6 animate-pulse text-primary" />
+          <p className="text-sm text-muted-foreground">Growing your dashboard…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">General Dashboard</h1>
-          <p className="text-xs text-muted-foreground mt-1">Last updated: {formatDateTime(lastUpdated)}</p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setRefreshing(true);
-            fetchDashboardData();
-          }}
-          disabled={refreshing}
-        >
-          <RefreshCcw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Refreshing..." : "Refresh now"}
-        </Button>
+    <div className="p-6 lg:p-10">
+      <header className="mb-10">
+        <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
+          Good day, here&apos;s your overview
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          A gentle summary of your portfolio health
+        </p>
+      </header>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <StatCard
+          label="Projects"
+          value={String(d.projects.length)}
+          sub={`${d.activeCount} actively growing`}
+          variant="sage"
+        />
+        <StatCard
+          label="Budget"
+          value={formatCurrency(d.totals?.plannedBudget || 0)}
+          sub={`${formatCurrency(d.totals?.spentAmount || 0)} utilized`}
+          variant="lavender"
+        />
+        <StatCard
+          label="Execution Gap"
+          value={`${d.performanceGap}%`}
+          sub="Between financial and physical pace"
+          variant="cream"
+        />
+        <StatCard
+          label="Attention Needed"
+          value={String(d.delayedMilestones.length + d.overspentProjects.length)}
+          sub={`${d.delayedMilestones.length} delayed · ${d.overspentProjects.length} overspent`}
+          variant="rose"
+        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Projects</CardDescription>
-            <CardTitle className="text-2xl">{projects.length}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">{activeProjects} active projects</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Planned Budget</CardDescription>
-            <CardTitle className="text-2xl">{formatCurrency(totals?.plannedBudget || 0)}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Spent: {formatCurrency(totals?.spentAmount || 0)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Execution Gap</CardDescription>
-            <CardTitle className="text-2xl">{performanceGap}%</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Financial pace above physical pace
-          </CardContent>
-        </Card>
-        <Card className={delayedMilestones.length > 0 || overspentProjects.length > 0 ? "border-red-300" : ""}>
-          <CardHeader className="pb-2">
-            <CardDescription>Status Alerts</CardDescription>
-            <CardTitle className="text-2xl">{delayedMilestones.length + overspentProjects.length}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {delayedMilestones.length} delayed milestones, {overspentProjects.length} overspent projects
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Budget Performance By Project</CardTitle>
-            <CardDescription>Top projects by spending, planned vs actual.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72">
-            {budgetChartData.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No expenditure data yet.</p>
+      <div className="grid lg:grid-cols-2 gap-5 mb-10">
+        <div className="p-6 bg-card rounded-2xl">
+          <h2 className="font-serif text-lg text-foreground mb-1">Budget Performance</h2>
+          <p className="text-xs text-muted-foreground mb-5">Planned vs actual spend, top projects</p>
+          <div className="h-72">
+            {d.budgetChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-sm text-muted-foreground/60">No data to display yet</p>
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={budgetChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  <Legend />
-                  <Bar dataKey="planned" fill="#0f766e" radius={[4, 4, 0, 0]} name="Planned" />
-                  <Bar dataKey="spent" fill="#b91c1c" radius={[4, 4, 0, 0]} name="Spent" />
+                <BarChart data={d.budgetChartData} barGap={6}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                  <Tooltip
+                    formatter={(v) => formatCurrency(Number(v))}
+                    contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }}
+                  />
+                  <Bar dataKey="planned" fill="var(--primary)" radius={[8, 8, 0, 0]} name="Planned" />
+                  <Bar dataKey="spent" fill="var(--lavender)" radius={[8, 8, 0, 0]} name="Spent" />
                 </BarChart>
               </ResponsiveContainer>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Status Distribution</CardTitle>
-            <CardDescription>Current status mix across the ministry portfolio.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72">
-            {projectStatusData.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No projects available.</p>
+        <div className="p-6 bg-card rounded-2xl">
+          <h2 className="font-serif text-lg text-foreground mb-1">Project Status</h2>
+          <p className="text-xs text-muted-foreground mb-5">How your portfolio is distributed</p>
+          <div className="h-72">
+            {statusColors.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-sm text-muted-foreground/60">No projects yet</p>
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={projectStatusData}
+                    data={statusColors}
                     dataKey="value"
                     nameKey="name"
                     cx="50%"
                     cy="50%"
                     outerRadius={95}
+                    innerRadius={55}
+                    strokeWidth={0}
                     label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                   >
-                    {projectStatusData.map((entry, index) => (
-                      <Cell key={entry.name} fill={entry.color || PIE_COLORS[index % PIE_COLORS.length]} />
+                    {statusColors.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", background: "var(--card)" }} />
                 </PieChart>
               </ResponsiveContainer>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Milestone Completion</CardTitle>
-            <CardDescription>{completedMilestones} of {totalMilestones} milestones completed.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-2 flex justify-between text-sm">
-              <span>Completion Rate</span>
-              <span>{milestoneCompletionRate}%</span>
-            </div>
-            <Progress value={milestoneCompletionRate} className="h-2" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Portfolio Execution</CardTitle>
-            <CardDescription>Physical vs financial performance snapshot.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span>Physical</span>
-              <span>{totals?.physicalPerformance || 0}%</span>
-            </div>
-            <Progress value={totals?.physicalPerformance || 0} className="h-2" />
-            <div className="flex items-center justify-between text-sm">
-              <span>Financial</span>
-              <span>{totals?.financialPerformance || 0}%</span>
-            </div>
-            <Progress value={Math.min(totals?.financialPerformance || 0, 100)} className="h-2" />
-          </CardContent>
-        </Card>
+      <div className="grid lg:grid-cols-2 gap-5 mb-10">
+        <div className="p-6 bg-card rounded-2xl">
+          <h2 className="font-serif text-lg text-foreground mb-5">Milestones</h2>
+          <div className="flex items-baseline gap-3 mb-4">
+            <span className="font-serif text-4xl text-primary">
+              {d.milestoneCompletionRate}%
+            </span>
+            <span className="text-sm text-muted-foreground">
+              completed ({d.completedMilestones}/{d.totalMilestones})
+            </span>
+          </div>
+          <div className="h-2.5 rounded-full bg-sage-pale overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-700"
+              style={{ width: `${d.milestoneCompletionRate}%`, transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
+            />
+          </div>
+        </div>
+
+        <div className="p-6 bg-card rounded-2xl">
+          <h2 className="font-serif text-lg text-foreground mb-5">Execution Balance</h2>
+          <ProgressRow
+            label="Physical progress"
+            value={d.totals?.physicalPerformance || 0}
+            colorClass="bg-primary"
+            bgClass="bg-sage-pale"
+          />
+          <ProgressRow
+            label="Financial progress"
+            value={Math.min(d.totals?.financialPerformance || 0, 100)}
+            colorClass="bg-lavender"
+            bgClass="bg-lavender-pale"
+          />
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-              Status Alerts: Delayed Milestones
-            </CardTitle>
-            <CardDescription>Visual cues for milestones that are overdue and not completed.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {delayedMilestones.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No delayed milestones.</p>
-            ) : (
-              delayedMilestones.slice(0, 8).map((milestone) => (
-                <div
-                  key={milestone.id}
-                  className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{milestone.title}</p>
-                    <p className="text-xs text-muted-foreground">{milestone.projectName}</p>
+      <div className="grid lg:grid-cols-2 gap-5">
+        <div className="p-6 bg-card rounded-2xl">
+          <h2 className="font-serif text-lg text-foreground mb-4">Delayed Milestones</h2>
+          {d.delayedMilestones.length === 0 ? (
+            <div className="py-6 text-center">
+              <Leaf className="h-8 w-8 mx-auto mb-2 text-primary/30" />
+              <p className="text-sm text-muted-foreground/60">Everything&apos;s blooming on time</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {d.delayedMilestones.slice(0, 8).map((m) => (
+                <div key={m.id} className="flex items-center gap-3 p-3 bg-rose-pale rounded-xl">
+                  <div className="h-2 w-2 rounded-full shrink-0 bg-rose-muted" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{m.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">{m.projectName}</p>
                   </div>
-                  <Badge className="bg-red-100 text-red-700">Delayed</Badge>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              ))}
+            </div>
+          )}
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-600" />
-              Status Alerts: Overspent Budgets
-            </CardTitle>
-            <CardDescription>Projects where expenditure has exceeded planned budget.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {overspentProjects.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No overspent projects.</p>
-            ) : (
-              overspentProjects.slice(0, 8).map((row) => (
-                <div
-                  key={row.projectId}
-                  className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{row.projectName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Planned {formatCurrency(row.plannedBudget)} | Spent {formatCurrency(row.spentAmount)}
+        <div className="p-6 bg-card rounded-2xl">
+          <h2 className="font-serif text-lg text-foreground mb-4">Overspent Budgets</h2>
+          {d.overspentProjects.length === 0 ? (
+            <div className="py-6 text-center">
+              <Flower2 className="h-8 w-8 mx-auto mb-2 text-primary/30" />
+              <p className="text-sm text-muted-foreground/60">All budgets are well-tended</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {d.overspentProjects.slice(0, 8).map((r) => (
+                <div key={r.projectId} className="flex items-center gap-3 p-3 bg-amber-pale rounded-xl">
+                  <div className="h-2 w-2 rounded-full shrink-0 bg-amber-warm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{r.projectName}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {formatCurrency(r.plannedBudget)} planned · {formatCurrency(r.spentAmount)} spent
                     </p>
                   </div>
-                  <Badge className="bg-amber-100 text-amber-700">Overspent</Badge>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, variant }: {
+  label: string;
+  value: string;
+  sub: string;
+  variant: "sage" | "lavender" | "cream" | "rose";
+}) {
+  const bgMap = {
+    sage: "bg-sage-pale",
+    lavender: "bg-lavender-pale",
+    cream: "bg-muted",
+    rose: "bg-rose-pale",
+  };
+  const accentMap = {
+    sage: "text-primary",
+    lavender: "text-lavender",
+    cream: "text-amber-warm",
+    rose: "text-rose-muted",
+  };
+
+  return (
+    <div className={`p-5 rounded-2xl ${bgMap[variant]}`}>
+      <p className={`text-[11px] font-semibold uppercase tracking-wider mb-3 ${accentMap[variant]}`}>
+        {label}
+      </p>
+      <p className="font-serif text-2xl lg:text-3xl text-foreground mb-1">{value}</p>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </div>
+  );
+}
+
+function ProgressRow({ label, value, colorClass, bgClass }: {
+  label: string;
+  value: number;
+  colorClass: string;
+  bgClass: string;
+}) {
+  const displayValue = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <div className="mb-4">
+      <div className="flex justify-between mb-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={`text-xs font-semibold ${colorClass.replace("bg-", "text-")}`}>{displayValue}%</span>
+      </div>
+      <div className={`h-2.5 rounded-full ${bgClass} overflow-hidden`}>
+        <div
+          className={`h-full rounded-full ${colorClass} transition-all duration-700`}
+          style={{ width: `${displayValue}%`, transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
+        />
       </div>
     </div>
   );

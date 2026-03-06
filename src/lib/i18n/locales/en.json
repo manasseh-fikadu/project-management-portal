@@ -52,7 +52,8 @@
     "reports": "Reports",
     "profile": "Profile",
     "users": "Users",
-    "signOut": "Sign Out"
+    "signOut": "Sign Out",
+    "growWithPurpose": "Grow with purpose"
   },
   "profile": {
     "title": "Profile",
@@ -389,7 +390,8 @@
     "error_select_project": "Please select a project.",
     "error_select_donor": "Please select a donor.",
     "error_generate_failed": "Failed to generate report",
-    "error_generic": "An error occurred"
+    "error_generic": "An error occurred",
+    "loading": "Loading reports…"
   },
   "notifications": {
     "title": "Notifications",

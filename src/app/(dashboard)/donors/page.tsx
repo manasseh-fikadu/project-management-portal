@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -15,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe, Power, PowerOff } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Edit, Building2, Mail, Phone, Globe, Power, PowerOff, Send, Leaf, Users } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency } from "@/lib/currency";
 
@@ -36,23 +34,23 @@ type Donor = {
   createdAt: string;
 };
 
-const donorTypeColors: Record<string, string> = {
-  government: "bg-blue-100 text-blue-800",
-  foundation: "bg-purple-100 text-purple-800",
-  corporate: "bg-green-100 text-green-800",
-  individual: "bg-yellow-100 text-yellow-800",
-  multilateral: "bg-orange-100 text-orange-800",
-  ngo: "bg-pink-100 text-pink-800",
+const donorTypeConfig: Record<string, { bg: string; text: string; label: string }> = {
+  government: { bg: "bg-lavender-pale", text: "text-lavender", label: "Government" },
+  foundation: { bg: "bg-sage-pale", text: "text-primary", label: "Foundation" },
+  corporate: { bg: "bg-amber-pale", text: "text-amber-warm", label: "Corporate" },
+  individual: { bg: "bg-rose-pale", text: "text-rose-muted", label: "Individual" },
+  multilateral: { bg: "bg-lavender-pale", text: "text-lavender", label: "Multilateral" },
+  ngo: { bg: "bg-sage-pale", text: "text-primary", label: "NGO" },
 };
 
-const donorTypeLabels: Record<string, string> = {
-  government: "Government",
-  foundation: "Foundation",
-  corporate: "Corporate",
-  individual: "Individual",
-  multilateral: "Multilateral",
-  ngo: "NGO",
-};
+function isSafeWebsiteUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 export default function DonorsPage() {
   const [donors, setDonors] = useState<Donor[]>([]);
@@ -62,6 +60,7 @@ export default function DonorsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
+  const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({
     name: "",
     type: "",
@@ -195,6 +194,32 @@ export default function DonorsPage() {
     setIsAddDialogOpen(true);
   }
 
+  async function handleSendPortalInvite(donorId: string) {
+    setSendingInvites((prev) => new Set(prev).add(donorId));
+    try {
+      const res = await fetch("/api/donor-portal/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ donorId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Portal invite sent successfully! The donor will receive an email with access instructions.");
+      } else {
+        alert(data.error || "Failed to send invite");
+      }
+    } catch (error) {
+      console.error("Failed to send portal invite:", error);
+      alert("Failed to send portal invite");
+    } finally {
+      setSendingInvites((prev) => {
+        const next = new Set(prev);
+        next.delete(donorId);
+        return next;
+      });
+    }
+  }
+
   function formatGrantSize(amount: number | null) {
     if (!amount) return "Not specified";
     return formatCurrency(amount, "ETB");
@@ -218,206 +243,246 @@ export default function DonorsPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="h-6 w-6 animate-pulse text-primary" />
+          <p className="text-sm text-muted-foreground">Loading donors…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Donor Directory</h1>
-          <p className="text-muted-foreground">Manage donor contacts and grant opportunities</p>
-        </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" /> Add Donor
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingDonor ? "Edit Donor" : "Add New Donor"}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="grid gap-4 md:grid-cols-2">
+    <div className="p-6 lg:p-10">
+      <header className="mb-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
+              Donor Directory
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Manage donor contacts and grant opportunities
+            </p>
+          </div>
+          <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="rounded-xl shrink-0">
+                <Plus className="h-4 w-4 mr-2" /> Add Donor
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="font-serif text-xl">
+                  {editingDonor ? "Edit Donor" : "Add New Donor"}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Organization Name *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Donor Type *</Label>
+                    <Select
+                      value={formData.type}
+                      onValueChange={(value) => setFormData({ ...formData, type: value })}
+                      required
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="government">Government</SelectItem>
+                        <SelectItem value="foundation">Foundation</SelectItem>
+                        <SelectItem value="corporate">Corporate</SelectItem>
+                        <SelectItem value="individual">Individual</SelectItem>
+                        <SelectItem value="multilateral">Multilateral</SelectItem>
+                        <SelectItem value="ngo">NGO</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="contactPerson">Contact Person</Label>
+                    <Input
+                      id="contactPerson"
+                      value={formData.contactPerson}
+                      onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="website">Website</Label>
+                    <Input
+                      id="website"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      className="rounded-xl"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="name">Organization Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
+                  <Label htmlFor="address">Address</Label>
+                  <Textarea
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    rows={2}
+                    className="rounded-xl"
                   />
                 </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="grantTypes">Grant Types</Label>
+                    <Input
+                      id="grantTypes"
+                      value={formData.grantTypes}
+                      onChange={(e) => setFormData({ ...formData, grantTypes: e.target.value })}
+                      placeholder="e.g., Project, Core, Emergency"
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="focusAreas">Focus Areas</Label>
+                    <Input
+                      id="focusAreas"
+                      value={formData.focusAreas}
+                      onChange={(e) => setFormData({ ...formData, focusAreas: e.target.value })}
+                      placeholder="e.g., Health, Education"
+                      className="rounded-xl"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="type">Donor Type *</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(value) => setFormData({ ...formData, type: value })}
-                    required
+                  <Label htmlFor="averageGrantSize">Average Grant Size</Label>
+                  <CurrencyInput
+                    id="averageGrantSize"
+                    value={formData.averageGrantSize}
+                    onChange={(val) => setFormData({ ...formData, averageGrantSize: val })}
+                    currency="ETB"
+                    placeholder="e.g., 500000"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-xl">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formData.isActive}
+                    aria-labelledby="active-status-label"
+                    onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formData.isActive ? "bg-primary" : "bg-border"}`}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="government">Government</SelectItem>
-                      <SelectItem value="foundation">Foundation</SelectItem>
-                      <SelectItem value="corporate">Corporate</SelectItem>
-                      <SelectItem value="individual">Individual</SelectItem>
-                      <SelectItem value="multilateral">Multilateral</SelectItem>
-                      <SelectItem value="ngo">NGO</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${formData.isActive ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                  <div>
+                    <Label id="active-status-label" className="text-sm font-medium">
+                      {formData.isActive ? "Active" : "Non-Active"}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {formData.isActive ? "Available for project assignments" : "Hidden from project selections"}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="contactPerson">Contact Person</Label>
-                  <Input
-                    id="contactPerson"
-                    value={formData.contactPerson}
-                    onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    rows={3}
+                    className="rounded-xl"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  />
+
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="rounded-xl">
+                    {editingDonor ? "Update" : "Create"} Donor
+                  </Button>
                 </div>
-              </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </header>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    value={formData.website}
-                    onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <Textarea
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  rows={2}
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="grantTypes">Grant Types</Label>
-                  <Input
-                    id="grantTypes"
-                    value={formData.grantTypes}
-                    onChange={(e) => setFormData({ ...formData, grantTypes: e.target.value })}
-                    placeholder="e.g., Project, Core, Emergency"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="focusAreas">Focus Areas</Label>
-                  <Input
-                    id="focusAreas"
-                    value={formData.focusAreas}
-                    onChange={(e) => setFormData({ ...formData, focusAreas: e.target.value })}
-                    placeholder="e.g., Health, Education"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="averageGrantSize">Average Grant Size</Label>
-                <CurrencyInput
-                  id="averageGrantSize"
-                  value={formData.averageGrantSize}
-                  onChange={(val) => setFormData({ ...formData, averageGrantSize: val })}
-                  currency="ETB"
-                  placeholder="e.g., 500000"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 p-3 border rounded-lg">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={formData.isActive}
-                  onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formData.isActive ? "bg-green-500" : "bg-gray-200"}`}
-                >
-                  <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${formData.isActive ? "translate-x-5" : "translate-x-0"}`} />
-                </button>
-                <div>
-                  <Label className="text-sm font-medium">
-                    {formData.isActive ? "Active" : "Non-Active"}
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {formData.isActive ? "Donor is active and available for project assignments" : "Donor is non-active and hidden from project selections"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                  Cancel
-                </Button>
-                <Button type="submit">{editingDonor ? "Update" : "Create"} Donor</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+      {/* Summary strip */}
+      <div className="flex gap-3 mb-8">
+        <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
+          <span className="text-xs text-muted-foreground">Total</span>
+          <p className="font-serif text-lg text-foreground">{donors.length}</p>
+        </div>
+        <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
+          <span className="text-xs text-muted-foreground">Active</span>
+          <p className="font-serif text-lg text-primary">{activeDonorCount}</p>
+        </div>
+        <div className="px-4 py-2.5 bg-rose-pale rounded-xl">
+          <span className="text-xs text-muted-foreground">Inactive</span>
+          <p className="font-serif text-lg text-rose-muted">{inactiveDonorCount}</p>
+        </div>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      {/* Filters */}
+      <div className="flex gap-3 mb-8">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search donors..."
+            placeholder="Search donors…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-10 rounded-xl bg-card"
           />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-36 rounded-xl">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status ({donors.length})</SelectItem>
-            <SelectItem value="active">Active ({activeDonorCount})</SelectItem>
-            <SelectItem value="inactive">Non-Active ({inactiveDonorCount})</SelectItem>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40 rounded-xl">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -432,44 +497,56 @@ export default function DonorsPage() {
         </Select>
       </div>
 
+      {/* Donor cards */}
       {filteredDonors.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-gray-500 mb-4">
-              {searchQuery || filterType !== "all" ? "No donors match your search" : "No donors found"}
-            </p>
-            {!searchQuery && filterType === "all" && (
-              <Button onClick={() => setIsAddDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Add your first donor
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+        <div className="py-20 text-center">
+          <Users className="h-10 w-10 mx-auto mb-3 text-primary/25" />
+          <p className="text-sm text-muted-foreground mb-5">
+            {searchQuery || filterType !== "all" || filterStatus !== "all"
+              ? "No donors match your filters"
+              : "No donors yet — add your first one"}
+          </p>
+          {!searchQuery && filterType === "all" && filterStatus === "all" && (
+            <Button onClick={() => setIsAddDialogOpen(true)} className="rounded-xl">
+              <Plus className="h-4 w-4 mr-2" /> Add your first donor
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredDonors.map((donor) => (
-            <Card key={donor.id} className={`hover:shadow-md transition-shadow ${!donor.isActive ? "opacity-60" : ""}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                      <Building2 className="h-5 w-5 text-gray-600" />
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {filteredDonors.map((donor) => {
+            const typeConf = donorTypeConfig[donor.type] || donorTypeConfig.foundation;
+            return (
+              <div
+                key={donor.id}
+                className={`bg-card rounded-2xl p-5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group ${
+                  !donor.isActive ? "opacity-55" : ""
+                }`}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`p-2 rounded-xl shrink-0 ${typeConf.bg}`}>
+                      <Building2 className={`h-5 w-5 ${typeConf.text}`} />
                     </div>
-                    <div>
-                      <CardTitle className="text-lg">{donor.name}</CardTitle>
+                    <div className="min-w-0">
+                      <h3 className="font-serif text-lg text-foreground leading-snug truncate">{donor.name}</h3>
                       <div className="flex items-center gap-1.5 mt-1">
-                        <Badge className={donorTypeColors[donor.type]}>
-                          {donorTypeLabels[donor.type]}
-                        </Badge>
-                        <Badge className={donor.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}>
-                          {donor.isActive ? "Active" : "Non-Active"}
-                        </Badge>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${typeConf.bg} ${typeConf.text}`}>
+                          {typeConf.label}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          donor.isActive ? "bg-sage-pale text-primary" : "bg-muted text-muted-foreground"
+                        }`}>
+                          <span className={`h-1 w-1 rounded-full ${donor.isActive ? "bg-primary" : "bg-muted-foreground"}`} />
+                          {donor.isActive ? "Active" : "Inactive"}
+                        </span>
                       </div>
                     </div>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -479,59 +556,74 @@ export default function DonorsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleToggleActive(donor)}>
                         {donor.isActive ? (
-                          <><PowerOff className="h-4 w-4 mr-2" /> Set Non-Active</>
+                          <><PowerOff className="h-4 w-4 mr-2" /> Set Inactive</>
                         ) : (
                           <><Power className="h-4 w-4 mr-2" /> Set Active</>
                         )}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-red-600">
+                      {donor.email && (
+                        <DropdownMenuItem
+                          onClick={() => handleSendPortalInvite(donor.id)}
+                          disabled={sendingInvites.has(donor.id)}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          {sendingInvites.has(donor.id) ? "Sending…" : "Send Portal Invite"}
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-destructive">
                         <Trash2 className="h-4 w-4 mr-2" /> Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {donor.contactPerson && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Contact:</span> {donor.contactPerson}
-                  </p>
-                )}
-                {donor.email && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="h-4 w-4" />
-                    <a href={`mailto:${donor.email}`} className="hover:underline">
-                      {donor.email}
-                    </a>
-                  </div>
-                )}
-                {donor.phone && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Phone className="h-4 w-4" />
-                    <span>{donor.phone}</span>
-                  </div>
-                )}
-                {donor.website && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Globe className="h-4 w-4" />
-                    <a href={donor.website} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">
-                      {donor.website}
-                    </a>
-                  </div>
-                )}
-                {donor.focusAreas && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Focus:</span> {donor.focusAreas}
-                  </p>
-                )}
-                {donor.averageGrantSize && (
-                  <p className="text-sm text-gray-600">
-                    <span className="font-medium">Avg. Grant:</span> {formatGrantSize(donor.averageGrantSize)}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+
+                {/* Details */}
+                <div className="space-y-2">
+                  {donor.contactPerson && (
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Contact:</span> {donor.contactPerson}
+                    </p>
+                  )}
+                  {donor.email && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <a href={`mailto:${donor.email}`} className="hover:text-primary truncate transition-colors">
+                        {donor.email}
+                      </a>
+                    </div>
+                  )}
+                  {donor.phone && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span>{donor.phone}</span>
+                    </div>
+                  )}
+                  {donor.website && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Globe className="h-3.5 w-3.5 shrink-0" />
+                      {isSafeWebsiteUrl(donor.website) ? (
+                        <a href={donor.website} target="_blank" rel="noopener noreferrer" className="hover:text-primary truncate transition-colors">
+                          {donor.website}
+                        </a>
+                      ) : (
+                        <span className="truncate">{donor.website}</span>
+                      )}
+                    </div>
+                  )}
+                  {donor.focusAreas && (
+                    <p className="text-xs text-muted-foreground pt-1">
+                      <span className="font-medium text-foreground">Focus:</span> {donor.focusAreas}
+                    </p>
+                  )}
+                  {donor.averageGrantSize && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Avg. Grant:</span> {formatGrantSize(donor.averageGrantSize)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

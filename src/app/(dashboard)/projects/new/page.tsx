@@ -13,14 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus,
@@ -35,6 +27,7 @@ import {
   Users,
   Eye,
   Loader2,
+  ArrowLeft,
 } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency } from "@/lib/currency";
@@ -69,16 +62,22 @@ type UserOption = {
 };
 
 const STEPS = [
-  { id: 0, label: "Project Details", icon: ClipboardList },
-  { id: 1, label: "Tasks & Activities", icon: ListTodo },
-  { id: 2, label: "Donor & Documents", icon: Users },
-  { id: 3, label: "Review & Submit", icon: Eye },
+  { id: 0, label: "Details", fullLabel: "Project Details", icon: ClipboardList },
+  { id: 1, label: "Tasks", fullLabel: "Tasks & Activities", icon: ListTodo },
+  { id: 2, label: "Donors", fullLabel: "Donors & Documents", icon: Users },
+  { id: 3, label: "Review", fullLabel: "Review & Submit", icon: Eye },
 ];
 
 const priorityLabels: Record<string, string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
+};
+
+const priorityConfig: Record<string, { bg: string; text: string }> = {
+  low: { bg: "bg-muted", text: "text-muted-foreground" },
+  medium: { bg: "bg-amber-pale", text: "text-amber-warm" },
+  high: { bg: "bg-rose-pale", text: "text-rose-muted" },
 };
 
 const statusLabels: Record<string, string> = {
@@ -88,6 +87,11 @@ const statusLabels: Record<string, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
+
+function formatLocalDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString();
+}
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -100,7 +104,6 @@ export default function NewProjectPage() {
   const [taskInputs, setTaskInputs] = useState<TaskInput[]>([]);
   const [donors, setDonors] = useState<Donor[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-
   const [selectedDonorIds, setSelectedDonorIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
@@ -155,7 +158,6 @@ export default function NewProjectPage() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // Milestones
   function addMilestone() {
     setMilestones((prev) => [
       ...prev,
@@ -175,7 +177,6 @@ export default function NewProjectPage() {
     );
   }
 
-  // Tasks
   function addTask() {
     setTaskInputs((prev) => [
       ...prev,
@@ -290,23 +291,30 @@ export default function NewProjectPage() {
   }
 
   function getUserName(userId: string): string {
-    const u = users.find((u) => u.id === userId);
+    const u = users.find((user) => user.id === userId);
     return u ? `${u.firstName} ${u.lastName}` : "Unassigned";
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <Button variant="ghost" onClick={() => router.back()}>
-          ← Back
+    <div className="p-6 lg:p-10 max-w-4xl mx-auto">
+      <div className="mb-8">
+        <Button
+          variant="ghost"
+          onClick={() => router.back()}
+          className="text-muted-foreground hover:text-foreground -ml-3 mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </Button>
+        <h1 className="font-serif text-3xl text-foreground">New Project</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Set up your project in a few steps
+        </p>
       </div>
 
-      {/* Stepper Header */}
-      <nav className="mb-8">
-        <ol className="flex items-center w-full">
+      {/* Stepper */}
+      <nav className="mb-10">
+        <ol className="flex items-center">
           {STEPS.map((step, idx) => {
-            const Icon = step.icon;
             const isActive = idx === currentStep;
             const isCompleted = idx < currentStep;
             return (
@@ -320,36 +328,35 @@ export default function NewProjectPage() {
                     if (isCompleted) setCurrentStep(idx);
                   }}
                   disabled={!isCompleted && !isActive}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : isCompleted
-                        ? "bg-primary/10 text-primary cursor-pointer hover:bg-primary/20"
-                        : "bg-muted text-muted-foreground"
+                        ? "bg-sage-pale text-primary cursor-pointer hover:bg-primary/15"
+                        : "text-muted-foreground"
                   }`}
                 >
                   <span
-                    className={`flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold shrink-0 ${
+                    className={`flex items-center justify-center h-6 w-6 rounded-full text-[11px] font-bold shrink-0 ${
                       isActive
                         ? "bg-primary-foreground text-primary"
                         : isCompleted
                           ? "bg-primary text-primary-foreground"
-                          : "bg-muted-foreground/20 text-muted-foreground"
+                          : "bg-border text-muted-foreground"
                     }`}
                   >
                     {isCompleted ? (
-                      <Check className="h-4 w-4" />
+                      <Check className="h-3.5 w-3.5" />
                     ) : (
                       idx + 1
                     )}
                   </span>
-                  <Icon className="h-4 w-4 hidden sm:block" />
                   <span className="hidden md:inline">{step.label}</span>
                 </button>
                 {idx < STEPS.length - 1 && (
                   <div
-                    className={`flex-1 h-0.5 mx-2 ${
-                      isCompleted ? "bg-primary" : "bg-muted"
+                    className={`flex-1 h-px mx-3 transition-colors duration-200 ${
+                      isCompleted ? "bg-primary" : "bg-border"
                     }`}
                   />
                 )}
@@ -360,21 +367,20 @@ export default function NewProjectPage() {
       </nav>
 
       {error && (
-        <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md">
+        <div className="mb-6 p-4 text-sm text-destructive bg-rose-pale border border-rose-muted/20 rounded-xl">
           {error}
         </div>
       )}
 
       {/* Step 1: Project Details */}
       {currentStep === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Information</CardTitle>
-            <CardDescription>
-              Enter the basic details for your new project
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <div className="bg-card rounded-2xl p-6 lg:p-8">
+          <h2 className="font-serif text-xl text-foreground mb-1">Project Information</h2>
+          <p className="text-sm text-muted-foreground mb-8">
+            Enter the basic details for your new project
+          </p>
+
+          <div className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="name">Project Name *</Label>
               <Input
@@ -385,6 +391,7 @@ export default function NewProjectPage() {
                 placeholder="Enter project name"
                 required
                 disabled={loading}
+                className="rounded-xl"
               />
             </div>
 
@@ -398,10 +405,11 @@ export default function NewProjectPage() {
                 rows={3}
                 placeholder="Describe the project objectives and scope"
                 disabled={loading}
+                className="rounded-xl"
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="managerId">Project Manager</Label>
                 <Select
@@ -411,8 +419,8 @@ export default function NewProjectPage() {
                   }
                   disabled={loading}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select project manager (defaults to you)" />
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Select manager (defaults to you)" />
                   </SelectTrigger>
                   <SelectContent>
                     {users.map((user) => (
@@ -438,7 +446,7 @@ export default function NewProjectPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
                 <Select
@@ -448,7 +456,7 @@ export default function NewProjectPage() {
                   }
                   disabled={loading}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -470,6 +478,7 @@ export default function NewProjectPage() {
                   value={formData.startDate}
                   onChange={handleInputChange}
                   disabled={loading}
+                  className="rounded-xl"
                 />
               </div>
 
@@ -482,15 +491,14 @@ export default function NewProjectPage() {
                   value={formData.endDate}
                   onChange={handleInputChange}
                   disabled={loading}
+                  className="rounded-xl"
                 />
               </div>
             </div>
 
-            <Separator />
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">
+            <div className="border-t border-border pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-serif text-lg text-foreground">
                   Work Plan / Milestones
                 </h3>
                 <Button
@@ -499,17 +507,18 @@ export default function NewProjectPage() {
                   size="sm"
                   onClick={addMilestone}
                   disabled={loading}
+                  className="rounded-xl"
                 >
                   <Plus className="h-4 w-4 mr-1" /> Add Milestone
                 </Button>
               </div>
 
               {milestones.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {milestones.map((milestone, index) => (
                     <div
                       key={index}
-                      className="p-4 border rounded-lg space-y-3"
+                      className="p-4 bg-muted/40 rounded-xl space-y-3"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 space-y-2">
@@ -520,6 +529,7 @@ export default function NewProjectPage() {
                               updateMilestone(index, "title", e.target.value)
                             }
                             disabled={loading}
+                            className="rounded-xl"
                           />
                         </div>
                         <Button
@@ -528,8 +538,9 @@ export default function NewProjectPage() {
                           size="icon"
                           onClick={() => removeMilestone(index)}
                           disabled={loading}
+                          className="text-destructive hover:text-destructive"
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                       <Textarea
@@ -540,6 +551,7 @@ export default function NewProjectPage() {
                         }
                         rows={2}
                         disabled={loading}
+                        className="rounded-xl"
                       />
                       <Input
                         type="date"
@@ -548,7 +560,7 @@ export default function NewProjectPage() {
                           updateMilestone(index, "dueDate", e.target.value)
                         }
                         disabled={loading}
-                        className="w-full md:w-auto"
+                        className="w-full md:w-auto rounded-xl"
                       />
                     </div>
                   ))}
@@ -560,182 +572,183 @@ export default function NewProjectPage() {
                 </p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Step 2: Tasks & Activities */}
       {currentStep === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tasks & Activities</CardTitle>
-            <CardDescription>
-              Add tasks and activities for this project. You can also add more
-              tasks later from the project page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex justify-end">
+        <div className="bg-card rounded-2xl p-6 lg:p-8">
+          <div className="flex items-start justify-between gap-4 mb-8">
+            <div>
+              <h2 className="font-serif text-xl text-foreground mb-1">Tasks & Activities</h2>
+              <p className="text-sm text-muted-foreground">
+                Define the work items — you can always add more later
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addTask}
+              disabled={loading}
+              className="rounded-xl shrink-0"
+            >
+              <Plus className="h-4 w-4 mr-1" /> Add Task
+            </Button>
+          </div>
+
+          {taskInputs.length > 0 ? (
+            <div className="space-y-4">
+              {taskInputs.map((task, index) => (
+                <div
+                  key={index}
+                  className="p-5 bg-muted/30 rounded-xl space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Task {index + 1}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeTask(index)}
+                      disabled={loading}
+                      className="text-destructive hover:text-destructive h-7 w-7"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Title *</Label>
+                    <Input
+                      placeholder="Task title"
+                      value={task.title}
+                      onChange={(e) =>
+                        updateTask(index, "title", e.target.value)
+                      }
+                      disabled={loading}
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Textarea
+                      placeholder="What needs to be done?"
+                      value={task.description}
+                      onChange={(e) =>
+                        updateTask(index, "description", e.target.value)
+                      }
+                      rows={2}
+                      disabled={loading}
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Priority</Label>
+                      <Select
+                        value={task.priority}
+                        onValueChange={(value) =>
+                          updateTask(index, "priority", value)
+                        }
+                        disabled={loading}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Due Date</Label>
+                      <Input
+                        type="date"
+                        value={task.dueDate}
+                        onChange={(e) =>
+                          updateTask(index, "dueDate", e.target.value)
+                        }
+                        disabled={loading}
+                        className="rounded-xl"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Assign To</Label>
+                      <Select
+                        value={task.assignedTo}
+                        onValueChange={(value) =>
+                          updateTask(
+                            index,
+                            "assignedTo",
+                            value === "_none" ? "" : value
+                          )
+                        }
+                        disabled={loading}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Select assignee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.firstName} {user.lastName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 border border-dashed border-border rounded-2xl">
+              <ListTodo className="h-10 w-10 mx-auto text-primary/20 mb-3" />
+              <p className="text-sm text-muted-foreground mb-4">
+                No tasks yet — define the work items for this project
+              </p>
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={addTask}
                 disabled={loading}
+                className="rounded-xl"
               >
-                <Plus className="h-4 w-4 mr-1" /> Add Task
+                <Plus className="h-4 w-4 mr-1" /> Add Your First Task
               </Button>
             </div>
-
-            {taskInputs.length > 0 ? (
-              <div className="space-y-4">
-                {taskInputs.map((task, index) => (
-                  <div
-                    key={index}
-                    className="p-4 border rounded-lg space-y-4 bg-muted/30"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">
-                        Task {index + 1}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeTask(index)}
-                        disabled={loading}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Title *</Label>
-                      <Input
-                        placeholder="Task title"
-                        value={task.title}
-                        onChange={(e) =>
-                          updateTask(index, "title", e.target.value)
-                        }
-                        disabled={loading}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Description</Label>
-                      <Textarea
-                        placeholder="What needs to be done?"
-                        value={task.description}
-                        onChange={(e) =>
-                          updateTask(index, "description", e.target.value)
-                        }
-                        rows={2}
-                        disabled={loading}
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label>Priority</Label>
-                        <Select
-                          value={task.priority}
-                          onValueChange={(value) =>
-                            updateTask(index, "priority", value)
-                          }
-                          disabled={loading}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Due Date</Label>
-                        <Input
-                          type="date"
-                          value={task.dueDate}
-                          onChange={(e) =>
-                            updateTask(index, "dueDate", e.target.value)
-                          }
-                          disabled={loading}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Assign To</Label>
-                        <Select
-                          value={task.assignedTo}
-                          onValueChange={(value) =>
-                            updateTask(
-                              index,
-                              "assignedTo",
-                              value === "_none" ? "" : value
-                            )
-                          }
-                          disabled={loading}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select assignee" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="_none">Unassigned</SelectItem>
-                            {users.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.firstName} {user.lastName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12 border-2 border-dashed rounded-lg">
-                <ListTodo className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                <p className="text-muted-foreground mb-4">
-                  No tasks added yet. Add tasks to define the work for this
-                  project.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addTask}
-                  disabled={loading}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Add Your First Task
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </div>
       )}
 
       {/* Step 3: Donor & Documents */}
       {currentStep === 2 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Donor & Documents</CardTitle>
-            <CardDescription>
-              Attach a donor and upload relevant project documents
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">Donors</h3>
-              <p className="text-sm text-muted-foreground">
+        <div className="bg-card rounded-2xl p-6 lg:p-8">
+          <h2 className="font-serif text-xl text-foreground mb-1">Donors & Documents</h2>
+          <p className="text-sm text-muted-foreground mb-8">
+            Link funding partners and upload relevant files
+          </p>
+
+          <div className="space-y-8">
+            <div>
+              <h3 className="font-serif text-lg text-foreground mb-1">Donors</h3>
+              <p className="text-sm text-muted-foreground mb-4">
                 Select one or more donors for this project
               </p>
 
               {donors.filter((d) => d.isActive).length > 0 ? (
-                <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-2">
+                <div className="space-y-1.5 max-h-60 overflow-y-auto border border-border rounded-xl p-2">
                   {donors.filter((d) => d.isActive).map((donor) => {
                     const isSelected = selectedDonorIds.includes(donor.id);
                     return (
@@ -744,23 +757,23 @@ export default function NewProjectPage() {
                         type="button"
                         onClick={() => toggleDonor(donor.id)}
                         disabled={loading}
-                        className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                        className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all duration-150 ${
                           isSelected
-                            ? "bg-primary/10 border border-primary/30"
-                            : "hover:bg-muted/50 border border-transparent"
+                            ? "bg-sage-pale"
+                            : "hover:bg-muted/50"
                         }`}
                       >
                         <div
                           className={`flex items-center justify-center h-5 w-5 rounded border-2 shrink-0 transition-colors ${
                             isSelected
                               ? "bg-primary border-primary text-primary-foreground"
-                              : "border-muted-foreground/30"
+                              : "border-border"
                           }`}
                         >
                           {isSelected && <Check className="h-3 w-3" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm">{donor.name}</p>
+                          <p className="font-medium text-sm text-foreground">{donor.name}</p>
                           <p className="text-xs text-muted-foreground capitalize">
                             {donor.type}
                           </p>
@@ -776,124 +789,118 @@ export default function NewProjectPage() {
               )}
 
               {selectedDonorIds.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">
-                    Selected Donors ({selectedDonorIds.length})
+                <div className="mt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Selected ({selectedDonorIds.length})
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {getSelectedDonors().map((donor) => (
-                      <Badge
+                      <span
                         key={donor.id}
-                        variant="secondary"
-                        className="flex items-center gap-1 pr-1"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sage-pale text-primary rounded-full text-xs font-medium"
                       >
                         {donor.name}
                         <button
                           type="button"
                           onClick={() => toggleDonor(donor.id)}
-                          className="ml-1 rounded-full hover:bg-muted p-0.5"
+                          className="rounded-full hover:bg-primary/10 p-0.5"
                         >
                           <X className="h-3 w-3" />
                         </button>
-                      </Badge>
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
             </div>
 
-            <Separator />
-
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium">Project Documents</h3>
-              <div className="space-y-2">
-                <Label>Upload Documents</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                    disabled={loading}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={loading}
-                  >
-                    <Upload className="h-4 w-4 mr-2" /> Select Files
-                  </Button>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Upload project documents, proposals, contracts, etc.
-                  </p>
-                </div>
+            <div className="border-t border-border pt-8">
+              <h3 className="font-serif text-lg text-foreground mb-4">Project Documents</h3>
+              <div className="border border-dashed border-border rounded-2xl p-8 text-center">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                  disabled={loading}
+                />
+                <Upload className="h-8 w-8 mx-auto text-primary/25 mb-3" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading}
+                  className="rounded-xl"
+                >
+                  Select Files
+                </Button>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Proposals, contracts, budgets, or any relevant documents
+                </p>
               </div>
 
               {files.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-2 mt-4">
                   {files.map((file, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-2 bg-muted/50 rounded border"
+                      className="flex items-center justify-between p-3 bg-muted/40 rounded-xl"
                     >
-                      <span className="text-sm truncate">{file.name}</span>
+                      <span className="text-sm text-foreground truncate">{file.name}</span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         onClick={() => removeFile(index)}
                         disabled={loading}
+                        className="h-7 w-7 shrink-0"
                       >
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Step 4: Review */}
       {currentStep === 3 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Review & Submit</CardTitle>
-            <CardDescription>
-              Review all the details before creating your project
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Project Details Summary */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <ClipboardList className="h-5 w-5" /> Project Details
+        <div className="bg-card rounded-2xl p-6 lg:p-8">
+          <h2 className="font-serif text-xl text-foreground mb-1">Review & Submit</h2>
+          <p className="text-sm text-muted-foreground mb-8">
+            Confirm everything looks right before creating your project
+          </p>
+
+          <div className="space-y-8">
+            {/* Project Details */}
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
+                <ClipboardList className="h-4 w-4" /> Project Details
               </h3>
-              <div className="grid gap-3 md:grid-cols-2 p-4 bg-muted/30 rounded-lg">
+              <div className="grid gap-4 md:grid-cols-2 p-5 bg-muted/30 rounded-xl">
                 <div>
-                  <p className="text-sm text-muted-foreground">Name</p>
-                  <p className="font-medium">{formData.name}</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">Name</p>
+                  <p className="font-medium text-foreground">{formData.name}</p>
                 </div>
                 {formData.description && (
                   <div className="md:col-span-2">
-                    <p className="text-sm text-muted-foreground">Description</p>
-                    <p className="text-sm">{formData.description}</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Description</p>
+                    <p className="text-sm text-foreground">{formData.description}</p>
                   </div>
                 )}
                 <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <Badge variant="secondary">
+                  <p className="text-xs text-muted-foreground mb-0.5">Status</p>
+                  <p className="text-sm font-medium text-foreground">
                     {statusLabels[formData.status] || formData.status}
-                  </Badge>
+                  </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">
-                    Project Manager
-                  </p>
-                  <p className="text-sm">
+                  <p className="text-xs text-muted-foreground mb-0.5">Project Manager</p>
+                  <p className="text-sm text-foreground">
                     {getSelectedManager()
                       ? `${getSelectedManager()!.firstName} ${getSelectedManager()!.lastName}`
                       : "You (default)"}
@@ -901,62 +908,58 @@ export default function NewProjectPage() {
                 </div>
                 {formData.totalBudget && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Budget</p>
-                    <p className="text-sm font-medium">
+                    <p className="text-xs text-muted-foreground mb-0.5">Budget</p>
+                    <p className="text-sm font-medium text-foreground">
                       {formatCurrency(parseInt(formData.totalBudget), "ETB")}
                     </p>
                   </div>
                 )}
                 {formData.startDate && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Start Date</p>
-                    <p className="text-sm">
-                      {new Date(formData.startDate).toLocaleDateString()}
+                    <p className="text-xs text-muted-foreground mb-0.5">Start Date</p>
+                    <p className="text-sm text-foreground">
+                      {formatLocalDate(formData.startDate)}
                     </p>
                   </div>
                 )}
                 {formData.endDate && (
                   <div>
-                    <p className="text-sm text-muted-foreground">End Date</p>
-                    <p className="text-sm">
-                      {new Date(formData.endDate).toLocaleDateString()}
+                    <p className="text-xs text-muted-foreground mb-0.5">End Date</p>
+                    <p className="text-sm text-foreground">
+                      {formatLocalDate(formData.endDate)}
                     </p>
                   </div>
                 )}
               </div>
 
               {milestones.filter((m) => m.title.trim()).length > 0 && (
-                <div className="pl-4">
-                  <p className="text-sm font-medium text-muted-foreground mb-2">
-                    Milestones ({milestones.filter((m) => m.title.trim()).length}
-                    )
+                <div className="mt-4 pl-1">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Milestones ({milestones.filter((m) => m.title.trim()).length})
                   </p>
-                  <ul className="space-y-1">
+                  <div className="space-y-1.5">
                     {milestones
                       .filter((m) => m.title.trim())
                       .map((m, i) => (
-                        <li key={i} className="text-sm flex items-center gap-2">
+                        <div key={i} className="flex items-center gap-2.5 text-sm">
                           <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                          {m.title}
+                          <span className="text-foreground">{m.title}</span>
                           {m.dueDate && (
-                            <span className="text-muted-foreground">
-                              — Due{" "}
-                              {new Date(m.dueDate).toLocaleDateString()}
+                            <span className="text-muted-foreground text-xs">
+                              — {formatLocalDate(m.dueDate)}
                             </span>
                           )}
-                        </li>
+                        </div>
                       ))}
-                  </ul>
+                  </div>
                 </div>
               )}
             </div>
 
-            <Separator />
-
-            {/* Tasks Summary */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <ListTodo className="h-5 w-5" /> Tasks & Activities
+            {/* Tasks */}
+            <div className="border-t border-border pt-8">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
+                <ListTodo className="h-4 w-4" /> Tasks & Activities
               </h3>
               {taskInputs.filter((t) => t.title.trim()).length > 0 ? (
                 <div className="space-y-2">
@@ -965,32 +968,33 @@ export default function NewProjectPage() {
                     .map((task, i) => (
                       <div
                         key={i}
-                        className="p-3 bg-muted/30 rounded-lg flex items-start justify-between gap-4"
+                        className="p-4 bg-muted/30 rounded-xl flex items-start justify-between gap-4"
                       >
-                        <div className="space-y-1">
-                          <p className="font-medium text-sm">{task.title}</p>
+                        <div className="space-y-1.5 min-w-0">
+                          <p className="font-medium text-sm text-foreground">{task.title}</p>
                           {task.description && (
                             <p className="text-xs text-muted-foreground">
                               {task.description}
                             </p>
                           )}
                           <div className="flex gap-2 flex-wrap">
-                            <Badge
-                              variant="outline"
-                              className="text-xs capitalize"
-                            >
-                              {priorityLabels[task.priority] || task.priority}
-                            </Badge>
+                            {(() => {
+                              const pc = priorityConfig[task.priority] || priorityConfig.medium;
+                              return (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${pc.bg} ${pc.text}`}>
+                                  {priorityLabels[task.priority] || task.priority}
+                                </span>
+                              );
+                            })()}
                             {task.dueDate && (
-                              <Badge variant="outline" className="text-xs">
-                                Due{" "}
-                                {new Date(task.dueDate).toLocaleDateString()}
-                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                Due {formatLocalDate(task.dueDate)}
+                              </span>
                             )}
                             {task.assignedTo && (
-                              <Badge variant="outline" className="text-xs">
-                                {getUserName(task.assignedTo)}
-                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                → {getUserName(task.assignedTo)}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -1004,59 +1008,55 @@ export default function NewProjectPage() {
               )}
             </div>
 
-            <Separator />
-
-            {/* Donor & Documents Summary */}
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Users className="h-5 w-5" /> Donors & Documents
+            {/* Donors & Documents */}
+            <div className="border-t border-border pt-8">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
+                <Users className="h-4 w-4" /> Donors & Documents
               </h3>
-              <div className="p-4 bg-muted/30 rounded-lg space-y-3">
+              <div className="p-5 bg-muted/30 rounded-xl space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Donors</p>
+                  <p className="text-xs text-muted-foreground mb-1.5">Donors</p>
                   {getSelectedDonors().length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {getSelectedDonors().map((donor) => (
-                        <Badge key={donor.id} variant="secondary" className="text-xs">
+                        <Badge key={donor.id} variant="secondary" className="text-xs rounded-full">
                           {donor.name} ({donor.type})
                         </Badge>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm">No donors selected</p>
+                    <p className="text-sm text-muted-foreground">No donors selected</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Documents</p>
+                  <p className="text-xs text-muted-foreground mb-1.5">Documents</p>
                   {files.length > 0 ? (
-                    <ul className="space-y-1 mt-1">
+                    <div className="space-y-1">
                       {files.map((f, i) => (
-                        <li
-                          key={i}
-                          className="text-sm flex items-center gap-2"
-                        >
+                        <div key={i} className="flex items-center gap-2 text-sm">
                           <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                          {f.name}
-                        </li>
+                          <span className="text-foreground">{f.name}</span>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   ) : (
-                    <p className="text-sm">No documents uploaded</p>
+                    <p className="text-sm text-muted-foreground">No documents uploaded</p>
                   )}
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      {/* Navigation Buttons */}
-      <div className="flex items-center justify-between mt-6">
+      {/* Navigation */}
+      <div className="flex items-center justify-between mt-8">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           onClick={currentStep === 0 ? () => router.back() : prevStep}
           disabled={loading}
+          className="text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
           {currentStep === 0 ? "Cancel" : "Previous"}
@@ -1067,10 +1067,9 @@ export default function NewProjectPage() {
             <Button
               type="button"
               variant="ghost"
-              onClick={() => {
-                setCurrentStep(STEPS.length - 1);
-              }}
+              onClick={() => setCurrentStep(STEPS.length - 1)}
               disabled={loading || !canProceed()}
+              className="text-muted-foreground"
             >
               Skip to Review
             </Button>
@@ -1081,6 +1080,7 @@ export default function NewProjectPage() {
               type="button"
               onClick={nextStep}
               disabled={loading || !canProceed()}
+              className="rounded-xl"
             >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />
@@ -1090,11 +1090,12 @@ export default function NewProjectPage() {
               type="button"
               onClick={handleSubmit}
               disabled={loading}
+              className="rounded-xl"
             >
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating Project...
+                  Creating…
                 </>
               ) : (
                 <>

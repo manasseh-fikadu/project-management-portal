@@ -6,12 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +33,8 @@ import {
   AlertCircle,
   HandCoins,
   X,
+  Send,
+  Leaf,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
@@ -153,45 +152,47 @@ type Project = {
   }>;
 };
 
-const statusColors: Record<string, string> = {
-  planning: "bg-yellow-100 text-yellow-800",
-  active: "bg-green-100 text-green-800",
-  on_hold: "bg-orange-100 text-orange-800",
-  completed: "bg-blue-100 text-blue-800",
-  cancelled: "bg-red-100 text-red-800",
+function isValidExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  planning: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "Planning" },
+  active: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "Active" },
+  on_hold: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "On Hold" },
+  completed: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "Completed" },
+  cancelled: { bg: "bg-destructive/10", text: "text-destructive", dot: "bg-destructive", label: "Cancelled" },
 };
 
-const milestoneStatusColors: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-800",
-  in_progress: "bg-blue-100 text-blue-800",
-  completed: "bg-green-100 text-green-800",
-  cancelled: "bg-red-100 text-red-800",
+const milestoneStatusConfig: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+  pending: { bg: "bg-muted", text: "text-muted-foreground", icon: <Clock className="h-4 w-4" /> },
+  in_progress: { bg: "bg-lavender-pale", text: "text-lavender", icon: <Clock className="h-4 w-4" /> },
+  completed: { bg: "bg-sage-pale", text: "text-primary", icon: <CheckCircle className="h-4 w-4" /> },
+  cancelled: { bg: "bg-destructive/10", text: "text-destructive", icon: <XCircle className="h-4 w-4" /> },
 };
 
-const milestoneStatusIcons: Record<string, React.ReactNode> = {
-  pending: <Clock className="h-4 w-4" />,
-  in_progress: <Clock className="h-4 w-4" />,
-  completed: <CheckCircle className="h-4 w-4" />,
-  cancelled: <XCircle className="h-4 w-4" />,
+const taskStatusConfig: Record<string, { bg: string; text: string }> = {
+  pending: { bg: "bg-muted", text: "text-muted-foreground" },
+  in_progress: { bg: "bg-lavender-pale", text: "text-lavender" },
+  completed: { bg: "bg-sage-pale", text: "text-primary" },
 };
 
-const taskStatusColors: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
+const taskPriorityConfig: Record<string, { bg: string; text: string }> = {
+  low: { bg: "bg-muted", text: "text-muted-foreground" },
+  medium: { bg: "bg-amber-pale", text: "text-amber-warm" },
+  high: { bg: "bg-rose-pale", text: "text-rose-muted" },
 };
 
-const taskPriorityColors: Record<string, string> = {
-  low: "bg-gray-100 text-gray-600",
-  medium: "bg-yellow-100 text-yellow-700",
-  high: "bg-red-100 text-red-700",
-};
-
-const donorStatusColors: Record<string, string> = {
-  active: "bg-green-100 text-green-700",
-  pending: "bg-yellow-100 text-yellow-700",
-  completed: "bg-blue-100 text-blue-700",
-  withdrawn: "bg-red-100 text-red-700",
+const donorStatusConfig: Record<string, { bg: string; text: string }> = {
+  active: { bg: "bg-sage-pale", text: "text-primary" },
+  pending: { bg: "bg-amber-pale", text: "text-amber-warm" },
+  completed: { bg: "bg-lavender-pale", text: "text-lavender" },
+  withdrawn: { bg: "bg-rose-pale", text: "text-rose-muted" },
 };
 
 export default function ProjectProfilePage() {
@@ -217,6 +218,7 @@ export default function ProjectProfilePage() {
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
+  const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -556,10 +558,39 @@ export default function ProjectProfilePage() {
     }
   }
 
+  async function handleSendPortalInvite(donorId: string) {
+    setSendingInvites((prev) => new Set(prev).add(donorId));
+    try {
+      const res = await fetch("/api/donor-portal/tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ donorId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Portal invite sent successfully! The donor will receive an email with access instructions.");
+      } else {
+        alert(data.error || "Failed to send invite");
+      }
+    } catch (error) {
+      console.error("Failed to send portal invite:", error);
+      alert("Failed to send portal invite");
+    } finally {
+      setSendingInvites((prev) => {
+        const next = new Set(prev);
+        next.delete(donorId);
+        return next;
+      });
+    }
+  }
+
   if (loading) {
     return (
-      <div className="p-6">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="h-6 w-6 animate-pulse text-primary" />
+          <p className="text-sm text-muted-foreground">Loading project…</p>
+        </div>
       </div>
     );
   }
@@ -568,15 +599,28 @@ export default function ProjectProfilePage() {
     return null;
   }
 
+  const status = statusConfig[project.status] || statusConfig.planning;
+  const progress = getProgress();
+
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <Button variant="ghost" onClick={() => router.push("/projects")}>
+    <div className="p-6 lg:p-10">
+      {/* Top bar */}
+      <div className="mb-8 flex items-center justify-between">
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/projects")}
+          className="text-muted-foreground hover:text-foreground -ml-3"
+        >
           <ArrowLeft className="h-4 w-4 mr-2" /> Back to Projects
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground"
+              aria-label="More project options"
+            >
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -593,180 +637,202 @@ export default function ProjectProfilePage() {
             <DropdownMenuItem onClick={() => handleStatusChange("cancelled")}>
               Set Cancelled
             </DropdownMenuItem>
-            <Separator className="my-1" />
-            <DropdownMenuItem onClick={handleDeleteProject} className="text-red-600">
+            <DropdownMenuItem onClick={handleDeleteProject} className="text-destructive">
               <Trash2 className="h-4 w-4 mr-2" /> Delete Project
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-2xl">{project.name}</CardTitle>
-                  <CardDescription className="mt-2">
-                    {project.description || "No description provided"}
-                  </CardDescription>
-                </div>
-                <Badge className={statusColors[project.status]}>
-                  {project.status.replace("_", " ")}
-                </Badge>
+      <div className="grid gap-8 lg:grid-cols-3">
+        {/* Main column */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Project header */}
+          <div className="bg-card rounded-2xl p-6 lg:p-8">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div className="min-w-0">
+                <h1 className="font-serif text-2xl lg:text-3xl text-foreground mb-2">{project.name}</h1>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {project.description || "No description provided"}
+                </p>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm text-gray-500">Project Manager</span>
-                  </div>
-                  <Select
-                    value={project.manager.id}
-                    onValueChange={handleManagerChange}
-                  >
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.firstName} {user.lastName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="text-sm">
-                  <span className="text-gray-500">Donors:</span>{" "}
-                  {project.projectDonors && project.projectDonors.length > 0 ? (
-                    <span className="inline-flex flex-wrap gap-1 ml-1">
-                      {project.projectDonors.map((pd) => (
-                        <Badge key={pd.donorId} variant="outline" className={`text-xs ${donorStatusColors[pd.status] || ""}`}>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${status.bg} ${status.text}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                {status.label}
+              </span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 mb-6">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <User className="h-3 w-3" /> Project Manager
+                </p>
+                <Select
+                  value={project.manager.id}
+                  onValueChange={handleManagerChange}
+                >
+                  <SelectTrigger className="h-9 text-sm rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">Donors</p>
+                {project.projectDonors && project.projectDonors.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {project.projectDonors.map((pd) => {
+                      const ds = donorStatusConfig[pd.status] || donorStatusConfig.pending;
+                      return (
+                        <span key={pd.donorId} className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium ${ds.bg} ${ds.text}`}>
                           {pd.donor.name}
-                        </Badge>
-                      ))}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : project.donor ? (
+                  <p className="text-sm text-foreground">{project.donor.name}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">None assigned</p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                  <DollarSign className="h-3 w-3" /> Budget
+                </p>
+                <p className="text-sm font-medium text-foreground">
+                  {formatBudget(project.totalBudget)}
+                  {project.spentBudget > 0 && (
+                    <span className="text-muted-foreground font-normal ml-1.5">
+                      ({formatBudget(project.spentBudget)} spent)
                     </span>
-                  ) : project.donor ? (
-                    <span>{project.donor.name}</span>
-                  ) : (
-                    <span className="text-gray-400">None assigned</span>
                   )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm">
-                    Budget: {formatBudget(project.totalBudget)}
-                    {project.spentBudget > 0 && (
-                      <span className="text-gray-500 ml-1">
-                        ({formatBudget(project.spentBudget)} spent)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-gray-500" />
-                  <span className="text-sm">
-                    {formatDate(project.startDate)} - {formatDate(project.endDate)}
-                  </span>
-                </div>
+                </p>
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3" /> Timeline
+                </p>
+                <p className="text-sm text-foreground">
+                  {formatDate(project.startDate)} — {formatDate(project.endDate)}
+                </p>
+              </div>
+            </div>
 
-              <div className="mt-6">
-                <div className="flex justify-between text-sm mb-2">
-                  <span>Overall Progress</span>
-                  <span>{getProgress()}%</span>
-                </div>
-                <Progress value={getProgress()} />
+            <div>
+              <div className="flex justify-between text-xs mb-2">
+                <span className="text-muted-foreground">Overall Progress</span>
+                <span className="font-medium text-foreground">{progress}%</span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="h-2 rounded-full bg-sage-pale overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-700"
+                  style={{ width: `${progress}%`, transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
+                />
+              </div>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Work Plan / Milestones</CardTitle>
-                <Dialog open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4 mr-1" /> Add Milestone
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add New Milestone</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleAddMilestone} className="space-y-4 mt-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="milestone-title">Title *</Label>
-                        <Input
-                          id="milestone-title"
-                          value={newMilestone.title}
-                          onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="milestone-description">Description</Label>
-                        <Textarea
-                          id="milestone-description"
-                          value={newMilestone.description}
-                          onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="milestone-due">Due Date</Label>
-                        <Input
-                          id="milestone-due"
-                          type="date"
-                          value={newMilestone.dueDate}
-                          onChange={(e) => setNewMilestone({ ...newMilestone, dueDate: e.target.value })}
-                        />
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button type="button" variant="outline" onClick={() => setIsAddMilestoneOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button type="submit">Add Milestone</Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+          {/* Milestones */}
+          <div className="bg-card rounded-2xl p-6 lg:p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-serif text-xl text-foreground">Work Plan / Milestones</h2>
+              <Dialog open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="rounded-xl">
+                    <Plus className="h-4 w-4 mr-1" /> Add
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="font-serif">Add New Milestone</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleAddMilestone} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="milestone-title">Title *</Label>
+                      <Input
+                        id="milestone-title"
+                        value={newMilestone.title}
+                        onChange={(e) => setNewMilestone({ ...newMilestone, title: e.target.value })}
+                        required
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="milestone-description">Description</Label>
+                      <Textarea
+                        id="milestone-description"
+                        value={newMilestone.description}
+                        onChange={(e) => setNewMilestone({ ...newMilestone, description: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="milestone-due">Due Date</Label>
+                      <Input
+                        id="milestone-due"
+                        type="date"
+                        value={newMilestone.dueDate}
+                        onChange={(e) => setNewMilestone({ ...newMilestone, dueDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button type="button" variant="ghost" onClick={() => setIsAddMilestoneOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit" className="rounded-xl">Add Milestone</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {project.milestones.length === 0 ? (
+              <div className="py-10 text-center">
+                <Leaf className="h-8 w-8 mx-auto mb-2 text-primary/20" />
+                <p className="text-sm text-muted-foreground">No milestones defined yet</p>
               </div>
-            </CardHeader>
-            <CardContent>
-              {project.milestones.length === 0 ? (
-                <p className="text-sm text-gray-500">No milestones defined yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {project.milestones.map((milestone) => (
-                    <div key={milestone.id} className="flex items-start gap-3 p-3 border rounded-lg">
-                      <div className={`mt-0.5 ${milestoneStatusColors[milestone.status]}`}>
-                        {milestoneStatusIcons[milestone.status]}
+            ) : (
+              <div className="space-y-2.5">
+                {project.milestones.map((milestone) => {
+                  const ms = milestoneStatusConfig[milestone.status] || milestoneStatusConfig.pending;
+                  return (
+                    <div key={milestone.id} className={`flex items-start gap-3 p-4 rounded-xl transition-colors ${ms.bg}`}>
+                      <div className={`mt-0.5 ${ms.text}`}>
+                        {ms.icon}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{milestone.title}</h4>
-                          <Badge variant="outline" className={milestoneStatusColors[milestone.status]}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-medium text-sm text-foreground">{milestone.title}</h4>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ms.bg} ${ms.text}`}>
                             {milestone.status.replace("_", " ")}
-                          </Badge>
+                          </span>
                         </div>
                         {milestone.description && (
-                          <p className="text-sm text-gray-500 mt-1">{milestone.description}</p>
+                          <p className="text-sm text-muted-foreground mt-1">{milestone.description}</p>
                         )}
                         {milestone.dueDate && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Due: {formatDate(milestone.dueDate)}
+                          <p className="text-xs text-muted-foreground mt-1.5">
+                            Due {formatDate(milestone.dueDate)}
                           </p>
                         )}
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            aria-label="More milestone options"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -779,147 +845,150 @@ export default function ProjectProfilePage() {
                           <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "cancelled")}>
                             Set Cancelled
                           </DropdownMenuItem>
-                          <Separator className="my-1" />
-                          <DropdownMenuItem onClick={() => handleDeleteMilestone(milestone.id)} className="text-red-600">
+                          <DropdownMenuItem onClick={() => handleDeleteMilestone(milestone.id)} className="text-destructive">
                             <Trash2 className="h-4 w-4 mr-2" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-          {/* Tasks Section */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Tasks & Activities</CardTitle>
-                <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4 mr-1" /> Add Task
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add New Task</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleAddTask} className="space-y-4 mt-4">
+          {/* Tasks */}
+          <div className="bg-card rounded-2xl p-6 lg:p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="font-serif text-xl text-foreground">Tasks & Activities</h2>
+              <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="rounded-xl">
+                    <Plus className="h-4 w-4 mr-1" /> Add
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="font-serif">Add New Task</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleAddTask} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="task-title">Title *</Label>
+                      <Input
+                        id="task-title"
+                        value={newTask.title}
+                        onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                        placeholder="Task title"
+                        required
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="task-description">Description</Label>
+                      <Textarea
+                        id="task-description"
+                        value={newTask.description}
+                        onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                        placeholder="What needs to be done?"
+                        rows={2}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="task-title">Title *</Label>
-                        <Input
-                          id="task-title"
-                          value={newTask.title}
-                          onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                          placeholder="Task title"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="task-description">Description</Label>
-                        <Textarea
-                          id="task-description"
-                          value={newTask.description}
-                          onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                          placeholder="What needs to be done?"
-                          rows={2}
-                        />
-                      </div>
-                      <div className="grid gap-4 grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor="task-priority">Priority</Label>
-                          <Select
-                            value={newTask.priority}
-                            onValueChange={(value) => setNewTask({ ...newTask, priority: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="low">Low</SelectItem>
-                              <SelectItem value="medium">Medium</SelectItem>
-                              <SelectItem value="high">High</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="task-due">Due Date</Label>
-                          <Input
-                            id="task-due"
-                            type="date"
-                            value={newTask.dueDate}
-                            onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="task-assignee">Assign To</Label>
+                        <Label htmlFor="task-priority">Priority</Label>
                         <Select
-                          value={newTask.assignedTo}
-                          onValueChange={(value) => setNewTask({ ...newTask, assignedTo: value === "_none" ? "" : value })}
+                          value={newTask.priority}
+                          onValueChange={(value) => setNewTask({ ...newTask, priority: value })}
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select assignee" />
+                          <SelectTrigger className="rounded-xl">
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="_none">Unassigned</SelectItem>
-                            {users.map((user) => (
-                              <SelectItem key={user.id} value={user.id}>
-                                {user.firstName} {user.lastName}
-                              </SelectItem>
-                            ))}
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button type="button" variant="outline" onClick={() => setIsAddTaskOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button type="submit">Add Task</Button>
+                      <div className="space-y-2">
+                        <Label htmlFor="task-due">Due Date</Label>
+                        <Input
+                          id="task-due"
+                          type="date"
+                          value={newTask.dueDate}
+                          onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+                          className="rounded-xl"
+                        />
                       </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="task-assignee">Assign To</Label>
+                      <Select
+                        value={newTask.assignedTo}
+                        onValueChange={(value) => setNewTask({ ...newTask, assignedTo: value === "_none" ? "" : value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Select assignee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">Unassigned</SelectItem>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.firstName} {user.lastName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button type="button" variant="ghost" onClick={() => setIsAddTaskOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit" className="rounded-xl">Add Task</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {project.tasks.length === 0 ? (
+              <div className="py-10 text-center">
+                <ListTodo className="h-8 w-8 mx-auto mb-2 text-primary/20" />
+                <p className="text-sm text-muted-foreground">No tasks created yet</p>
               </div>
-            </CardHeader>
-            <CardContent>
-              {project.tasks.length === 0 ? (
-                <div className="text-center py-8">
-                  <ListTodo className="h-10 w-10 mx-auto text-gray-300 mb-2" />
-                  <p className="text-sm text-gray-500">No tasks created yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {project.tasks.map((task) => (
-                    <div key={task.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors">
-                      <div className="mt-1">
+            ) : (
+              <div className="space-y-2.5">
+                {project.tasks.map((task) => {
+                  const ts = taskStatusConfig[task.status] || taskStatusConfig.pending;
+                  const tp = taskPriorityConfig[task.priority] || taskPriorityConfig.medium;
+                  return (
+                    <div key={task.id} className="flex items-start gap-3 p-4 rounded-xl hover:bg-muted/30 transition-colors">
+                      <div className="mt-0.5">
                         {task.status === "completed" ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <CheckCircle className="h-4 w-4 text-primary" />
                         ) : task.status === "in_progress" ? (
-                          <Clock className="h-4 w-4 text-blue-500" />
+                          <Clock className="h-4 w-4 text-lavender" />
                         ) : (
-                          <AlertCircle className="h-4 w-4 text-gray-400" />
+                          <AlertCircle className="h-4 w-4 text-muted-foreground" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className={`font-medium text-sm ${task.status === "completed" ? "line-through text-gray-400" : ""}`}>
+                          <h4 className={`font-medium text-sm ${task.status === "completed" ? "line-through text-muted-foreground" : "text-foreground"}`}>
                             {task.title}
                           </h4>
-                          <Badge variant="outline" className={`text-xs ${taskStatusColors[task.status] || ""}`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ts.bg} ${ts.text}`}>
                             {task.status.replace("_", " ")}
-                          </Badge>
-                          <Badge variant="outline" className={`text-xs ${taskPriorityColors[task.priority] || ""}`}>
+                          </span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${tp.bg} ${tp.text}`}>
                             {task.priority}
-                          </Badge>
+                          </span>
                         </div>
                         {task.description && (
-                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{task.description}</p>
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
                         )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                           {task.assignee && (
                             <span className="flex items-center gap-1">
                               <User className="h-3 w-3" />
@@ -939,8 +1008,13 @@ export default function ProjectProfilePage() {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            aria-label="More task options"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -953,186 +1027,201 @@ export default function ProjectProfilePage() {
                           <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "completed")}>
                             Set Completed
                           </DropdownMenuItem>
-                          <Separator className="my-1" />
-                          <DropdownMenuItem onClick={() => handleDeleteTask(task.id)} className="text-red-600">
+                          <DropdownMenuItem onClick={() => handleDeleteTask(task.id)} className="text-destructive">
                             <Trash2 className="h-4 w-4 mr-2" /> Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
+        {/* Sidebar column */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Documents</CardTitle>
-                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4 mr-1" /> Upload
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={handleFileUpload}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {uploadingFiles.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  {uploadingFiles.map((file, index) => (
-                    <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{file.name}</p>
-                        <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
-                          <div
-                            className="h-full bg-blue-500 transition-all duration-300"
-                            style={{ width: `${file.progress}%` }}
-                          />
-                        </div>
+          {/* Documents */}
+          <div className="bg-card rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-serif text-lg text-foreground">Documents</h2>
+              <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="rounded-xl">
+                <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </div>
+
+            {uploadingFiles.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {uploadingFiles.map((file, index) => (
+                  <div key={index} className="flex items-center gap-2.5 p-3 bg-lavender-pale rounded-xl">
+                    <Loader2 className="h-4 w-4 animate-spin text-lavender" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{file.name}</p>
+                      <div className="h-1 bg-lavender/20 rounded-full overflow-hidden mt-1.5">
+                        <div
+                          className="h-full bg-lavender rounded-full transition-all duration-300"
+                          style={{ width: `${file.progress}%` }}
+                        />
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-              {project.documents.length === 0 && uploadingFiles.length === 0 ? (
-                <p className="text-sm text-gray-500">No documents uploaded yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {project.documents.map((doc) => (
-                    <div key={doc.id} className="flex items-start gap-2 p-2 hover:bg-gray-50 rounded border group">
-                      <FileText className="h-4 w-4 mt-0.5 text-gray-400 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
+            {project.documents.length === 0 && uploadingFiles.length === 0 ? (
+              <div className="py-8 text-center">
+                <FileText className="h-7 w-7 mx-auto mb-2 text-primary/20" />
+                <p className="text-xs text-muted-foreground">No documents yet</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {project.documents.map((doc) => (
+                  <div key={doc.id} className="flex items-start gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
+                    <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      {isValidExternalUrl(doc.url) ? (
                         <a
                           href={doc.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm font-medium truncate hover:underline block"
+                          className="text-sm font-medium text-foreground truncate hover:text-primary block transition-colors"
                         >
                           {doc.name}
                         </a>
-                        <p className="text-xs text-gray-400">
-                          {formatFileSize(doc.size)} • {formatDate(doc.createdAt)}
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6"
-                        onClick={() => handleDeleteDocument(doc.id)}
+                      ) : (
+                        <span className="text-sm font-medium text-foreground truncate block">
+                          {doc.name}
+                        </span>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity h-6 w-6 text-destructive focus-visible:ring-2 focus-visible:ring-destructive/40 focus-visible:ring-offset-2"
+                      onClick={() => handleDeleteDocument(doc.id)}
+                      aria-label="Delete document"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Donors */}
+          <div className="bg-card rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-serif text-lg text-foreground">Donors</h2>
+              <Dialog open={isAddDonorOpen} onOpenChange={setIsAddDonorOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline" className="rounded-xl">
+                    <Plus className="h-3.5 w-3.5 mr-1.5" /> Add
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="font-serif">Add Donor to Project</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Select Donor</Label>
+                      <Select
+                        value={addingDonorId}
+                        onValueChange={setAddingDonorId}
                       >
-                        <Trash2 className="h-3 w-3 text-red-500" />
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Choose a donor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allDonors
+                            .filter(
+                              (d) =>
+                                d.isActive &&
+                                !project?.projectDonors?.some(
+                                  (pd) => pd.donorId === d.id
+                                )
+                            )
+                            .map((donor) => (
+                              <SelectItem key={donor.id} value={donor.id}>
+                                {donor.name} ({donor.type})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsAddDonorOpen(false);
+                          setAddingDonorId("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleAddDonor}
+                        disabled={!addingDonorId}
+                        className="rounded-xl"
+                      >
+                        Add Donor
                       </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Donors</CardTitle>
-                <Dialog open={isAddDonorOpen} onOpenChange={setIsAddDonorOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      <Plus className="h-4 w-4 mr-1" /> Add
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add Donor to Project</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 mt-4">
-                      <div className="space-y-2">
-                        <Label>Select Donor</Label>
-                        <Select
-                          value={addingDonorId}
-                          onValueChange={setAddingDonorId}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choose a donor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {allDonors
-                              .filter(
-                                (d) =>
-                                  d.isActive &&
-                                  !project?.projectDonors?.some(
-                                    (pd) => pd.donorId === d.id
-                                  )
-                              )
-                              .map((donor) => (
-                                <SelectItem key={donor.id} value={donor.id}>
-                                  {donor.name} ({donor.type})
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setIsAddDonorOpen(false);
-                            setAddingDonorId("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={handleAddDonor}
-                          disabled={!addingDonorId}
-                        >
-                          Add Donor
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+            {(!project.projectDonors || project.projectDonors.length === 0) ? (
+              <div className="py-8 text-center">
+                <HandCoins className="h-7 w-7 mx-auto mb-2 text-primary/20" />
+                <p className="text-xs text-muted-foreground">No donors linked yet</p>
               </div>
-            </CardHeader>
-            <CardContent>
-              {(!project.projectDonors || project.projectDonors.length === 0) ? (
-                <p className="text-sm text-gray-500">No donors linked to this project.</p>
-              ) : (
-                <div className="space-y-3">
-                  {project.projectDonors.map((pd) => (
+            ) : (
+              <div className="space-y-2">
+                {project.projectDonors.map((pd) => {
+                  const ds = donorStatusConfig[pd.status] || donorStatusConfig.pending;
+                  return (
                     <div
                       key={pd.donorId}
-                      className="flex items-start gap-2 p-3 border rounded-lg group"
+                      className={`flex items-start gap-2.5 p-3.5 rounded-xl ${ds.bg} group`}
                     >
-                      <HandCoins className="h-4 w-4 mt-0.5 text-gray-500 shrink-0" />
+                      <HandCoins className={`h-4 w-4 mt-0.5 shrink-0 ${ds.text}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium">{pd.donor.name}</p>
-                          <Badge
-                            variant="outline"
-                            className={`text-xs ${donorStatusColors[pd.status] || ""}`}
-                          >
+                          <p className="text-sm font-medium text-foreground">{pd.donor.name}</p>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${ds.text}`}>
                             {pd.status}
-                          </Badge>
+                          </span>
                         </div>
-                        <p className="text-xs text-gray-400 capitalize mt-0.5">
+                        <p className="text-[11px] text-muted-foreground capitalize mt-0.5">
                           {pd.donor.type}
                           {pd.donor.contactPerson && ` · ${pd.donor.contactPerson}`}
                         </p>
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            aria-label="More donor options"
+                          >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -1149,49 +1238,56 @@ export default function ProjectProfilePage() {
                           <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "withdrawn")}>
                             Set Withdrawn
                           </DropdownMenuItem>
-                          <Separator className="my-1" />
+                          <DropdownMenuItem
+                            onClick={() => handleSendPortalInvite(pd.donorId)}
+                            disabled={sendingInvites.has(pd.donorId) || !pd.donor.email}
+                          >
+                            <Send className="h-4 w-4 mr-2" />
+                            {sendingInvites.has(pd.donorId) ? "Sending…" : "Send Portal Invite"}
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleRemoveDonor(pd.donorId)}
-                            className="text-red-600"
+                            className="text-destructive"
                           >
                             <Trash2 className="h-4 w-4 mr-2" /> Remove
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Team Members</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {project.members.length === 0 ? (
-                <p className="text-sm text-gray-500">No team members assigned.</p>
-              ) : (
-                <div className="space-y-2">
-                  {project.members.map((member) => (
-                    <div key={member.user.id} className="flex items-center gap-2 p-2 border rounded">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium">
-                        {member.user.firstName[0]}
-                        {member.user.lastName[0]}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">
-                          {member.user.firstName} {member.user.lastName}
-                        </p>
-                        <p className="text-xs text-gray-500 capitalize">{member.role}</p>
-                      </div>
+          {/* Team */}
+          <div className="bg-card rounded-2xl p-6">
+            <h2 className="font-serif text-lg text-foreground mb-5">Team Members</h2>
+
+            {project.members.length === 0 ? (
+              <div className="py-8 text-center">
+                <User className="h-7 w-7 mx-auto mb-2 text-primary/20" />
+                <p className="text-xs text-muted-foreground">No team members assigned</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {project.members.map((member) => (
+                  <div key={member.user.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-muted/30 transition-colors">
+                    <div className="w-8 h-8 rounded-full bg-sage-pale text-primary flex items-center justify-center text-xs font-semibold shrink-0">
+                      {member.user.firstName[0]}
+                      {member.user.lastName[0]}
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {member.user.firstName} {member.user.lastName}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground capitalize">{member.role}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

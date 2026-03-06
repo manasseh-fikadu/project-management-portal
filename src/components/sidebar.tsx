@@ -10,8 +10,6 @@ import {
   FolderKanban,
   Users,
   FileText,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   LogOut,
   CheckSquare,
@@ -20,6 +18,9 @@ import {
   ShieldCheck,
   UserCog,
   FileBarChart,
+  Leaf,
+  Menu,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -47,52 +48,15 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  {
-    titleKey: "sidebar.dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    titleKey: "sidebar.projects",
-    href: "/projects",
-    icon: FolderKanban,
-  },
-  {
-    titleKey: "sidebar.tasks",
-    href: "/tasks",
-    icon: CheckSquare,
-  },
-  {
-    titleKey: "sidebar.donors",
-    href: "/donors",
-    icon: Users,
-  },
-  {
-    titleKey: "sidebar.proposals",
-    href: "/proposals",
-    icon: FileText,
-  },
-  {
-    titleKey: "sidebar.financials",
-    href: "/financials",
-    icon: HandCoins,
-  },
-  {
-    titleKey: "sidebar.reports",
-    href: "/reports",
-    icon: FileBarChart,
-  },
-  {
-    titleKey: "sidebar.profile",
-    href: "/profile",
-    icon: UserCog,
-  },
-  {
-    titleKey: "sidebar.users",
-    href: "/users",
-    icon: ShieldCheck,
-    adminOnly: true,
-  },
+  { titleKey: "sidebar.dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { titleKey: "sidebar.projects", href: "/projects", icon: FolderKanban },
+  { titleKey: "sidebar.tasks", href: "/tasks", icon: CheckSquare },
+  { titleKey: "sidebar.donors", href: "/donors", icon: Users },
+  { titleKey: "sidebar.proposals", href: "/proposals", icon: FileText },
+  { titleKey: "sidebar.financials", href: "/financials", icon: HandCoins },
+  { titleKey: "sidebar.reports", href: "/reports", icon: FileBarChart },
+  { titleKey: "sidebar.profile", href: "/profile", icon: UserCog },
+  { titleKey: "sidebar.users", href: "/users", icon: ShieldCheck, adminOnly: true },
 ];
 
 type RecentProject = {
@@ -102,11 +66,11 @@ type RecentProject = {
 };
 
 const projectStatusDot: Record<string, string> = {
-  planning: "text-yellow-500",
-  active: "text-green-500",
-  on_hold: "text-orange-500",
-  completed: "text-blue-500",
-  cancelled: "text-red-500",
+  planning: "text-amber-warm",
+  active: "text-primary",
+  on_hold: "text-rose-muted",
+  completed: "text-lavender",
+  cancelled: "text-destructive",
 };
 
 interface SidebarProps {
@@ -161,41 +125,44 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        isCollapsed ? "w-16" : "w-64"
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar transition-all duration-350",
+        isCollapsed ? "w-[72px]" : "w-64"
       )}
+      style={{ transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
     >
       <div className="flex h-full flex-col">
-        <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <Image
-              src="/motri.png"
-              alt="MoTRI Logo"
-              width={32}
-              height={32}
-              className="rounded-full shrink-0"
-            />
+        <div className="flex h-16 items-center justify-between px-4">
+          <Link href="/dashboard" className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-full bg-sage-pale flex items-center justify-center shrink-0">
+              <Image
+                src="/motri.png"
+                alt="MoTRI Logo"
+                width={20}
+                height={20}
+                className="rounded-full"
+              />
+            </div>
             {!isCollapsed && (
-              <span className="font-semibold text-sidebar-foreground">
+              <span className="font-serif text-lg text-sidebar-foreground">
                 MoTRI
               </span>
             )}
           </Link>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="ml-auto h-8 w-8"
+            className="p-2 rounded-full text-muted-foreground hover:text-sidebar-foreground transition-colors"
+            aria-label={isCollapsed ? "Open sidebar" : "Close sidebar"}
+            aria-expanded={!isCollapsed}
           >
             {isCollapsed ? (
-              <ChevronRight className="h-4 w-4" />
+              <Menu className="h-4 w-4" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <X className="h-4 w-4" />
             )}
-          </Button>
+          </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto space-y-1 p-2">
+        <nav className="flex-1 overflow-y-auto space-y-0.5 py-4 px-3">
           {navItems.filter((item) => !item.adminOnly || userRole === "admin").map((item) => {
             const isActive =
               item.href === "/dashboard"
@@ -210,19 +177,19 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        "flex flex-1 items-center gap-3 rounded-[20px] px-3.5 py-2.5 text-[13px] font-medium transition-all duration-200",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                       )}
                     >
-                      <item.icon className="h-5 w-5 shrink-0" />
+                      <item.icon className="h-[18px] w-[18px] shrink-0" />
                       <span className="flex-1">{t("sidebar.projects")}</span>
                     </Link>
                     {recentProjects.length > 0 && (
                       <button
                         onClick={() => setProjectsExpanded(!projectsExpanded)}
-                        className="p-1.5 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                        className="p-1.5 rounded-full text-muted-foreground hover:bg-sidebar-accent transition-colors"
                       >
                         <ChevronDown
                           className={cn(
@@ -234,7 +201,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                     )}
                   </div>
                   {projectsExpanded && recentProjects.length > 0 && (
-                    <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3">
+                    <div className="ml-5 mt-1 space-y-0.5 border-l border-sidebar-border pl-3">
                       {recentProjects.map((project) => {
                         const isProjectActive = pathname === `/projects/${project.id}`;
                         return (
@@ -242,17 +209,17 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                             key={project.id}
                             href={`/projects/${project.id}`}
                             className={cn(
-                              "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+                              "flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-all duration-200",
                               isProjectActive
                                 ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                                : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                             )}
                             title={project.name}
                           >
                             <Circle
                               className={cn(
                                 "h-2 w-2 shrink-0 fill-current",
-                                projectStatusDot[project.status] || "text-gray-400"
+                                projectStatusDot[project.status] || "text-muted-foreground"
                               )}
                             />
                             <span className="truncate">{project.name}</span>
@@ -270,20 +237,20 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-[20px] px-3.5 py-2.5 text-[13px] font-medium transition-all duration-200",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                 )}
               >
-                <item.icon className="h-5 w-5 shrink-0" />
+                <item.icon className="h-[18px] w-[18px] shrink-0" />
                 {!isCollapsed && <span>{t(item.titleKey)}</span>}
               </Link>
             );
           })}
         </nav>
 
-        <div className="border-t border-sidebar-border p-4">
+        <div className="border-t border-sidebar-border px-4 py-4">
           {!isCollapsed && (
             <div className="mb-3">
               <p className="text-sm font-medium text-sidebar-foreground truncate">
@@ -307,13 +274,21 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
             size={isCollapsed ? "icon" : "default"}
             onClick={onLogout}
             className={cn(
-              "w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "w-full justify-start rounded-[20px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               isCollapsed && "justify-center"
             )}
           >
             <LogOut className="h-4 w-4" />
             {!isCollapsed && <span className="ml-2">{t("sidebar.signOut")}</span>}
           </Button>
+          {!isCollapsed && (
+            <div className="mt-4 flex items-center gap-2 px-1">
+              <Leaf className="h-3.5 w-3.5 text-primary/40" />
+              <span className="text-[11px] text-muted-foreground/60">
+                {t("sidebar.growWithPurpose")}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </aside>
@@ -326,9 +301,10 @@ export function MainContent({ children }: { children: React.ReactNode }) {
   return (
     <main
       className={cn(
-        "min-h-screen bg-background transition-all duration-300",
-        isCollapsed ? "ml-16" : "ml-64"
+        "min-h-screen bg-background transition-all duration-350",
+        isCollapsed ? "ml-[72px]" : "ml-64"
       )}
+      style={{ transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
     >
       {children}
     </main>

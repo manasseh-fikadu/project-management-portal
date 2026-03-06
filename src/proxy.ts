@@ -63,12 +63,18 @@ export async function proxy(request: NextRequest) {
   const isDashboardPage = pathname.startsWith("/dashboard");
   const isApiAuth = pathname === "/api/auth" || pathname.startsWith("/api/auth/");
   const isApiRoute = pathname === "/api" || pathname.startsWith("/api/");
+  const isDonorPortal = pathname.startsWith("/donor-portal");
 
   if (isApiAuth) {
     return NextResponse.next();
   }
 
   if (isApiRoute) {
+    return NextResponse.next();
+  }
+
+  // Donor portal pages are public — no auth required
+  if (isDonorPortal) {
     return NextResponse.next();
   }
 

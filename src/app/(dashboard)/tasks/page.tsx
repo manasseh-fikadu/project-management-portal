@@ -6,8 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -15,7 +13,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Progress } from "@/components/ui/progress";
 import {
   Plus,
   MoreVertical,
@@ -27,6 +24,8 @@ import {
   X,
   Loader2,
   Edit,
+  Leaf,
+  CheckSquare,
 } from "lucide-react";
 
 type User = {
@@ -74,16 +73,40 @@ type Task = {
   documents?: Document[];
 };
 
-const priorityColors: Record<string, string> = {
-  low: "bg-gray-100 text-gray-600",
-  medium: "bg-yellow-100 text-yellow-700",
-  high: "bg-red-100 text-red-700",
+const priorityConfig: Record<string, { bg: string; text: string; label: string }> = {
+  low: { bg: "bg-muted", text: "text-muted-foreground", label: "Low" },
+  medium: { bg: "bg-amber-pale", text: "text-amber-warm", label: "Medium" },
+  high: { bg: "bg-rose-pale", text: "text-rose-muted", label: "High" },
 };
 
-const statusColors: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  in_progress: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
+const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
+  pending: { bg: "bg-muted", text: "text-muted-foreground", label: "Pending" },
+  in_progress: { bg: "bg-lavender-pale", text: "text-lavender", label: "In Progress" },
+  completed: { bg: "bg-sage-pale", text: "text-primary", label: "Completed" },
+};
+
+const columnConfig: Record<string, { bg: string; headerBg: string; dotColor: string; dropRing: string; title: string }> = {
+  pending: {
+    bg: "bg-muted/50",
+    headerBg: "bg-card",
+    dotColor: "bg-muted-foreground",
+    dropRing: "ring-2 ring-primary/30 bg-sage-pale/40",
+    title: "Pending",
+  },
+  in_progress: {
+    bg: "bg-lavender-pale/30",
+    headerBg: "bg-card",
+    dotColor: "bg-lavender",
+    dropRing: "ring-2 ring-lavender/30 bg-lavender-pale/50",
+    title: "In Progress",
+  },
+  completed: {
+    bg: "bg-sage-pale/30",
+    headerBg: "bg-card",
+    dotColor: "bg-primary",
+    dropRing: "ring-2 ring-primary/30 bg-sage-pale/50",
+    title: "Completed",
+  },
 };
 
 export default function TasksPage() {
@@ -110,6 +133,7 @@ export default function TasksPage() {
     dueDate: "",
     assignedTo: "",
   });
+  const [projectIdError, setProjectIdError] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -169,10 +193,16 @@ export default function TasksPage() {
       dueDate: "",
       assignedTo: "",
     });
+    setProjectIdError(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!formData.projectId) {
+      setProjectIdError("Please select a project.");
+      return;
+    }
 
     try {
       const res = await fetch("/api/tasks", {
@@ -393,269 +423,309 @@ export default function TasksPage() {
   }
 
   const columns = [
-    { id: "pending", title: "Pending", tasks: tasks.filter((t) => t.status === "pending") },
-    { id: "in_progress", title: "In Progress", tasks: tasks.filter((t) => t.status === "in_progress") },
-    { id: "completed", title: "Completed", tasks: tasks.filter((t) => t.status === "completed") },
+    { id: "pending", tasks: tasks.filter((t) => t.status === "pending") },
+    { id: "in_progress", tasks: tasks.filter((t) => t.status === "in_progress") },
+    { id: "completed", tasks: tasks.filter((t) => t.status === "completed") },
   ];
 
   if (loading) {
     return (
-      <div className="p-6">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Leaf className="h-6 w-6 animate-pulse text-primary" />
+          <p className="text-sm text-muted-foreground">Loading tasks…</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Task Board</h1>
-          <p className="text-muted-foreground">Drag tasks between columns to update status</p>
-        </div>
-        <div className="flex gap-3">
-          <Select value={filterProject} onValueChange={setFilterProject}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Filter by project" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.id}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" /> New Task
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Create New Task</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="projectId">Project *</Label>
-                  <Select
-                    value={formData.projectId}
-                    onValueChange={(value) => setFormData({ ...formData, projectId: value })}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          {project.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
+    <div className="p-6 lg:p-10">
+      <header className="mb-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">Task Board</h1>
+            <p className="text-sm text-muted-foreground">
+              Drag tasks between columns to update their status
+            </p>
+          </div>
+          <div className="flex gap-3 shrink-0">
+            <Select value={filterProject} onValueChange={setFilterProject}>
+              <SelectTrigger className="w-48 rounded-xl">
+                <SelectValue placeholder="Filter by project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
+              <DialogTrigger asChild>
+                <Button className="rounded-xl">
+                  <Plus className="h-4 w-4 mr-2" /> New Task
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle className="font-serif text-xl">Create New Task</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-5 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="priority">Priority</Label>
+                    <Label htmlFor="title">Title *</Label>
+                    <Input
+                      id="title"
+                      value={formData.title}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                      required
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="projectId">Project *</Label>
                     <Select
-                      value={formData.priority}
-                      onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                      value={formData.projectId}
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, projectId: value });
+                        setProjectIdError(null);
+                      }}
+                      required
                     >
-                      <SelectTrigger>
-                        <SelectValue />
+                      <SelectTrigger className={`rounded-xl ${projectIdError ? "border-destructive" : ""}`}>
+                        <SelectValue placeholder="Select project" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {projectIdError && (
+                      <p className="text-xs text-destructive">{projectIdError}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      rows={3}
+                      className="rounded-xl"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="priority">Priority</Label>
+                      <Select
+                        value={formData.priority}
+                        onValueChange={(value) => setFormData({ ...formData, priority: value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dueDate">Due Date</Label>
+                      <Input
+                        id="dueDate"
+                        type="date"
+                        value={formData.dueDate}
+                        onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="progress">Progress ({formData.progress}%)</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="progress"
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={formData.progress}
+                        onChange={(e) => setFormData({ ...formData, progress: Number(e.target.value) })}
+                        className="flex-1 h-2 accent-primary"
+                      />
+                      <span className="text-sm font-medium text-foreground w-10 text-right">{formData.progress}%</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="assignedTo">Assignee</Label>
+                    <Select
+                      value={formData.assignedTo}
+                      onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder="Select assignee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.firstName} {user.lastName}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dueDate">Due Date</Label>
-                    <Input
-                      id="dueDate"
-                      type="date"
-                      value={formData.dueDate}
-                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                    />
+
+                  <div className="flex gap-2 justify-end">
+                    <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="rounded-xl">Create Task</Button>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="progress">Progress ({formData.progress}%)</Label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      id="progress"
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={formData.progress}
-                      onChange={(e) => setFormData({ ...formData, progress: Number(e.target.value) })}
-                      className="flex-1 h-2 accent-primary"
-                    />
-                    <span className="text-sm font-medium w-10 text-right">{formData.progress}%</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="assignedTo">Assignee</Label>
-                  <Select
-                    value={formData.assignedTo}
-                    onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select assignee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.firstName} {user.lastName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex gap-2 justify-end">
-                  <Button type="button" variant="outline" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">Create Task</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        {columns.map((column) => (
-          <div
-            key={column.id}
-            className={`rounded-lg transition-colors ${
-              dragOverColumn === column.id ? "bg-blue-50 ring-2 ring-blue-300" : "bg-gray-50"
-            }`}
-            onDragOver={(e) => handleDragOver(e, column.id)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, column.id)}
-          >
-            <div className="flex items-center justify-between p-3 border-b bg-white rounded-t-lg">
-              <h2 className="font-medium text-sm">{column.title}</h2>
-              <Badge variant="secondary" className="text-xs">{column.tasks.length}</Badge>
-            </div>
-            <div className="p-2 min-h-[200px] space-y-2">
-              {column.tasks.map((task) => (
-                <Card
-                  key={task.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, task)}
-                  onDragEnd={handleDragEnd}
-                  className={`cursor-pointer hover:shadow-md transition-shadow ${
-                    draggedTask?.id === task.id ? "opacity-50" : ""
-                  }`}
-                  onClick={() => openTaskDetail(task)}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="text-sm font-medium line-clamp-2">{task.title}</h3>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-                            <MoreVertical className="h-3 w-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "pending"); }}>
-                            Move to Pending
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "in_progress"); }}>
-                            Move to In Progress
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "completed"); }}>
-                            Move to Completed
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="text-red-600">
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <Progress value={task.progress} className="h-1.5 flex-1" />
-                      <span className="text-[10px] font-medium text-gray-500 w-7 text-right">{task.progress}%</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className={`${priorityColors[task.priority]} text-xs`}>
-                        {task.priority}
-                      </Badge>
-                      {task.documents?.length ? (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <FileText className="h-3 w-3" />
-                          {task.documents.length}
-                        </span>
-                      ) : null}
-                      {task.dueDate && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <Calendar className="h-3 w-3" />
-                          {formatDate(task.dueDate)}
-                        </span>
-                      )}
-                      {task.assignee && (
-                        <span className="flex items-center gap-1 text-xs text-gray-500">
-                          <User className="h-3 w-3" />
-                          {task.assignee.firstName.charAt(0)}{task.assignee.lastName.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {column.tasks.length === 0 && (
-                <div className="text-center py-6 text-sm text-gray-400">
-                  Drop tasks here
-                </div>
-              )}
-            </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
-        ))}
+        </div>
+      </header>
+
+      {/* Kanban Board */}
+      <div className="grid gap-5 md:grid-cols-3">
+        {columns.map((column) => {
+          const config = columnConfig[column.id];
+          const isOver = dragOverColumn === column.id;
+
+          return (
+            <div
+              key={column.id}
+              className={`rounded-2xl transition-all duration-200 ${isOver ? config.dropRing : config.bg}`}
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, column.id)}
+            >
+              <div className={`flex items-center justify-between p-4 ${config.headerBg} rounded-t-2xl`}>
+                <div className="flex items-center gap-2.5">
+                  <span className={`h-2 w-2 rounded-full ${config.dotColor}`} />
+                  <h2 className="font-medium text-sm text-foreground">{config.title}</h2>
+                </div>
+                <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                  {column.tasks.length}
+                </span>
+              </div>
+
+              <div className="p-2.5 min-h-[220px] space-y-2.5">
+                {column.tasks.map((task) => {
+                  const pc = priorityConfig[task.priority] || priorityConfig.medium;
+                  return (
+                    <div
+                      key={task.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, task)}
+                      onDragEnd={handleDragEnd}
+                      className={`bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5 ${
+                        draggedTask?.id === task.id ? "opacity-40" : ""
+                      }`}
+                      onClick={() => openTaskDetail(task)}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2.5">
+                        <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">{task.title}</h3>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground">
+                              <MoreVertical className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "pending"); }}>
+                              Move to Pending
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "in_progress"); }}>
+                              Move to In Progress
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "completed"); }}>
+                              Move to Completed
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="text-destructive">
+                              <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <div className="flex-1 h-1.5 rounded-full bg-sage-pale overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all duration-300"
+                            style={{ width: `${task.progress}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] font-semibold text-muted-foreground w-7 text-right">{task.progress}%</span>
+                      </div>
+
+                      {/* Meta row */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${pc.bg} ${pc.text}`}>
+                          {pc.label}
+                        </span>
+                        {task.documents?.length ? (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <FileText className="h-3 w-3" />
+                            {task.documents.length}
+                          </span>
+                        ) : null}
+                        {task.dueDate && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(task.dueDate)}
+                          </span>
+                        )}
+                        {task.assignee && (
+                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-sage-pale text-primary text-[10px] font-semibold ml-auto shrink-0">
+                            {task.assignee.firstName.charAt(0)}{task.assignee.lastName.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {column.tasks.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <CheckSquare className="h-6 w-6 text-primary/15 mb-2" />
+                    <p className="text-xs text-muted-foreground">Drop tasks here</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
+      {/* Task Detail Dialog */}
       <Dialog open={isDetailDialogOpen} onOpenChange={(open) => { setIsDetailDialogOpen(open); if (!open) setIsEditing(false); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedTask && (
             <>
               <DialogHeader>
-                <DialogTitle>{isEditing ? "Edit Task" : selectedTask.title}</DialogTitle>
+                <DialogTitle className="font-serif text-xl">
+                  {isEditing ? "Edit Task" : selectedTask.title}
+                </DialogTitle>
               </DialogHeader>
               
               {isEditing ? (
-                <form onSubmit={handleEditSubmit} className="space-y-4 mt-4">
+                <form onSubmit={handleEditSubmit} className="space-y-5 mt-4">
                   <div className="space-y-2">
                     <Label htmlFor="edit-title">Title *</Label>
                     <Input
@@ -663,6 +733,7 @@ export default function TasksPage() {
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                       required
+                      className="rounded-xl"
                     />
                   </div>
 
@@ -673,7 +744,7 @@ export default function TasksPage() {
                       onValueChange={(value) => setFormData({ ...formData, projectId: value })}
                       required
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="rounded-xl">
                         <SelectValue placeholder="Select project" />
                       </SelectTrigger>
                       <SelectContent>
@@ -693,6 +764,7 @@ export default function TasksPage() {
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       rows={3}
+                      className="rounded-xl"
                     />
                   </div>
 
@@ -703,7 +775,7 @@ export default function TasksPage() {
                         value={formData.status}
                         onValueChange={(value) => setFormData({ ...formData, status: value })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="rounded-xl">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -719,7 +791,7 @@ export default function TasksPage() {
                         value={formData.priority}
                         onValueChange={(value) => setFormData({ ...formData, priority: value })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="rounded-xl">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -744,7 +816,7 @@ export default function TasksPage() {
                         onChange={(e) => setFormData({ ...formData, progress: Number(e.target.value) })}
                         className="flex-1 h-2 accent-primary"
                       />
-                      <span className="text-sm font-medium w-10 text-right">{formData.progress}%</span>
+                      <span className="text-sm font-medium text-foreground w-10 text-right">{formData.progress}%</span>
                     </div>
                   </div>
 
@@ -756,6 +828,7 @@ export default function TasksPage() {
                         type="date"
                         value={formData.dueDate}
                         onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                        className="rounded-xl"
                       />
                     </div>
                     <div className="space-y-2">
@@ -764,7 +837,7 @@ export default function TasksPage() {
                         value={formData.assignedTo}
                         onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="rounded-xl">
                           <SelectValue placeholder="Select assignee" />
                         </SelectTrigger>
                         <SelectContent>
@@ -779,68 +852,91 @@ export default function TasksPage() {
                   </div>
 
                   <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
+                    <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>
                       Cancel
                     </Button>
-                    <Button type="submit">Save Changes</Button>
+                    <Button type="submit" className="rounded-xl">Save Changes</Button>
                   </div>
                 </form>
               ) : (
-                <div className="space-y-4 mt-4">
+                <div className="space-y-6 mt-4">
+                  {/* Status & priority pills */}
                   <div className="flex items-center gap-2">
-                    <Badge className={priorityColors[selectedTask.priority]}>{selectedTask.priority}</Badge>
-                    <Badge className={statusColors[selectedTask.status]}>
-                      {selectedTask.status.replace("_", " ")}
-                    </Badge>
+                    {(() => {
+                      const pc = priorityConfig[selectedTask.priority] || priorityConfig.medium;
+                      return (
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${pc.bg} ${pc.text}`}>
+                          {pc.label}
+                        </span>
+                      );
+                    })()}
+                    {(() => {
+                      const sc = statusConfig[selectedTask.status] || statusConfig.pending;
+                      return (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${sc.bg} ${sc.text}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${sc.text.replace("text-", "bg-")}`} />
+                          {sc.label}
+                        </span>
+                      );
+                    })()}
                   </div>
 
+                  {/* Progress */}
                   <div>
-                    <h4 className="text-sm font-medium mb-1.5">Progress</h4>
+                    <p className="text-xs text-muted-foreground mb-2">Progress</p>
                     <div className="flex items-center gap-3">
-                      <Progress value={selectedTask.progress} className="h-2 flex-1" />
-                      <span className="text-sm font-semibold">{selectedTask.progress}%</span>
+                      <div className="flex-1 h-2 rounded-full bg-sage-pale overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-500"
+                          style={{ width: `${selectedTask.progress}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-semibold text-foreground">{selectedTask.progress}%</span>
                     </div>
                   </div>
 
+                  {/* Description */}
                   {selectedTask.description && (
                     <div>
-                      <h4 className="text-sm font-medium mb-1">Description</h4>
-                      <p className="text-sm text-gray-600">{selectedTask.description}</p>
+                      <p className="text-xs text-muted-foreground mb-1.5">Description</p>
+                      <p className="text-sm text-foreground leading-relaxed">{selectedTask.description}</p>
                     </div>
                   )}
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  {/* Metadata grid */}
+                  <div className="grid gap-4 sm:grid-cols-2 p-4 bg-muted/30 rounded-xl">
                     <div>
-                      <h4 className="text-sm font-medium mb-1">Project</h4>
-                      <p className="text-sm text-gray-600">{selectedTask.project.name}</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Project</p>
+                      <p className="text-sm font-medium text-foreground">{selectedTask.project.name}</p>
                     </div>
                     {selectedTask.assignee && (
                       <div>
-                        <h4 className="text-sm font-medium mb-1">Assignee</h4>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs text-muted-foreground mb-0.5">Assignee</p>
+                        <p className="text-sm font-medium text-foreground">
                           {selectedTask.assignee.firstName} {selectedTask.assignee.lastName}
                         </p>
                       </div>
                     )}
                     {selectedTask.dueDate && (
                       <div>
-                        <h4 className="text-sm font-medium mb-1">Due Date</h4>
-                        <p className="text-sm text-gray-600">{formatDate(selectedTask.dueDate)}</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">Due Date</p>
+                        <p className="text-sm text-foreground">{formatDate(selectedTask.dueDate)}</p>
                       </div>
                     )}
                     <div>
-                      <h4 className="text-sm font-medium mb-1">Created By</h4>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-xs text-muted-foreground mb-0.5">Created By</p>
+                      <p className="text-sm text-foreground">
                         {selectedTask.creator.firstName} {selectedTask.creator.lastName}
                       </p>
                     </div>
                   </div>
 
+                  {/* Documents */}
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-medium">Documents</h4>
-                      <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                        <Upload className="h-4 w-4 mr-1" /> Upload
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Documents</p>
+                      <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="rounded-xl h-7 text-xs">
+                        <Upload className="h-3 w-3 mr-1.5" /> Upload
                       </Button>
                       <input
                         ref={fileInputRef}
@@ -854,13 +950,13 @@ export default function TasksPage() {
                     {uploadingFiles.length > 0 && (
                       <div className="space-y-2 mb-3">
                         {uploadingFiles.map((file, index) => (
-                          <div key={index} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                          <div key={index} className="flex items-center gap-2.5 p-3 bg-lavender-pale rounded-xl">
+                            <Loader2 className="h-4 w-4 animate-spin text-lavender" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{file.name}</p>
-                              <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden mt-1">
+                              <p className="text-xs font-medium text-foreground truncate">{file.name}</p>
+                              <div className="h-1 bg-lavender/20 rounded-full overflow-hidden mt-1.5">
                                 <div
-                                  className="h-full bg-blue-500 transition-all duration-300"
+                                  className="h-full bg-lavender rounded-full transition-all duration-300"
                                   style={{ width: `${file.progress}%` }}
                                 />
                               </div>
@@ -871,29 +967,32 @@ export default function TasksPage() {
                     )}
 
                     {selectedTask.documents?.length === 0 && uploadingFiles.length === 0 ? (
-                      <p className="text-sm text-gray-500">No documents attached.</p>
+                      <div className="py-6 text-center">
+                        <FileText className="h-6 w-6 mx-auto mb-1.5 text-primary/15" />
+                        <p className="text-xs text-muted-foreground">No documents attached</p>
+                      </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {selectedTask.documents?.map((doc) => (
-                          <div key={doc.id} className="flex items-center gap-2 p-2 border rounded hover:bg-gray-50 group">
-                            <FileText className="h-4 w-4 text-gray-400" />
+                          <div key={doc.id} className="flex items-center gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
+                            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div className="flex-1 min-w-0">
                               <a
                                 href={doc.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-sm font-medium hover:underline truncate block"
+                                className="text-sm font-medium text-foreground hover:text-primary truncate block transition-colors"
                               >
                                 {doc.name}
                               </a>
-                              <p className="text-xs text-gray-400">
-                                {formatFileSize(doc.size)} • {formatDate(doc.createdAt)}
+                              <p className="text-[11px] text-muted-foreground">
+                                {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
                               </p>
                             </div>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="opacity-0 group-hover:opacity-100 h-6 w-6"
+                              className="opacity-0 group-hover:opacity-100 h-6 w-6 text-destructive transition-opacity"
                               onClick={() => handleDeleteDocument(doc.id)}
                             >
                               <X className="h-3 w-3" />
@@ -904,14 +1003,15 @@ export default function TasksPage() {
                     )}
                   </div>
 
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Button variant="outline" size="sm" onClick={startEditing}>
-                      <Edit className="h-4 w-4 mr-1" /> Edit
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-4 border-t border-border">
+                    <Button variant="outline" size="sm" onClick={startEditing} className="rounded-xl">
+                      <Edit className="h-3.5 w-3.5 mr-1.5" /> Edit
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <MoreVertical className="h-4 w-4 mr-1" /> Status
+                        <Button variant="outline" size="sm" className="rounded-xl">
+                          <MoreVertical className="h-3.5 w-3.5 mr-1.5" /> Status
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
@@ -926,8 +1026,13 @@ export default function TasksPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(selectedTask.id)} className="ml-auto">
-                      <Trash2 className="h-4 w-4 mr-1" /> Delete
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(selectedTask.id)}
+                      className="ml-auto text-destructive hover:text-destructive hover:bg-rose-pale rounded-xl"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
                     </Button>
                   </div>
                 </div>
