@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,15 +75,15 @@ type Task = {
 };
 
 const priorityConfig: Record<string, { bg: string; text: string; label: string }> = {
-  low: { bg: "bg-muted", text: "text-muted-foreground", label: "Low" },
-  medium: { bg: "bg-amber-pale", text: "text-amber-warm", label: "Medium" },
-  high: { bg: "bg-rose-pale", text: "text-rose-muted", label: "High" },
+  low: { bg: "bg-muted", text: "text-muted-foreground", label: "site.low" },
+  medium: { bg: "bg-amber-pale", text: "text-amber-warm", label: "site.medium" },
+  high: { bg: "bg-rose-pale", text: "text-rose-muted", label: "site.high" },
 };
 
 const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
-  pending: { bg: "bg-muted", text: "text-muted-foreground", label: "Pending" },
-  in_progress: { bg: "bg-lavender-pale", text: "text-lavender", label: "In Progress" },
-  completed: { bg: "bg-sage-pale", text: "text-primary", label: "Completed" },
+  pending: { bg: "bg-muted", text: "text-muted-foreground", label: "site.pending" },
+  in_progress: { bg: "bg-lavender-pale", text: "text-lavender", label: "site.in_progress" },
+  completed: { bg: "bg-sage-pale", text: "text-primary", label: "site.completed" },
 };
 
 const columnConfig: Record<string, { bg: string; headerBg: string; dotColor: string; dropRing: string; title: string }> = {
@@ -91,25 +92,26 @@ const columnConfig: Record<string, { bg: string; headerBg: string; dotColor: str
     headerBg: "bg-card",
     dotColor: "bg-muted-foreground",
     dropRing: "ring-2 ring-primary/30 bg-sage-pale/40",
-    title: "Pending",
+    title: "site.pending",
   },
   in_progress: {
     bg: "bg-lavender-pale/30",
     headerBg: "bg-card",
     dotColor: "bg-lavender",
     dropRing: "ring-2 ring-lavender/30 bg-lavender-pale/50",
-    title: "In Progress",
+    title: "site.in_progress",
   },
   completed: {
     bg: "bg-sage-pale/30",
     headerBg: "bg-card",
     dotColor: "bg-primary",
     dropRing: "ring-2 ring-primary/30 bg-sage-pale/50",
-    title: "Completed",
+    title: "site.completed",
   },
 };
 
 export default function TasksPage() {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -121,6 +123,7 @@ export default function TasksPage() {
   const [filterProject, setFilterProject] = useState<string>("all");
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [movingTaskIds, setMovingTaskIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{ name: string; progress: number }[]>([]);
   const [formData, setFormData] = useState({
@@ -200,7 +203,7 @@ export default function TasksPage() {
     e.preventDefault();
 
     if (!formData.projectId) {
-      setProjectIdError("Please select a project.");
+      setProjectIdError(t("reports.error_select_project"));
       return;
     }
 
@@ -227,26 +230,66 @@ export default function TasksPage() {
   }
 
   async function handleStatusChange(taskId: string, newStatus: string) {
+    const previousTask = tasks.find((task) => task.id === taskId);
+    if (!previousTask || previousTask.status === newStatus) return;
+
+    const optimisticTask: Task = {
+      ...previousTask,
+      status: newStatus,
+      progress:
+        newStatus === "completed"
+          ? 100
+          : previousTask.status === "completed" && previousTask.progress === 100
+            ? 95
+            : previousTask.progress,
+      completedAt: newStatus === "completed" ? previousTask.completedAt ?? new Date().toISOString() : null,
+    };
+
+    setTasks((currentTasks) =>
+      currentTasks.map((task) => (task.id === taskId ? optimisticTask : task))
+    );
+    setSelectedTask((currentSelectedTask) =>
+      currentSelectedTask?.id === taskId ? optimisticTask : currentSelectedTask
+    );
+    setMovingTaskIds((currentIds) =>
+      currentIds.includes(taskId) ? currentIds : [...currentIds, taskId]
+    );
+
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+
+      if (!res.ok) {
+        throw new Error(`Status update failed with ${res.status}`);
+      }
+
       const data = await res.json();
       if (data.task) {
-        setTasks(tasks.map((t) => (t.id === data.task.id ? data.task : t)));
-        if (selectedTask?.id === taskId) {
-          setSelectedTask(data.task);
-        }
+        setTasks((currentTasks) =>
+          currentTasks.map((task) => (task.id === data.task.id ? data.task : task))
+        );
+        setSelectedTask((currentSelectedTask) =>
+          currentSelectedTask?.id === taskId ? data.task : currentSelectedTask
+        );
       }
     } catch (error) {
       console.error("Error updating task:", error);
+      setTasks((currentTasks) =>
+        currentTasks.map((task) => (task.id === taskId ? previousTask : task))
+      );
+      setSelectedTask((currentSelectedTask) =>
+        currentSelectedTask?.id === taskId ? previousTask : currentSelectedTask
+      );
+    } finally {
+      setMovingTaskIds((currentIds) => currentIds.filter((id) => id !== taskId));
     }
   }
 
   async function handleDelete(taskId: string) {
-    if (!confirm("Are you sure you want to delete this task?")) return;
+    if (!confirm(t("site.are_you_sure_you_want_to_delete_this_task"))) return;
 
     try {
       await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
@@ -355,7 +398,7 @@ export default function TasksPage() {
   }
 
   async function handleDeleteDocument(documentId: string) {
-    if (!selectedTask || !confirm("Delete this document?")) return;
+    if (!selectedTask || !confirm(t("site.delete_this_document"))) return;
 
     try {
       await fetch(`/api/documents/${documentId}`, { method: "DELETE" });
@@ -394,7 +437,7 @@ export default function TasksPage() {
   function handleDragOver(e: React.DragEvent, columnId: string) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDragOverColumn(columnId);
+    setDragOverColumn((currentColumn) => (currentColumn === columnId ? currentColumn : columnId));
   }
 
   function handleDragLeave() {
@@ -433,7 +476,7 @@ export default function TasksPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading tasks…</p>
+          <p className="text-sm text-muted-foreground">{t("site.loading_tasks")}</p>
         </div>
       </div>
     );
@@ -444,18 +487,18 @@ export default function TasksPage() {
       <header className="mb-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">Task Board</h1>
+            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">{t("site.task_board")}</h1>
             <p className="text-sm text-muted-foreground">
-              Drag tasks between columns to update their status
+              {t("site.drag_tasks_between_columns_to_update_status")}
             </p>
           </div>
           <div className="flex gap-3 shrink-0">
             <Select value={filterProject} onValueChange={setFilterProject}>
               <SelectTrigger className="w-48 rounded-xl">
-                <SelectValue placeholder="Filter by project" />
+                <SelectValue placeholder={t("site.filter_by_project")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Projects</SelectItem>
+                <SelectItem value="all">{t("site.all_projects")}</SelectItem>
                 {projects.map((project) => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.name}
@@ -466,16 +509,16 @@ export default function TasksPage() {
             <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button className="rounded-xl">
-                  <Plus className="h-4 w-4 mr-2" /> New Task
+                  <Plus className="h-4 w-4 mr-2" /> {t("site.create_new_task")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
                 <DialogHeader>
-                  <DialogTitle className="font-serif text-xl">Create New Task</DialogTitle>
+                  <DialogTitle className="font-serif text-xl">{t("site.create_new_task")}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-5 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="title">Title *</Label>
+                    <Label htmlFor="title">{t("site.title")}</Label>
                     <Input
                       id="title"
                       value={formData.title}
@@ -486,7 +529,7 @@ export default function TasksPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="projectId">Project *</Label>
+                    <Label htmlFor="projectId">{t("site.project_2")}</Label>
                     <Select
                       value={formData.projectId}
                       onValueChange={(value) => {
@@ -496,7 +539,7 @@ export default function TasksPage() {
                       required
                     >
                       <SelectTrigger className={`rounded-xl ${projectIdError ? "border-destructive" : ""}`}>
-                        <SelectValue placeholder="Select project" />
+                        <SelectValue placeholder={t("site.select_project")} />
                       </SelectTrigger>
                       <SelectContent>
                         {projects.map((project) => (
@@ -512,7 +555,7 @@ export default function TasksPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
+                    <Label htmlFor="description">{t("site.description")}</Label>
                     <Textarea
                       id="description"
                       value={formData.description}
@@ -524,7 +567,7 @@ export default function TasksPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="priority">Priority</Label>
+                      <Label htmlFor="priority">{t("site.priority")}</Label>
                       <Select
                         value={formData.priority}
                         onValueChange={(value) => setFormData({ ...formData, priority: value })}
@@ -533,14 +576,14 @@ export default function TasksPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="low">{t("site.low")}</SelectItem>
+                          <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                          <SelectItem value="high">{t("site.high")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="dueDate">Due Date</Label>
+                      <Label htmlFor="dueDate">{t("site.due_date")}</Label>
                       <Input
                         id="dueDate"
                         type="date"
@@ -552,7 +595,7 @@ export default function TasksPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="progress">Progress ({formData.progress}%)</Label>
+                    <Label htmlFor="progress">{t("site.progress")} ({formData.progress}%)</Label>
                     <div className="flex items-center gap-3">
                       <input
                         id="progress"
@@ -569,13 +612,13 @@ export default function TasksPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="assignedTo">Assignee</Label>
+                    <Label htmlFor="assignedTo">{t("site.assignee")}</Label>
                     <Select
                       value={formData.assignedTo}
                       onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select assignee" />
+                        <SelectValue placeholder={t("site.select_assignee")} />
                       </SelectTrigger>
                       <SelectContent>
                         {users.map((user) => (
@@ -589,9 +632,9 @@ export default function TasksPage() {
 
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                      Cancel
+                      {t("site.cancel")}
                     </Button>
-                    <Button type="submit" className="rounded-xl">Create Task</Button>
+                    <Button type="submit" className="rounded-xl">{t("site.create_task")}</Button>
                   </div>
                 </form>
               </DialogContent>
@@ -617,7 +660,7 @@ export default function TasksPage() {
               <div className={`flex items-center justify-between p-4 ${config.headerBg} rounded-t-2xl`}>
                 <div className="flex items-center gap-2.5">
                   <span className={`h-2 w-2 rounded-full ${config.dotColor}`} />
-                  <h2 className="font-medium text-sm text-foreground">{config.title}</h2>
+                  <h2 className="font-medium text-sm text-foreground">{t(config.title)}</h2>
                 </div>
                 <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                   {column.tasks.length}
@@ -627,6 +670,7 @@ export default function TasksPage() {
               <div className="p-2.5 min-h-[220px] space-y-2.5">
                 {column.tasks.map((task) => {
                   const pc = priorityConfig[task.priority] || priorityConfig.medium;
+                  const isMoving = movingTaskIds.includes(task.id);
                   return (
                     <div
                       key={task.id}
@@ -635,7 +679,7 @@ export default function TasksPage() {
                       onDragEnd={handleDragEnd}
                       className={`bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5 ${
                         draggedTask?.id === task.id ? "opacity-40" : ""
-                      }`}
+                      } ${isMoving ? "ring-1 ring-primary/20" : ""}`}
                       onClick={() => openTaskDetail(task)}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2.5">
@@ -648,16 +692,16 @@ export default function TasksPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "pending"); }}>
-                              Move to Pending
+                              {t("site.move_to_pending")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "in_progress"); }}>
-                              Move to In Progress
+                              {t("site.move_to_in_progress")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "completed"); }}>
-                              Move to Completed
+                              {t("site.move_to_completed")}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" /> Delete
+                              <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -677,8 +721,13 @@ export default function TasksPage() {
                       {/* Meta row */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${pc.bg} ${pc.text}`}>
-                          {pc.label}
+                          {t(pc.label)}
                         </span>
+                        {isMoving ? (
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/70">
+                            {t("site.saving_short")}
+                          </span>
+                        ) : null}
                         {task.documents?.length ? (
                           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                             <FileText className="h-3 w-3" />
@@ -704,7 +753,7 @@ export default function TasksPage() {
                 {column.tasks.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-10 text-center">
                     <CheckSquare className="h-6 w-6 text-primary/15 mb-2" />
-                    <p className="text-xs text-muted-foreground">Drop tasks here</p>
+                    <p className="text-xs text-muted-foreground">{t("site.drop_tasks_here")}</p>
                   </div>
                 )}
               </div>
@@ -720,14 +769,14 @@ export default function TasksPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="font-serif text-xl">
-                  {isEditing ? "Edit Task" : selectedTask.title}
+                  {isEditing ? t("site.edit_task") : selectedTask.title}
                 </DialogTitle>
               </DialogHeader>
               
               {isEditing ? (
                 <form onSubmit={handleEditSubmit} className="space-y-5 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="edit-title">Title *</Label>
+                    <Label htmlFor="edit-title">{t("site.title")}</Label>
                     <Input
                       id="edit-title"
                       value={formData.title}
@@ -738,14 +787,14 @@ export default function TasksPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="edit-project">Project *</Label>
+                    <Label htmlFor="edit-project">{t("site.project_2")}</Label>
                     <Select
                       value={formData.projectId}
                       onValueChange={(value) => setFormData({ ...formData, projectId: value })}
                       required
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select project" />
+                          <SelectValue placeholder={t("site.select_project")} />
                       </SelectTrigger>
                       <SelectContent>
                         {projects.map((project) => (
@@ -758,7 +807,7 @@ export default function TasksPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="edit-description">Description</Label>
+                    <Label htmlFor="edit-description">{t("site.description")}</Label>
                     <Textarea
                       id="edit-description"
                       value={formData.description}
@@ -770,7 +819,7 @@ export default function TasksPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="edit-status">Status</Label>
+                      <Label htmlFor="edit-status">{t("site.status")}</Label>
                       <Select
                         value={formData.status}
                         onValueChange={(value) => setFormData({ ...formData, status: value })}
@@ -779,14 +828,14 @@ export default function TasksPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="pending">{t("site.pending")}</SelectItem>
+                          <SelectItem value="in_progress">{t("site.in_progress")}</SelectItem>
+                          <SelectItem value="completed">{t("site.completed")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="edit-priority">Priority</Label>
+                      <Label htmlFor="edit-priority">{t("site.priority")}</Label>
                       <Select
                         value={formData.priority}
                         onValueChange={(value) => setFormData({ ...formData, priority: value })}
@@ -795,16 +844,16 @@ export default function TasksPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="low">{t("site.low")}</SelectItem>
+                          <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                          <SelectItem value="high">{t("site.high")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="edit-progress">Progress ({formData.progress}%)</Label>
+                    <Label htmlFor="edit-progress">{t("site.progress")} ({formData.progress}%)</Label>
                     <div className="flex items-center gap-3">
                       <input
                         id="edit-progress"
@@ -822,7 +871,7 @@ export default function TasksPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="edit-dueDate">Due Date</Label>
+                      <Label htmlFor="edit-dueDate">{t("site.due_date")}</Label>
                       <Input
                         id="edit-dueDate"
                         type="date"
@@ -832,13 +881,13 @@ export default function TasksPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="edit-assignedTo">Assignee</Label>
+                      <Label htmlFor="edit-assignedTo">{t("site.assignee")}</Label>
                       <Select
                         value={formData.assignedTo}
                         onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select assignee" />
+                          <SelectValue placeholder={t("site.select_assignee")} />
                         </SelectTrigger>
                         <SelectContent>
                           {users.map((user) => (
@@ -853,9 +902,9 @@ export default function TasksPage() {
 
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>
-                      Cancel
+                      {t("site.cancel")}
                     </Button>
-                    <Button type="submit" className="rounded-xl">Save Changes</Button>
+                    <Button type="submit" className="rounded-xl">{t("site.save_changes")}</Button>
                   </div>
                 </form>
               ) : (
@@ -866,7 +915,7 @@ export default function TasksPage() {
                       const pc = priorityConfig[selectedTask.priority] || priorityConfig.medium;
                       return (
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${pc.bg} ${pc.text}`}>
-                          {pc.label}
+                          {t(pc.label)}
                         </span>
                       );
                     })()}
@@ -875,7 +924,7 @@ export default function TasksPage() {
                       return (
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${sc.bg} ${sc.text}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${sc.text.replace("text-", "bg-")}`} />
-                          {sc.label}
+                          {t(sc.label)}
                         </span>
                       );
                     })()}
@@ -883,7 +932,7 @@ export default function TasksPage() {
 
                   {/* Progress */}
                   <div>
-                    <p className="text-xs text-muted-foreground mb-2">Progress</p>
+                    <p className="text-xs text-muted-foreground mb-2">{t("site.progress")}</p>
                     <div className="flex items-center gap-3">
                       <div className="flex-1 h-2 rounded-full bg-sage-pale overflow-hidden">
                         <div
@@ -898,7 +947,7 @@ export default function TasksPage() {
                   {/* Description */}
                   {selectedTask.description && (
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1.5">Description</p>
+                      <p className="text-xs text-muted-foreground mb-1.5">{t("site.description")}</p>
                       <p className="text-sm text-foreground leading-relaxed">{selectedTask.description}</p>
                     </div>
                   )}
@@ -906,12 +955,12 @@ export default function TasksPage() {
                   {/* Metadata grid */}
                   <div className="grid gap-4 sm:grid-cols-2 p-4 bg-muted/30 rounded-xl">
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Project</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">{t("site.project")}</p>
                       <p className="text-sm font-medium text-foreground">{selectedTask.project.name}</p>
                     </div>
                     {selectedTask.assignee && (
                       <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Assignee</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">{t("site.assignee")}</p>
                         <p className="text-sm font-medium text-foreground">
                           {selectedTask.assignee.firstName} {selectedTask.assignee.lastName}
                         </p>
@@ -919,12 +968,12 @@ export default function TasksPage() {
                     )}
                     {selectedTask.dueDate && (
                       <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Due Date</p>
+                        <p className="text-xs text-muted-foreground mb-0.5">{t("site.due_date")}</p>
                         <p className="text-sm text-foreground">{formatDate(selectedTask.dueDate)}</p>
                       </div>
                     )}
                     <div>
-                      <p className="text-xs text-muted-foreground mb-0.5">Created By</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">{t("site.created_by")}</p>
                       <p className="text-sm text-foreground">
                         {selectedTask.creator.firstName} {selectedTask.creator.lastName}
                       </p>
@@ -934,9 +983,9 @@ export default function TasksPage() {
                   {/* Documents */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Documents</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("site.documents")}</p>
                       <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="rounded-xl h-7 text-xs">
-                        <Upload className="h-3 w-3 mr-1.5" /> Upload
+                        <Upload className="h-3 w-3 mr-1.5" /> {t("site.upload")}
                       </Button>
                       <input
                         ref={fileInputRef}
@@ -969,7 +1018,7 @@ export default function TasksPage() {
                     {selectedTask.documents?.length === 0 && uploadingFiles.length === 0 ? (
                       <div className="py-6 text-center">
                         <FileText className="h-6 w-6 mx-auto mb-1.5 text-primary/15" />
-                        <p className="text-xs text-muted-foreground">No documents attached</p>
+                        <p className="text-xs text-muted-foreground">{t("site.no_documents_attached")}</p>
                       </div>
                     ) : (
                       <div className="space-y-1.5">
@@ -1006,23 +1055,23 @@ export default function TasksPage() {
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t border-border">
                     <Button variant="outline" size="sm" onClick={startEditing} className="rounded-xl">
-                      <Edit className="h-3.5 w-3.5 mr-1.5" /> Edit
+                      <Edit className="h-3.5 w-3.5 mr-1.5" /> {t("site.edit")}
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm" className="rounded-xl">
-                          <MoreVertical className="h-3.5 w-3.5 mr-1.5" /> Status
+                          <MoreVertical className="h-3.5 w-3.5 mr-1.5" /> {t("site.status")}
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
                         <DropdownMenuItem onClick={() => handleStatusChange(selectedTask.id, "pending")}>
-                          Move to Pending
+                          {t("site.move_to_pending")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleStatusChange(selectedTask.id, "in_progress")}>
-                          Move to In Progress
+                          {t("site.move_to_in_progress")}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleStatusChange(selectedTask.id, "completed")}>
-                          Move to Completed
+                          {t("site.move_to_completed")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1032,7 +1081,7 @@ export default function TasksPage() {
                       onClick={() => handleDelete(selectedTask.id)}
                       className="ml-auto text-destructive hover:text-destructive hover:bg-rose-pale rounded-xl"
                     >
-                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> {t("site.delete")}
                     </Button>
                   </div>
                 </div>

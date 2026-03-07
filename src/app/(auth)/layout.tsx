@@ -2,9 +2,12 @@
 
 import Image from "next/image";
 import { Leaf } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/language-switcher";
 
 function BrandedPanel() {
+  const { t } = useTranslation();
+
   return (
     <div
       className="relative hidden lg:flex lg:w-[44%] xl:w-[42%] flex-col items-center justify-center overflow-hidden"
@@ -71,7 +74,7 @@ function BrandedPanel() {
         <div className="w-[88px] h-[88px] rounded-full bg-white/8 backdrop-blur-sm flex items-center justify-center mb-10 ring-1 ring-white/12 shadow-lg shadow-black/20">
           <Image
             src="/motri.png"
-            alt="MoTRI Logo"
+            alt={t("site.motri_logo")}
             width={52}
             height={52}
             className="rounded-full"
@@ -86,17 +89,17 @@ function BrandedPanel() {
         <div className="mt-5 w-10 h-px bg-white/15" />
 
         <p className="mt-5 text-white/45 text-[13px] leading-relaxed max-w-[260px] tracking-wide">
-          Ministry of Trade and Regional Integration
+          {t("site.ministry_of_trade_and_regional_integration")}
         </p>
         <p className="mt-1.5 text-white/30 text-[12px] tracking-wider uppercase">
-          Project Management Portal
+          {t("auth.portalTitle")}
         </p>
       </div>
 
       <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-2">
         <Leaf className="h-3.5 w-3.5 text-white/20" />
         <span className="text-[11px] text-white/20 tracking-[0.08em]">
-          Grow with Purpose
+          {t("site.grow_with_purpose")}
         </span>
       </div>
     </div>
@@ -108,6 +111,8 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       <BrandedPanel />
@@ -118,7 +123,7 @@ export default function AuthLayout({
             <div className="w-9 h-9 rounded-full bg-sage-pale flex items-center justify-center">
               <Image
                 src="/motri.png"
-                alt="MoTRI Logo"
+                alt={t("site.motri_logo")}
                 width={22}
                 height={22}
                 className="rounded-full"

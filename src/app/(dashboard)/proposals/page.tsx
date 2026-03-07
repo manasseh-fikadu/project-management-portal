@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -113,18 +116,94 @@ type Proposal = {
   };
 };
 
+function getStandardTorTemplate(t: (key: string) => string): ProposalTemplate {
+  return {
+    id: "standard-tor-starter",
+    name: t("site.standard_terms_of_reference_tor"),
+    description: t("site.standard_tor_description"),
+    category: t("site.general_tor"),
+    isActive: true,
+    sections: [
+      {
+        key: "background",
+        name: t("site.background"),
+        label: t("site.background"),
+        type: "textarea",
+        required: true,
+        placeholder: t("site.background_placeholder"),
+      },
+      {
+        key: "objective",
+        name: t("site.objective"),
+        label: t("site.objective"),
+        type: "textarea",
+        required: true,
+        placeholder: t("site.objective_placeholder"),
+      },
+      {
+        key: "scope_of_work",
+        name: t("site.scope_of_work"),
+        label: t("site.scope_of_work"),
+        type: "textarea",
+        required: true,
+        placeholder: t("site.scope_of_work_placeholder"),
+      },
+      {
+        key: "deliverables",
+        name: t("site.deliverables"),
+        label: t("site.deliverables"),
+        type: "textarea",
+        required: true,
+        placeholder: t("site.deliverables_placeholder"),
+      },
+      {
+        key: "duration_timeline",
+        name: t("site.duration_and_timeline"),
+        label: t("site.duration_and_timeline"),
+        type: "textarea",
+        required: true,
+        placeholder: t("site.duration_and_timeline_placeholder"),
+      },
+      {
+        key: "reporting_supervision",
+        name: t("site.reporting_and_supervision"),
+        label: t("site.reporting_and_supervision"),
+        type: "textarea",
+        required: false,
+        placeholder: t("site.reporting_and_supervision_placeholder"),
+      },
+      {
+        key: "required_qualifications",
+        name: t("site.required_qualifications"),
+        label: t("site.required_qualifications"),
+        type: "textarea",
+        required: true,
+        placeholder: t("site.required_qualifications_placeholder"),
+      },
+      {
+        key: "evaluation_criteria",
+        name: t("site.evaluation_criteria"),
+        label: t("site.evaluation_criteria"),
+        type: "textarea",
+        required: false,
+        placeholder: t("site.evaluation_criteria_placeholder"),
+      },
+    ],
+  };
+}
+
 const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  draft: { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground", label: "Draft" },
-  submitted: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "Submitted" },
-  under_review: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "Under Review" },
-  approved: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "Approved" },
-  rejected: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "Rejected" },
-  withdrawn: { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground", label: "Withdrawn" },
+  draft: { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground", label: "site.draft" },
+  submitted: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "site.submitted" },
+  under_review: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "site.under_review" },
+  approved: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "site.approved" },
+  rejected: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "site.rejected" },
+  withdrawn: { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground", label: "site.withdrawn" },
 };
 
 const typeConfig: Record<string, { bg: string; text: string; label: string }> = {
-  grant: { bg: "bg-sage-pale", text: "text-primary", label: "Grant" },
-  tor: { bg: "bg-lavender-pale", text: "text-lavender", label: "ToR" },
+  grant: { bg: "bg-sage-pale", text: "text-primary", label: "site.grant" },
+  tor: { bg: "bg-lavender-pale", text: "text-lavender", label: "site.tor" },
 };
 
 const pipelineColumnConfig: Record<string, { bg: string; headerBg: string; dotColor: string }> = {
@@ -142,7 +221,31 @@ function normalizeCurrency(currency: string): CurrencyCode {
   return SUPPORTED_CURRENCY_SET.has(currency) ? (currency as CurrencyCode) : "ETB";
 }
 
+function buildTemplateForm(template: ProposalTemplate): {
+  name: string;
+  description: string;
+  category: string;
+  isActive: boolean;
+  sections: TemplateSectionForm[];
+} {
+  return {
+    name: template.name,
+    description: template.description || "",
+    category: template.category || "",
+    isActive: template.isActive,
+    sections: (template.sections || []).map((section, idx) => ({
+      key: section.key || section.name || `section_${idx + 1}`,
+      label: section.label || section.name || "",
+      type: section.type === "textarea" || section.type === "long_text" ? "textarea" : "text",
+      required: Boolean(section.required),
+      placeholder: section.placeholder || "",
+    })),
+  };
+}
+
 export default function ProposalsPage() {
+  const { t } = useTranslation();
+  const router = useRouter();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [pipelineProposals, setPipelineProposals] = useState<Proposal[]>([]);
   const [donors, setDonors] = useState<Donor[]>([]);
@@ -192,12 +295,6 @@ export default function ProposalsPage() {
     notes: "",
     templateData: {} as Record<string, string>,
   });
-
-  useEffect(() => {
-    fetchDonors();
-    fetchProjects();
-    fetchTemplates();
-  }, []);
 
   useEffect(() => {
     if (!formData.templateId) return;
@@ -293,7 +390,7 @@ export default function ProposalsPage() {
     void fetchProposals();
   }, [viewMode, fetchProposals, fetchAllProposals]);
 
-  async function fetchDonors() {
+  const fetchDonors = useCallback(async () => {
     try {
       const res = await fetch("/api/donors");
       const data = await res.json();
@@ -301,11 +398,11 @@ export default function ProposalsPage() {
         setDonors(data.donors);
       }
     } catch (error) {
-      console.error("Error fetching donors:", error);
+      console.error(t("site.error_fetching_donors"), error);
     }
-  }
+  }, [t]);
 
-  async function fetchProjects() {
+  const fetchProjects = useCallback(async () => {
     try {
       const res = await fetch("/api/projects");
       const data = await res.json();
@@ -313,11 +410,11 @@ export default function ProposalsPage() {
         setProjects(data.projects);
       }
     } catch (error) {
-      console.error("Error fetching projects:", error);
+      console.error(t("site.error_fetching_projects"), error);
     }
-  }
+  }, [t]);
 
-  async function fetchTemplates() {
+  const fetchTemplates = useCallback(async () => {
     try {
       const res = await fetch("/api/proposal-templates");
       const data = await res.json();
@@ -325,9 +422,15 @@ export default function ProposalsPage() {
         setTemplates(data.templates);
       }
     } catch (error) {
-      console.error("Error fetching templates:", error);
+      console.error(t("site.error_fetching_templates"), error);
     }
-  }
+  }, [t]);
+
+  useEffect(() => {
+    fetchDonors();
+    fetchProjects();
+    fetchTemplates();
+  }, [fetchDonors, fetchProjects, fetchTemplates]);
 
   function resetTemplateForm() {
     setTemplateFormError("");
@@ -349,19 +452,14 @@ export default function ProposalsPage() {
       return;
     }
     setEditingTemplate(template);
-    setTemplateForm({
-      name: template.name,
-      description: template.description || "",
-      category: template.category || "",
-      isActive: template.isActive,
-      sections: (template.sections || []).map((section, idx) => ({
-        key: section.key || section.name || `section_${idx + 1}`,
-        label: section.label || section.name || "",
-        type: section.type === "textarea" || section.type === "long_text" ? "textarea" : "text",
-        required: Boolean(section.required),
-        placeholder: section.placeholder || "",
-      })),
-    });
+    setTemplateForm(buildTemplateForm(template));
+    setIsTemplateDialogOpen(true);
+  }
+
+  function useStarterTemplate() {
+    setTemplateFormError("");
+    setEditingTemplate(null);
+    setTemplateForm(buildTemplateForm(getStandardTorTemplate(t)));
     setIsTemplateDialogOpen(true);
   }
 
@@ -403,24 +501,24 @@ export default function ProposalsPage() {
     if (isTemplateSaving) return;
     setTemplateFormError("");
     if (!templateForm.name.trim()) {
-      setTemplateFormError("Template name is required.");
+      setTemplateFormError(t("site.template_name_is_required"));
       return;
     }
     if (templateForm.sections.length === 0) {
-      setTemplateFormError("Add at least one section.");
+      setTemplateFormError(t("site.add_at_least_one_section"));
       return;
     }
     const hasInvalidSection = templateForm.sections.some(
       (section) => !section.label.trim()
     );
     if (hasInvalidSection) {
-      setTemplateFormError("Each section needs a label.");
+      setTemplateFormError(t("site.each_section_needs_a_label"));
       return;
     }
     const normalizedSections = templateForm.sections.map((section, idx) => ({
       key: section.key.trim() || `section_${idx + 1}`,
-      name: section.label.trim() || section.key.trim() || `Section ${idx + 1}`,
-      label: section.label.trim() || section.key.trim() || `Section ${idx + 1}`,
+      name: section.label.trim() || section.key.trim() || `section_${idx + 1}`,
+      label: section.label.trim() || section.key.trim() || `section_${idx + 1}`,
       type: section.type,
       required: section.required,
       placeholder: section.placeholder.trim(),
@@ -451,15 +549,15 @@ export default function ProposalsPage() {
       await fetchTemplates();
       resetTemplateForm();
     } catch (error) {
-      console.error("Error saving template:", error);
-      setTemplateFormError("Could not save template. Please try again.");
+      console.error(t("site.error_saving_template"), error);
+      setTemplateFormError(t("site.could_not_save_template_please_try_again"));
     } finally {
       setIsTemplateSaving(false);
     }
   }
 
   async function handleDeleteTemplate(templateId: string) {
-    if (!confirm("Delete this template?")) return;
+    if (!confirm(t("site.delete_this_template"))) return;
     try {
       setDeletingTemplateId(templateId);
       await fetch(`/api/proposal-templates/${templateId}`, { method: "DELETE" });
@@ -468,7 +566,7 @@ export default function ProposalsPage() {
         resetTemplateForm();
       }
     } catch (error) {
-      console.error("Error deleting template:", error);
+      console.error(t("site.error_deleting_template"), error);
     } finally {
       setDeletingTemplateId(null);
     }
@@ -540,18 +638,18 @@ export default function ProposalsPage() {
       resetForm();
       setIsAddDialogOpen(false);
     } catch (error) {
-      console.error("Error saving proposal:", error);
+      console.error(t("site.error_saving_proposal"), error);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this proposal?")) return;
+    if (!confirm(t("site.are_you_sure_you_want_to_delete_this_proposal"))) return;
 
     try {
       await fetch(`/api/proposals/${id}`, { method: "DELETE" });
       await refreshProposalData();
     } catch (error) {
-      console.error("Error deleting proposal:", error);
+      console.error(t("site.error_deleting_proposal"), error);
     }
   }
 
@@ -567,7 +665,7 @@ export default function ProposalsPage() {
         await refreshProposalData();
       }
     } catch (error) {
-      console.error("Error updating proposal status:", error);
+      console.error(t("site.error_updating_proposal_status"), error);
     }
   }
 
@@ -603,7 +701,7 @@ export default function ProposalsPage() {
       const data = await res.json();
       setDocuments(data.documents || []);
     } catch (error) {
-      console.error("Error loading proposal documents:", error);
+      console.error(t("site.error_loading_proposal_documents"), error);
       setDocuments([]);
     }
   }
@@ -623,7 +721,7 @@ export default function ProposalsPage() {
         setDocuments((prev) => [data.document, ...prev]);
       }
     } catch (error) {
-      console.error("Error uploading proposal document:", error);
+      console.error(t("site.error_uploading_proposal_document"), error);
     } finally {
       e.target.value = "";
     }
@@ -634,7 +732,7 @@ export default function ProposalsPage() {
       await fetch(`/api/proposal-documents/${documentId}`, { method: "DELETE" });
       setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
     } catch (error) {
-      console.error("Error deleting proposal document:", error);
+      console.error(t("site.error_deleting_proposal_document"), error);
     }
   }
 
@@ -643,7 +741,7 @@ export default function ProposalsPage() {
   }
 
   function formatDate(date: string | null) {
-    if (!date) return "Not set";
+    if (!date) return t("site.not_set");
     return new Date(date).toLocaleDateString();
   }
 
@@ -663,6 +761,7 @@ export default function ProposalsPage() {
     );
   });
   const selectedTemplate = templates.find((template) => template.id === formData.templateId);
+  const standardTorTemplate = getStandardTorTemplate(t);
 
   const summaryProposals = viewMode === "pipeline" ? pipelineProposals : proposals;
   const totalsByCurrency: Record<string, { pipelineValue: number; approvedValue: number }> = {};
@@ -683,7 +782,7 @@ export default function ProposalsPage() {
     approved: summaryProposals.filter((p) => p.status === "approved").length,
     totalsByCurrency,
   };
-  const summaryLabelPrefix = pipelineStats.isPageScoped ? "This Page - " : "";
+  const summaryLabelPrefix = pipelineStats.isPageScoped ? `${t("site.this_page")} - ` : "";
   const pipelineViewProposals = viewMode === "pipeline" ? pipelineProposals : proposals;
   const loading = listLoading || (viewMode === "pipeline" && pipelineLoading);
 
@@ -692,7 +791,7 @@ export default function ProposalsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading proposals…</p>
+          <p className="text-sm text-muted-foreground">{t("site.loading_proposals")}</p>
         </div>
       </div>
     );
@@ -704,43 +803,64 @@ export default function ProposalsPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
-              Proposals & ToR
+              {t("site.proposals_and_tor")}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Monitor proposals and ToR submissions from draft to decision
+              {t("site.monitor_proposals_and_tor_submissions_from_draft_to_decision")}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <Dialog open={isTemplateDialogOpen} onOpenChange={(open) => { setIsTemplateDialogOpen(open); if (!open) resetTemplateForm(); }}>
               <DialogTrigger asChild>
-                <Button variant="outline" className="rounded-xl">Manage Templates</Button>
+                <Button variant="outline" className="rounded-xl">{t("site.manage_templates")}</Button>
               </DialogTrigger>
               <DialogContent className="w-[96vw] sm:max-w-[1200px] max-h-[88vh] overflow-hidden p-0 gap-0">
                 <DialogHeader className="px-6 py-4 border-b border-border">
-                  <DialogTitle className="font-serif text-xl">Template Manager</DialogTitle>
+                  <DialogTitle className="font-serif text-xl">{t("site.template_manager")}</DialogTitle>
                   <p className="text-sm text-muted-foreground">
-                    Create reusable ToR templates in two steps: define template details, then add sections users will fill.
+                    {t("site.start_from_a_standard_tor_structure_or_build_your_own_users_can_customize_any_saved_template_before_using_it_in_submissions")}
                   </p>
                 </DialogHeader>
                 <div className="grid lg:grid-cols-[320px_1fr] min-h-0">
                   <aside className="border-b lg:border-b-0 lg:border-r border-border p-4 space-y-3 overflow-y-auto max-h-[72vh]">
+                    <div className="rounded-[1.25rem] border border-primary/20 bg-[linear-gradient(145deg,rgba(201,228,193,0.35),rgba(242,235,220,0.82))] p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">
+                            {t("site.ready_to_use")}
+                          </p>
+                          <h3 className="font-serif text-lg leading-tight text-foreground">
+                            {standardTorTemplate.name}
+                          </h3>
+                        </div>
+                        <span className="rounded-full bg-card/80 px-2.5 py-1 text-[10px] font-semibold text-primary shadow-sm">
+                          {t("site.recommended")}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-foreground/75">
+                        {t("site.includes_the_sections_most_teams_expect_background_objective_scope_deliverables_timeline_reporting_qualifications_and_evaluation_criteria")}
+                      </p>
+                      <Button type="button" onClick={useStarterTemplate} className="mt-4 w-full rounded-xl">
+                        <FileText className="mr-2 h-4 w-4" /> {t("site.use_standard_tor")}
+                      </Button>
+                    </div>
                     <div className="space-y-2">
-                      <Label htmlFor="template-search">Find template</Label>
+                      <Label htmlFor="template-search">{t("site.find_template")}</Label>
                       <Input
                         id="template-search"
-                        placeholder="Search by name or category"
+                        placeholder={t("site.search_by_name_or_category")}
                         value={templateSearch}
                         onChange={(e) => setTemplateSearch(e.target.value)}
                         className="rounded-xl"
                       />
                     </div>
                     <Button className="w-full rounded-xl" variant="outline" onClick={() => openTemplateEditor()}>
-                      <Plus className="h-4 w-4 mr-2" /> New Template
+                      <Plus className="h-4 w-4 mr-2" /> {t("site.start_blank")}
                     </Button>
                     <div className="space-y-2">
                       {filteredTemplates.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                          No templates found. Create your first template to make ToR entry faster.
+                          {t("site.no_saved_templates_yet_use_the_standard_starter_above_or_build_one_from_scratch")}
                         </div>
                       ) : (
                         filteredTemplates.map((template) => (
@@ -758,21 +878,21 @@ export default function ProposalsPage() {
                               >
                                 <p className="font-medium text-foreground truncate">{template.name}</p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {(template.category || "General")} · {template.sections?.length || 0} sections
+                                  {(template.category || t("site.general"))} · {t("site.sections_count", { count: template.sections?.length || 0 })}
                                 </p>
                               </button>
                               <div className="flex items-center gap-1.5">
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                                   template.isActive ? "bg-sage-pale text-primary" : "bg-muted text-muted-foreground"
                                 }`}>
-                                  {template.isActive ? "Active" : "Inactive"}
+                                  {template.isActive ? t("site.active") : t("site.inactive")}
                                 </span>
                                 <Button
                                   type="button"
                                   size="icon"
                                   variant="ghost"
                                   className="h-7 w-7 text-destructive"
-                                  aria-label={`Delete template ${template.name || template.id}`}
+                                  aria-label={t("site.delete_template")}
                                   disabled={deletingTemplateId === template.id}
                                   onClick={() => handleDeleteTemplate(template.id)}
                                 >
@@ -790,52 +910,52 @@ export default function ProposalsPage() {
                     <form onSubmit={saveTemplate} className="space-y-6">
                       <div className="space-y-1">
                         <h3 className="font-serif text-lg text-foreground">
-                          {editingTemplate ? "Edit Template" : "Create Template"}
+                          {editingTemplate ? t("site.edit_template") : t("site.create_template")}
                         </h3>
                         <p className="text-sm text-muted-foreground">
-                          Step 1: Basic details. Step 2: Section fields users complete in ToR forms.
+                          {t("site.step_1_confirm_template_details_step_2_tailor_the_sections_users_will_complete_in_tor_submissions")}
                         </p>
                       </div>
 
                       <div className="rounded-xl border border-border p-4 space-y-4">
-                        <p className="text-sm font-medium text-foreground">Step 1 — Template Info</p>
+                        <p className="text-sm font-medium text-foreground">{t("site.step_1_template_info")}</p>
                         <div className="grid md:grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor="template-name">Template Name *</Label>
+                            <Label htmlFor="template-name">{t("site.template_name")}</Label>
                             <Input
                               id="template-name"
                               value={templateForm.name}
                               onChange={(e) => setTemplateForm((prev) => ({ ...prev, name: e.target.value }))}
-                              placeholder="Example: Procurement ToR"
+                              placeholder={t("site.example_procurement_tor")}
                               required
                               className="rounded-xl"
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="template-category">Category</Label>
+                            <Label htmlFor="template-category">{t("site.category")}</Label>
                             <Input
                               id="template-category"
                               value={templateForm.category}
                               onChange={(e) => setTemplateForm((prev) => ({ ...prev, category: e.target.value }))}
-                              placeholder="Procurement, Consultancy, Construction"
+                              placeholder={t("site.procurement_consultancy_construction")}
                               className="rounded-xl"
                             />
                           </div>
                         </div>
                         <div className="grid md:grid-cols-[1fr_180px] gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor="template-description">Description</Label>
+                            <Label htmlFor="template-description">{t("site.description")}</Label>
                             <Textarea
                               id="template-description"
                               value={templateForm.description}
                               onChange={(e) => setTemplateForm((prev) => ({ ...prev, description: e.target.value }))}
                               rows={2}
-                              placeholder="Explain when this template should be used."
+                              placeholder={t("site.explain_when_this_template_should_be_used")}
                               className="rounded-xl"
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="template-active">Status</Label>
+                            <Label htmlFor="template-active">{t("site.status")}</Label>
                             <Select
                               value={templateForm.isActive ? "active" : "inactive"}
                               onValueChange={(value) => setTemplateForm((prev) => ({ ...prev, isActive: value === "active" }))}
@@ -844,8 +964,8 @@ export default function ProposalsPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
+                                <SelectItem value="active">{t("site.active")}</SelectItem>
+                                <SelectItem value="inactive">{t("site.inactive")}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -855,26 +975,26 @@ export default function ProposalsPage() {
                       <div className="rounded-xl border border-border p-4 space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-medium text-foreground">Step 2 — Template Sections *</p>
+                            <p className="text-sm font-medium text-foreground">{t("site.step_2_template_sections")}</p>
                             <p className="text-xs text-muted-foreground">
-                              Each section appears as an input in the ToR form.
+                              {t("site.each_section_appears_as_an_input_in_the_tor_form")}
                             </p>
                           </div>
                           <Button type="button" size="sm" onClick={addTemplateSection} className="rounded-xl">
-                            <Plus className="h-4 w-4 mr-1" /> Add Section
+                            <Plus className="h-4 w-4 mr-1" /> {t("site.add_section")}
                           </Button>
                         </div>
 
                         {templateForm.sections.length === 0 ? (
                           <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                            Add your first section, e.g. Objective, Scope of Work, Deliverables.
+                            {t("site.add_your_first_section_eg_objective_scope_of_work_deliverables")}
                           </div>
                         ) : (
                           <div className="space-y-3">
                             {templateForm.sections.map((section, index) => (
                               <div key={`${section.key}-${index}`} className="rounded-xl border border-border p-3 space-y-3">
                                 <div className="flex items-center justify-between">
-                                  <p className="text-sm font-medium text-foreground">Section {index + 1}</p>
+                                  <p className="text-sm font-medium text-foreground">{t("site.section_number", { number: index + 1 })}</p>
                                   <Button
                                     type="button"
                                     size="sm"
@@ -887,18 +1007,18 @@ export default function ProposalsPage() {
                                 </div>
                                 <div className="grid md:grid-cols-2 gap-3">
                                   <div className="space-y-2">
-                                    <Label>Label *</Label>
+                                    <Label>{t("site.label")}</Label>
                                     <Input
-                                      placeholder="Section label shown to user"
+                                      placeholder={t("site.section_label_shown_to_user")}
                                       value={section.label}
                                       onChange={(e) => updateTemplateSection(index, { label: e.target.value })}
                                       className="rounded-xl"
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>Key</Label>
+                                    <Label>{t("site.key")}</Label>
                                     <Input
-                                      placeholder="Internal field key"
+                                      placeholder={t("site.internal_field_key")}
                                       value={section.key}
                                       onChange={(e) => updateTemplateSection(index, { key: e.target.value })}
                                       className="rounded-xl"
@@ -907,7 +1027,7 @@ export default function ProposalsPage() {
                                 </div>
                                 <div className="grid md:grid-cols-3 gap-3">
                                   <div className="space-y-2">
-                                    <Label>Input type</Label>
+                                    <Label>{t("site.input_type")}</Label>
                                     <Select
                                       value={section.type}
                                       onValueChange={(value: "text" | "textarea") =>
@@ -918,13 +1038,13 @@ export default function ProposalsPage() {
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="text">Single line</SelectItem>
-                                        <SelectItem value="textarea">Multi line</SelectItem>
+                                        <SelectItem value="text">{t("site.single_line")}</SelectItem>
+                                        <SelectItem value="textarea">{t("site.multi_line")}</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>Required</Label>
+                                    <Label>{t("site.required")}</Label>
                                     <Select
                                       value={section.required ? "required" : "optional"}
                                       onValueChange={(value) =>
@@ -935,15 +1055,15 @@ export default function ProposalsPage() {
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="optional">Optional</SelectItem>
-                                        <SelectItem value="required">Required</SelectItem>
+                                        <SelectItem value="optional">{t("site.optional_label")}</SelectItem>
+                                        <SelectItem value="required">{t("site.required_label")}</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>Placeholder</Label>
+                                    <Label>{t("site.placeholder")}</Label>
                                     <Input
-                                      placeholder="Helper text inside field"
+                                      placeholder={t("site.helper_text_inside_field")}
                                       value={section.placeholder}
                                       onChange={(e) =>
                                         updateTemplateSection(index, { placeholder: e.target.value })
@@ -971,18 +1091,18 @@ export default function ProposalsPage() {
                               onClick={() => handleDeleteTemplate(editingTemplate.id)}
                               className="text-destructive hover:text-destructive hover:bg-rose-pale rounded-xl"
                             >
-                              <Trash2 className="h-4 w-4 mr-1.5" /> Delete Template
+                              <Trash2 className="h-4 w-4 mr-1.5" /> {t("site.delete_template")}
                             </Button>
                           ) : null}
                         </div>
                         <div className="flex gap-2">
                           <Button type="button" variant="ghost" onClick={resetTemplateForm}>
-                            Clear
+                            {t("site.clear")}
                           </Button>
                           <Button type="submit" disabled={isTemplateSaving} className="rounded-xl">
                             {isTemplateSaving
-                              ? (editingTemplate ? "Updating…" : "Creating…")
-                              : (editingTemplate ? "Update Template" : "Create Template")}
+                              ? (editingTemplate ? t("site.updating") : t("site.creating"))
+                              : (editingTemplate ? t("site.update_template") : t("site.create_template"))}
                           </Button>
                         </div>
                       </div>
@@ -994,18 +1114,18 @@ export default function ProposalsPage() {
             <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button className="rounded-xl">
-                  <Plus className="h-4 w-4 mr-2" /> New Entry
+                  <Plus className="h-4 w-4 mr-2" /> {t("site.new_entry")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="font-serif text-xl">
-                    {editingProposal ? "Edit Entry" : "Create New Entry"}
+                    {editingProposal ? t("site.edit_entry") : t("site.create_new_entry")}
                   </DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-5 mt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="title">Proposal Title *</Label>
+                    <Label htmlFor="title">{t("site.proposal_title")}</Label>
                     <Input
                       id="title"
                       value={formData.title}
@@ -1017,7 +1137,7 @@ export default function ProposalsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="proposalType">Entry Type</Label>
+                      <Label htmlFor="proposalType">{t("site.entry_type")}</Label>
                       <Select
                         value={formData.proposalType}
                         onValueChange={(value) =>
@@ -1035,14 +1155,14 @@ export default function ProposalsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="grant">Grant Proposal</SelectItem>
-                          <SelectItem value="tor">ToR Submission</SelectItem>
+                          <SelectItem value="grant">{t("site.grant_proposal")}</SelectItem>
+                          <SelectItem value="tor">{t("site.tor_submission")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     {formData.proposalType === "tor" && (
                       <div className="space-y-2">
-                        <Label htmlFor="templateId">Template</Label>
+                        <Label htmlFor="templateId">{t("site.template")}</Label>
                         <Select
                           value={formData.templateId}
                           onValueChange={(value) =>
@@ -1054,7 +1174,7 @@ export default function ProposalsPage() {
                           }
                         >
                           <SelectTrigger className="rounded-xl">
-                            <SelectValue placeholder="Select template" />
+                            <SelectValue placeholder={t("site.select_template")} />
                           </SelectTrigger>
                           <SelectContent>
                             {activeTemplates.map((template) => (
@@ -1071,17 +1191,17 @@ export default function ProposalsPage() {
                   {formData.proposalType === "tor" && (
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="torCode">ToR Code</Label>
+                        <Label htmlFor="torCode">{t("site.tor_code")}</Label>
                         <Input
                           id="torCode"
                           value={formData.torCode}
                           onChange={(e) => setFormData({ ...formData, torCode: e.target.value })}
-                          placeholder="TOR-2026-001"
+                          placeholder={t("site.tor_code_example")}
                           className="rounded-xl"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="torSubmissionRef">Submission Reference</Label>
+                        <Label htmlFor="torSubmissionRef">{t("site.submission_reference")}</Label>
                         <Input
                           id="torSubmissionRef"
                           value={formData.torSubmissionRef}
@@ -1094,10 +1214,10 @@ export default function ProposalsPage() {
 
                   {formData.proposalType === "tor" && selectedTemplate?.sections?.length ? (
                     <div className="space-y-3 rounded-xl border border-border p-4">
-                      <p className="text-sm font-medium text-foreground">Template Sections</p>
+                      <p className="text-sm font-medium text-foreground">{t("site.template_sections")}</p>
                       {selectedTemplate.sections.map((section, index) => {
                         const fieldKey = section.key || section.name || `section_${index}`;
-                        const fieldLabel = section.label || section.name || `Section ${index + 1}`;
+                        const fieldLabel = section.label || section.name || t("site.section_number", { number: index + 1 });
                         const isLongText = section.type === "textarea" || section.type === "long_text";
                         return (
                           <div key={fieldKey} className="space-y-2">
@@ -1141,13 +1261,13 @@ export default function ProposalsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="donorId">Donor</Label>
+                      <Label htmlFor="donorId">{t("site.donor")}</Label>
                       <Select
                         value={formData.donorId}
                         onValueChange={(value) => setFormData({ ...formData, donorId: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select donor" />
+                          <SelectValue placeholder={t("site.select_donor")} />
                         </SelectTrigger>
                         <SelectContent>
                           {donors.map((donor) => (
@@ -1159,13 +1279,13 @@ export default function ProposalsPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="projectId">Related Project</Label>
+                      <Label htmlFor="projectId">{t("site.related_project")}</Label>
                       <Select
                         value={formData.projectId}
                         onValueChange={(value) => setFormData({ ...formData, projectId: value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select project" />
+                          <SelectValue placeholder={t("site.select_project")} />
                         </SelectTrigger>
                         <SelectContent>
                           {projects.map((project) => (
@@ -1180,7 +1300,7 @@ export default function ProposalsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="status">Status</Label>
+                      <Label htmlFor="status">{t("site.status")}</Label>
                       <Select
                         value={formData.status}
                         onValueChange={(value) => setFormData({ ...formData, status: value })}
@@ -1189,17 +1309,17 @@ export default function ProposalsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="draft">Draft</SelectItem>
-                          <SelectItem value="submitted">Submitted</SelectItem>
-                          <SelectItem value="under_review">Under Review</SelectItem>
-                          <SelectItem value="approved">Approved</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                          <SelectItem value="withdrawn">Withdrawn</SelectItem>
+                          <SelectItem value="draft">{t("site.draft")}</SelectItem>
+                          <SelectItem value="submitted">{t("site.submitted")}</SelectItem>
+                          <SelectItem value="under_review">{t("site.under_review")}</SelectItem>
+                          <SelectItem value="approved">{t("site.approved")}</SelectItem>
+                          <SelectItem value="rejected">{t("site.rejected")}</SelectItem>
+                          <SelectItem value="withdrawn">{t("site.withdrawn")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="amountRequested">Amount Requested *</Label>
+                      <Label htmlFor="amountRequested">{t("site.amount_requested")}</Label>
                       <CurrencyInput
                         id="amountRequested"
                         value={formData.amountRequested}
@@ -1213,7 +1333,7 @@ export default function ProposalsPage() {
 
                   {formData.status === "approved" && (
                     <div className="space-y-2">
-                      <Label htmlFor="amountApproved">Amount Approved</Label>
+                      <Label htmlFor="amountApproved">{t("site.amount_approved")}</Label>
                       <CurrencyInput
                         id="amountApproved"
                         value={formData.amountApproved}
@@ -1226,7 +1346,7 @@ export default function ProposalsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="submissionDate">Submission Date</Label>
+                      <Label htmlFor="submissionDate">{t("site.submission_date")}</Label>
                       <Input
                         id="submissionDate"
                         type="date"
@@ -1236,7 +1356,7 @@ export default function ProposalsPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="decisionDate">Decision Date</Label>
+                      <Label htmlFor="decisionDate">{t("site.decision_date")}</Label>
                       <Input
                         id="decisionDate"
                         type="date"
@@ -1249,7 +1369,7 @@ export default function ProposalsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="startDate">Project Start Date</Label>
+                      <Label htmlFor="startDate">{t("site.project_start_date")}</Label>
                       <Input
                         id="startDate"
                         type="date"
@@ -1259,7 +1379,7 @@ export default function ProposalsPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="endDate">Project End Date</Label>
+                      <Label htmlFor="endDate">{t("site.project_end_date")}</Label>
                       <Input
                         id="endDate"
                         type="date"
@@ -1271,7 +1391,7 @@ export default function ProposalsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
+                    <Label htmlFor="description">{t("site.description")}</Label>
                     <Textarea
                       id="description"
                       value={formData.description}
@@ -1282,7 +1402,7 @@ export default function ProposalsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="notes">Notes</Label>
+                    <Label htmlFor="notes">{t("site.notes")}</Label>
                     <Textarea
                       id="notes"
                       value={formData.notes}
@@ -1294,10 +1414,10 @@ export default function ProposalsPage() {
 
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                      Cancel
+                      {t("site.cancel")}
                     </Button>
                     <Button type="submit" className="rounded-xl">
-                      {editingProposal ? "Update" : "Create"} Entry
+                      {editingProposal ? t("site.update") : t("site.create")} {t("site.entry")}
                     </Button>
                   </div>
                 </form>
@@ -1310,11 +1430,11 @@ export default function ProposalsPage() {
       {/* Summary strip */}
       <div className="flex gap-3 mb-8 flex-wrap">
         <div className="px-4 py-2.5 bg-card rounded-xl">
-          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Total</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}{t("site.total")}</span>
           <p className="font-serif text-lg text-foreground">{pipelineStats.total}</p>
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Pipeline Value</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}{t("site.pipeline_value")}</span>
           <p className="font-serif text-lg text-primary">
             {Object.keys(pipelineStats.totalsByCurrency).length === 0
               ? "—"
@@ -1325,11 +1445,11 @@ export default function ProposalsPage() {
           </p>
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Approved</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}{t("site.approved")}</span>
           <p className="font-serif text-lg text-primary">{pipelineStats.approved}</p>
         </div>
         <div className="px-4 py-2.5 bg-lavender-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}Approved Value</span>
+          <span className="text-xs text-muted-foreground">{summaryLabelPrefix}{t("site.approved_value")}</span>
           <p className="font-serif text-lg text-lavender">
             {Object.keys(pipelineStats.totalsByCurrency).length === 0
               ? "—"
@@ -1346,7 +1466,7 @@ export default function ProposalsPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search proposals…"
+            placeholder={t("site.search_proposals")}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -1366,13 +1486,13 @@ export default function ProposalsPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="submitted">Submitted</SelectItem>
-            <SelectItem value="under_review">Under Review</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-            <SelectItem value="withdrawn">Withdrawn</SelectItem>
+            <SelectItem value="all">{t("site.all_status")}</SelectItem>
+            <SelectItem value="draft">{t("site.draft")}</SelectItem>
+            <SelectItem value="submitted">{t("site.submitted")}</SelectItem>
+            <SelectItem value="under_review">{t("site.under_review")}</SelectItem>
+            <SelectItem value="approved">{t("site.approved")}</SelectItem>
+            <SelectItem value="rejected">{t("site.rejected")}</SelectItem>
+            <SelectItem value="withdrawn">{t("site.withdrawn")}</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -1386,9 +1506,9 @@ export default function ProposalsPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="grant">Grant</SelectItem>
-            <SelectItem value="tor">ToR</SelectItem>
+            <SelectItem value="all">{t("site.all_types")}</SelectItem>
+            <SelectItem value="grant">{t("site.grant")}</SelectItem>
+            <SelectItem value="tor">{t("site.tor")}</SelectItem>
           </SelectContent>
         </Select>
         <div className="flex rounded-xl border border-border overflow-hidden">
@@ -1398,7 +1518,7 @@ export default function ProposalsPage() {
               viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
-            List
+            {t("site.list")}
           </button>
           <button
             onClick={() => setViewMode("pipeline")}
@@ -1406,7 +1526,7 @@ export default function ProposalsPage() {
               viewMode === "pipeline" ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
-            Pipeline
+            {t("site.pipeline")}
           </button>
         </div>
       </div>
@@ -1419,12 +1539,12 @@ export default function ProposalsPage() {
               <TrendingUp className="h-10 w-10 mx-auto mb-3 text-primary/25" />
               <p className="text-sm text-muted-foreground mb-5">
                 {searchQuery || filterStatus !== "all" || filterType !== "all"
-                  ? "No entries match your filters"
-                  : "No proposals yet — create your first entry"}
+                  ? t("site.no_entries_match_your_filters")
+                  : t("site.no_proposals_yet_create_your_first_entry")}
               </p>
               {!searchQuery && filterStatus === "all" && filterType === "all" && (
                 <Button onClick={() => setIsAddDialogOpen(true)} className="rounded-xl">
-                  <Plus className="h-4 w-4 mr-2" /> Create your first entry
+                  <Plus className="h-4 w-4 mr-2" /> {t("site.create_your_first_entry")}
                 </Button>
               )}
             </div>
@@ -1439,7 +1559,10 @@ export default function ProposalsPage() {
                     className="bg-card rounded-2xl p-5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 group"
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-4 min-w-0">
+                      <Link
+                        href={`/proposals/${proposal.id}`}
+                        className="flex min-w-0 flex-1 items-start gap-4 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
                         <div className={`p-2.5 rounded-xl shrink-0 ${type.bg}`}>
                           <TrendingUp className={`h-5 w-5 ${type.text}`} />
                         </div>
@@ -1449,11 +1572,11 @@ export default function ProposalsPage() {
                               {proposal.title}
                             </h3>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${type.bg} ${type.text}`}>
-                              {type.label}
+                              {t(type.label)}
                             </span>
                             <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${status.bg} ${status.text}`}>
                               <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-                              {status.label}
+                              {t(status.label)}
                             </span>
                           </div>
                           <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground">
@@ -1481,7 +1604,7 @@ export default function ProposalsPage() {
                             )}
                           </div>
                         </div>
-                      </div>
+                      </Link>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0">
@@ -1489,26 +1612,31 @@ export default function ProposalsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/proposals/${proposal.id}`}>
+                              <FileText className="h-4 w-4 mr-2" /> {t("site.view_details")}
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEditDialog(proposal)}>
-                            <Edit className="h-4 w-4 mr-2" /> Edit
+                            <Edit className="h-4 w-4 mr-2" /> {t("site.edit")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openDocumentsDialog(proposal)}>
-                            <FileText className="h-4 w-4 mr-2" /> Documents
+                            <FileText className="h-4 w-4 mr-2" /> {t("site.documents")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleStatusChange(proposal.id, "submitted")}>
-                            Mark as Submitted
+                            {t("site.mark_as_submitted")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleStatusChange(proposal.id, "under_review")}>
-                            Mark as Under Review
+                            {t("site.mark_as_under_review")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleStatusChange(proposal.id, "approved")}>
-                            Mark as Approved
+                            {t("site.mark_as_approved")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleStatusChange(proposal.id, "rejected")}>
-                            Mark as Rejected
+                            {t("site.mark_as_rejected")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDelete(proposal.id)} className="text-destructive">
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1522,7 +1650,10 @@ export default function ProposalsPage() {
           {/* Pagination */}
           <div className="mt-6 flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              Page {pagination.page} of {Math.max(1, Math.ceil((pagination.total || 1) / pagination.limit))}
+              {t("site.page_of", {
+                page: pagination.page,
+                total: Math.max(1, Math.ceil((pagination.total || 1) / pagination.limit)),
+              })}
             </p>
             <div className="flex gap-2">
               <Button
@@ -1532,7 +1663,7 @@ export default function ProposalsPage() {
                 disabled={pagination.page <= 1}
                 onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
               >
-                Previous
+                {t("site.previous")}
               </Button>
               <Button
                 variant="outline"
@@ -1541,7 +1672,7 @@ export default function ProposalsPage() {
                 disabled={pagination.page >= Math.ceil((pagination.total || 1) / pagination.limit)}
                 onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
               >
-                Next
+                {t("site.next")}
               </Button>
             </div>
           </div>
@@ -1560,7 +1691,7 @@ export default function ProposalsPage() {
                 <div className={`flex items-center justify-between p-4 ${col.headerBg} rounded-t-2xl`}>
                   <div className="flex items-center gap-2.5">
                     <span className={`h-2 w-2 rounded-full ${col.dotColor}`} />
-                    <h2 className="font-medium text-sm text-foreground">{sc.label}</h2>
+                    <h2 className="font-medium text-sm text-foreground">{t(sc.label)}</h2>
                   </div>
                   <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                     {columnProposals.length}
@@ -1574,15 +1705,15 @@ export default function ProposalsPage() {
                         type="button"
                         key={proposal.id}
                         className="w-full text-left bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        onClick={() => openEditDialog(proposal)}
-                        aria-label={`Edit proposal: ${proposal.title}`}
+                        onClick={() => router.push(`/proposals/${proposal.id}`)}
+                        aria-label={`View proposal: ${proposal.title}`}
                       >
                         <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug mb-2">
                           {proposal.title}
                         </h3>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${type.bg} ${type.text}`}>
-                            {type.label}
+                            {t(type.label)}
                           </span>
                           <span className="text-[11px] text-muted-foreground">
                             {formatCurrency(proposal.amountRequested, proposal.currency)}
@@ -1599,7 +1730,7 @@ export default function ProposalsPage() {
                   {columnProposals.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-10 text-center">
                       <TrendingUp className="h-6 w-6 text-primary/15 mb-2" />
-                      <p className="text-xs text-muted-foreground">No entries</p>
+                      <p className="text-xs text-muted-foreground">{t("site.no_entries")}</p>
                     </div>
                   )}
                 </div>
@@ -1614,16 +1745,16 @@ export default function ProposalsPage() {
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl">
-              Documents {documentsDialogProposal ? `— ${documentsDialogProposal.title}` : ""}
+              {t("site.documents")} {documentsDialogProposal ? `- ${documentsDialogProposal.title}` : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Attachments</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("site.attachments")}</p>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <Button size="sm" variant="outline" className="rounded-xl h-7 text-xs" asChild>
                   <span>
-                    <Upload className="h-3 w-3 mr-1.5" /> Upload
+                    <Upload className="h-3 w-3 mr-1.5" /> {t("site.upload")}
                   </span>
                 </Button>
                 <input type="file" className="hidden" onChange={handleDocumentUpload} />
@@ -1633,7 +1764,7 @@ export default function ProposalsPage() {
             {documents.length === 0 ? (
               <div className="py-8 text-center">
                 <FileText className="h-6 w-6 mx-auto mb-1.5 text-primary/15" />
-                <p className="text-xs text-muted-foreground">No documents uploaded for this entry</p>
+                <p className="text-xs text-muted-foreground">{t("site.no_documents_uploaded_for_this_entry")}</p>
               </div>
             ) : (
               <div className="space-y-1.5">

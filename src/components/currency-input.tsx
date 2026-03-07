@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import {
   SUPPORTED_CURRENCIES,
@@ -53,28 +53,20 @@ export function CurrencyInput({
 }: CurrencyInputProps) {
   const [rates, setRates] = useState<ExchangeRates | null>(null);
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>(currency);
-  const [displayValue, setDisplayValue] = useState(value);
-  const skipNextSync = useRef(false);
 
   useEffect(() => {
     fetchRates().then(setRates);
   }, []);
 
-  // Sync displayValue when the parent value changes externally (form reset, data load)
-  useEffect(() => {
-    if (skipNextSync.current) {
-      skipNextSync.current = false;
-      return;
-    }
-    if (!rates || displayCurrency === currency) {
-      setDisplayValue(value);
-    } else if (value) {
-      const converted = convertCurrency(parseFloat(value), currency, displayCurrency, rates);
-      setDisplayValue(converted !== null ? Math.round(converted).toString() : value);
-    } else {
-      setDisplayValue("");
-    }
-  }, [value, currency, displayCurrency, rates]);
+  const displayValue =
+    !rates || displayCurrency === currency
+      ? value
+      : value
+        ? (() => {
+            const converted = convertCurrency(parseFloat(value), currency, displayCurrency, rates);
+            return converted !== null ? Math.round(converted).toString() : value;
+          })()
+        : "";
 
   const handleCurrencySwitch = useCallback(
     (newCurrency: CurrencyCode) => {
@@ -86,8 +78,6 @@ export function CurrencyInput({
         const converted = convertCurrency(numVal, displayCurrency, newCurrency, rates);
         if (converted !== null) {
           const newVal = Math.round(converted).toString();
-          skipNextSync.current = true;
-          setDisplayValue(newVal);
 
           if (onCurrencyChange) {
             onChange(newVal);
@@ -102,9 +92,6 @@ export function CurrencyInput({
 
   const handleInputChange = useCallback(
     (inputVal: string) => {
-      setDisplayValue(inputVal);
-      skipNextSync.current = true;
-
       if (!inputVal || parseFloat(inputVal) === 0) {
         onChange("");
         return;
@@ -126,8 +113,8 @@ export function CurrencyInput({
   );
 
   return (
-    <div className="flex items-start gap-0">
-      <div className="relative flex-1">
+    <div className="flex min-w-0 flex-wrap items-start gap-2 sm:flex-nowrap sm:gap-0">
+      <div className="relative min-w-0 flex-1 basis-40">
         <Input
           id={id}
           type="number"
@@ -137,17 +124,17 @@ export function CurrencyInput({
           disabled={disabled}
           placeholder={placeholder}
           min={min}
-          className="rounded-r-none border-r-0 pr-2"
+          className="pr-2 sm:rounded-r-none sm:border-r-0"
         />
       </div>
-      <div className="flex h-9 rounded-r-md border border-input overflow-hidden shrink-0">
+      <div className="flex h-9 w-full overflow-hidden rounded-md border border-input sm:w-auto sm:shrink-0 sm:rounded-l-none">
         {SUPPORTED_CURRENCIES.map((c) => (
           <button
             key={c}
             type="button"
             onClick={() => handleCurrencySwitch(c)}
             disabled={disabled || !rates}
-            className={`px-2 text-xs font-medium transition-colors ${
+            className={`flex-1 px-2 text-xs font-medium transition-colors sm:flex-none ${
               displayCurrency === c
                 ? "bg-primary text-primary-foreground"
                 : "bg-background text-muted-foreground hover:bg-muted"

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { projectId, activityName, plannedAmount, notes } = body;
+    const { projectId, activityName, plannedAmount, q1Amount, q2Amount, q3Amount, q4Amount, notes } = body;
 
     if (!projectId || !activityName || plannedAmount === undefined) {
       return NextResponse.json(
@@ -59,12 +59,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "plannedAmount must be a positive number" }, { status: 400 });
     }
 
+    const q1 = q1Amount === undefined ? 0 : Number(q1Amount);
+    const q2 = q2Amount === undefined ? 0 : Number(q2Amount);
+    const q3 = q3Amount === undefined ? 0 : Number(q3Amount);
+    const q4 = q4Amount === undefined ? 0 : Number(q4Amount);
+
+    if (![q1, q2, q3, q4].every((value) => Number.isFinite(value) && value >= 0)) {
+      return NextResponse.json({ error: "Quarter amounts must be zero or positive numbers" }, { status: 400 });
+    }
+
     const [newBudgetAllocation] = await db
       .insert(budgetAllocations)
       .values({
         projectId,
         activityName,
         plannedAmount: Math.round(amount),
+        q1Amount: Math.round(q1),
+        q2Amount: Math.round(q2),
+        q3Amount: Math.round(q3),
+        q4Amount: Math.round(q4),
         notes: notes || null,
         createdBy: session.userId,
       })

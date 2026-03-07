@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,20 +72,21 @@ type Totals = {
 };
 
 const performanceStatusConfig: Record<PerformanceRow["status"], { bg: string; text: string; label: string }> = {
-  aligned: { bg: "bg-sage-pale", text: "text-primary", label: "Aligned" },
-  overspending_risk: { bg: "bg-rose-pale", text: "text-rose-muted", label: "Overspending Risk" },
-  under_spending: { bg: "bg-amber-pale", text: "text-amber-warm", label: "Under Spending" },
+  aligned: { bg: "bg-sage-pale", text: "text-primary", label: "site.aligned" },
+  overspending_risk: { bg: "bg-rose-pale", text: "text-rose-muted", label: "site.overspending_risk" },
+  under_spending: { bg: "bg-amber-pale", text: "text-amber-warm", label: "site.under_spending" },
 };
 
 type TabId = "disbursement-log" | "budget-control" | "performance";
 
 const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: "disbursement-log", label: "Disbursements", icon: ReceiptText },
-  { id: "budget-control", label: "Budget & Spend", icon: DollarSign },
-  { id: "performance", label: "Performance", icon: Scale },
+  { id: "disbursement-log", label: "site.disbursements", icon: ReceiptText },
+  { id: "budget-control", label: "site.budget_and_spend", icon: DollarSign },
+  { id: "performance", label: "site.performance", icon: Scale },
 ];
 
 export default function FinancialsPage() {
+  const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [donors, setDonors] = useState<Donor[]>([]);
   const [budgetAllocations, setBudgetAllocations] = useState<BudgetAllocation[]>([]);
@@ -94,6 +96,8 @@ export default function FinancialsPage() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("disbursement-log");
+  const [selectedDisbursementProjectId, setSelectedDisbursementProjectId] = useState("");
+  const [selectedBudgetProjectId, setSelectedBudgetProjectId] = useState("");
 
   const [budgetForm, setBudgetForm] = useState({
     projectId: "",
@@ -158,6 +162,19 @@ export default function FinancialsPage() {
     Promise.all([fetchReferenceData(), fetchFinancialData()]).finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (projects.length === 0) {
+      return;
+    }
+
+    setSelectedDisbursementProjectId((current) =>
+      current && projects.some((project) => project.id === current) ? current : projects[0].id
+    );
+    setSelectedBudgetProjectId((current) =>
+      current && projects.some((project) => project.id === current) ? current : projects[0].id
+    );
+  }, [projects]);
+
   const projectBudgetsForDisbursement = useMemo(() => {
     return budgetAllocations.filter((budget) => budget.projectId === disbursementForm.projectId);
   }, [budgetAllocations, disbursementForm.projectId]);
@@ -165,6 +182,24 @@ export default function FinancialsPage() {
   const projectBudgetsForExpenditure = useMemo(() => {
     return budgetAllocations.filter((budget) => budget.projectId === expenditureForm.projectId);
   }, [budgetAllocations, expenditureForm.projectId]);
+
+  const filteredDisbursements = useMemo(() => {
+    return selectedDisbursementProjectId
+      ? disbursements.filter((entry) => entry.projectId === selectedDisbursementProjectId)
+      : [];
+  }, [disbursements, selectedDisbursementProjectId]);
+
+  const filteredBudgetAllocations = useMemo(() => {
+    return selectedBudgetProjectId
+      ? budgetAllocations.filter((budget) => budget.projectId === selectedBudgetProjectId)
+      : [];
+  }, [budgetAllocations, selectedBudgetProjectId]);
+
+  const filteredExpenditures = useMemo(() => {
+    return selectedBudgetProjectId
+      ? expenditures.filter((expense) => expense.projectId === selectedBudgetProjectId)
+      : [];
+  }, [expenditures, selectedBudgetProjectId]);
 
   function formatCurrency(amount: number) {
     return formatCurrencyUtil(amount, "ETB");
@@ -280,7 +315,7 @@ export default function FinancialsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading financials…</p>
+          <p className="text-sm text-muted-foreground">{t("site.loading_financials")}</p>
         </div>
       </div>
     );
@@ -290,10 +325,10 @@ export default function FinancialsPage() {
     <div className="p-6 lg:p-10">
       <header className="mb-8">
         <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
-          Financial Tracking
+          {t("site.financial_tracking")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Track budget plans, expenditures, and donor disbursements by activity
+          {t("site.track_budget_plans_expenditures_and_donor_disbursements_by_activity")}
         </p>
       </header>
 
@@ -301,21 +336,21 @@ export default function FinancialsPage() {
       {totals && (
         <div className="flex gap-3 mb-8 flex-wrap">
           <div className="px-4 py-2.5 bg-card rounded-xl">
-            <span className="text-xs text-muted-foreground">Planned Budget</span>
+            <span className="text-xs text-muted-foreground">{t("site.planned_budget")}</span>
             <p className="font-serif text-lg text-foreground">{formatCurrency(totals.plannedBudget)}</p>
           </div>
           <div className="px-4 py-2.5 bg-rose-pale rounded-xl">
-            <span className="text-xs text-muted-foreground">Spent</span>
+            <span className="text-xs text-muted-foreground">{t("site.spent")}</span>
             <p className="font-serif text-lg text-rose-muted">{formatCurrency(totals.spentAmount)}</p>
           </div>
           <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-            <span className="text-xs text-muted-foreground">Disbursed</span>
+            <span className="text-xs text-muted-foreground">{t("site.disbursed_label")}</span>
             <p className="font-serif text-lg text-primary">{formatCurrency(totals.disbursedAmount)}</p>
           </div>
           <div className="px-4 py-2.5 bg-lavender-pale rounded-xl">
-            <span className="text-xs text-muted-foreground">Portfolio Progress</span>
+            <span className="text-xs text-muted-foreground">{t("site.portfolio_progress")}</span>
             <p className="font-serif text-lg text-lavender">
-              {totals.physicalPerformance}% <span className="text-xs font-sans text-muted-foreground">phys</span> / {totals.financialPerformance}% <span className="text-xs font-sans text-muted-foreground">fin</span>
+              {totals.physicalPerformance}% <span className="text-xs font-sans text-muted-foreground">{t("site.phys")}</span> / {totals.financialPerformance}% <span className="text-xs font-sans text-muted-foreground">{t("site.fin")}</span>
             </p>
           </div>
         </div>
@@ -336,7 +371,7 @@ export default function FinancialsPage() {
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
-              {tab.label}
+              {t(tab.label)}
             </button>
           );
         })}
@@ -347,21 +382,21 @@ export default function FinancialsPage() {
         <div className="space-y-6">
           <div className="bg-card rounded-2xl p-6">
             <div className="mb-5">
-              <h2 className="font-serif text-xl text-foreground">Record Disbursement</h2>
+              <h2 className="font-serif text-xl text-foreground">{t("site.record_disbursement")}</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Capture donor fund flows to specific project activities
+                {t("site.capture_donor_fund_flows_to_specific_project_activities")}
               </p>
             </div>
             <form onSubmit={submitDisbursement} className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Project *</Label>
+                <Label>{t("site.project_required")}</Label>
                 <Select
                   value={disbursementForm.projectId}
                   onValueChange={(value) =>
                     setDisbursementForm((prev) => ({ ...prev, projectId: value, budgetAllocationId: "none" }))
                   }
                 >
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select project" /></SelectTrigger>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_project")} /></SelectTrigger>
                   <SelectContent>
                     {projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
@@ -371,11 +406,11 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Donor</Label>
+                <Label>{t("site.donor")}</Label>
                 <Select value={disbursementForm.donorId} onValueChange={(value) => setDisbursementForm((prev) => ({ ...prev, donorId: value }))}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select donor" /></SelectTrigger>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_donor")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Not specified</SelectItem>
+                    <SelectItem value="none">{t("site.not_specified")}</SelectItem>
                     {donors.map((donor) => (
                       <SelectItem key={donor.id} value={donor.id}>{donor.name}</SelectItem>
                     ))}
@@ -384,14 +419,14 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Linked Budget Activity</Label>
+                <Label>{t("site.linked_budget_activity")}</Label>
                 <Select
                   value={disbursementForm.budgetAllocationId}
                   onValueChange={(value) => setDisbursementForm((prev) => ({ ...prev, budgetAllocationId: value }))}
                 >
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select budget line" /></SelectTrigger>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_budget_line")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Not linked</SelectItem>
+                    <SelectItem value="none">{t("site.not_linked")}</SelectItem>
                     {projectBudgetsForDisbursement.map((budget) => (
                       <SelectItem key={budget.id} value={budget.id}>
                         {budget.activityName} ({formatCurrency(budget.plannedAmount)})
@@ -402,7 +437,7 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="disbursement-activity">Activity Name *</Label>
+                <Label htmlFor="disbursement-activity">{t("site.activity_name_2")}</Label>
                 <Input
                   id="disbursement-activity"
                   value={disbursementForm.activityName}
@@ -413,7 +448,7 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="disbursement-amount">Amount *</Label>
+                <Label htmlFor="disbursement-amount">{t("site.amount")}</Label>
                 <CurrencyInput
                   id="disbursement-amount"
                   value={disbursementForm.amount}
@@ -425,7 +460,7 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="disbursed-at">Disbursement Date *</Label>
+                <Label htmlFor="disbursed-at">{t("site.disbursement_date")}</Label>
                 <Input
                   id="disbursed-at"
                   type="date"
@@ -437,7 +472,7 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="reference">Reference</Label>
+                <Label htmlFor="reference">{t("site.reference")}</Label>
                 <Input
                   id="reference"
                   value={disbursementForm.reference}
@@ -447,7 +482,7 @@ export default function FinancialsPage() {
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="disbursement-notes">Notes</Label>
+                <Label htmlFor="disbursement-notes">{t("site.notes")}</Label>
                 <Textarea
                   id="disbursement-notes"
                   value={disbursementForm.notes}
@@ -458,29 +493,49 @@ export default function FinancialsPage() {
 
               <div className="md:col-span-2">
                 <Button type="submit" disabled={submitting === "disbursement"} className="rounded-xl">
-                  {submitting === "disbursement" ? "Saving…" : "Save Disbursement Log"}
+                  {submitting === "disbursement" ? t("site.saving") : t("site.save_disbursement_log")}
                 </Button>
               </div>
             </form>
           </div>
 
           <div className="bg-card rounded-2xl p-6">
-            <h2 className="font-serif text-xl text-foreground mb-4">Disbursement Log</h2>
-            {disbursements.length === 0 ? (
+            <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="font-serif text-xl text-foreground">{t("site.disbursement_log")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t("site.show_entries_for_one_project_at_a_time")}</p>
+              </div>
+              <div className="w-full md:w-72 space-y-2">
+                <Label>{t("site.view_project")}</Label>
+                <Select value={selectedDisbursementProjectId} onValueChange={setSelectedDisbursementProjectId}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder={t("site.select_project")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {filteredDisbursements.length === 0 ? (
               <div className="py-10 text-center">
                 <ReceiptText className="h-8 w-8 mx-auto mb-2 text-primary/15" />
-                <p className="text-sm text-muted-foreground">No disbursement logs yet</p>
+                <p className="text-sm text-muted-foreground">{t("site.no_disbursement_logs_for_this_project_yet")}</p>
               </div>
             ) : (
               <div className="space-y-2.5">
-                {disbursements.map((entry) => (
+                {filteredDisbursements.map((entry) => (
                   <div key={entry.id} className="rounded-xl border border-border p-4 hover:bg-muted/30 transition-colors">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium text-foreground">{entry.activityName}</p>
                       <p className="font-serif text-lg text-primary">{formatCurrency(entry.amount)}</p>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {entry.project?.name || "Unknown project"} · {entry.donor?.name || "Donor not specified"}
+                      {entry.project?.name || t("site.unknown_project")} · {entry.donor?.name || t("site.donor_not_specified")}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       {new Date(entry.disbursedAt).toLocaleDateString()} {entry.reference ? `· Ref: ${entry.reference}` : ""}
@@ -499,12 +554,12 @@ export default function FinancialsPage() {
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Budget form */}
             <div className="bg-card rounded-2xl p-6">
-              <h2 className="font-serif text-xl text-foreground mb-5">Define Budget by Activity</h2>
+              <h2 className="font-serif text-xl text-foreground mb-5">{t("site.define_budget_by_activity")}</h2>
               <form onSubmit={submitBudget} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Project *</Label>
+                  <Label>{t("site.project_required")}</Label>
                   <Select value={budgetForm.projectId} onValueChange={(value) => setBudgetForm((prev) => ({ ...prev, projectId: value }))}>
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select project" /></SelectTrigger>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_project")} /></SelectTrigger>
                     <SelectContent>
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
@@ -513,7 +568,7 @@ export default function FinancialsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="budget-activity">Activity *</Label>
+                  <Label htmlFor="budget-activity">{t("site.activity")}</Label>
                   <Input
                     id="budget-activity"
                     value={budgetForm.activityName}
@@ -523,7 +578,7 @@ export default function FinancialsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="budget-amount">Planned Amount *</Label>
+                  <Label htmlFor="budget-amount">{t("site.planned_amount")}</Label>
                   <CurrencyInput
                     id="budget-amount"
                     value={budgetForm.plannedAmount}
@@ -534,7 +589,7 @@ export default function FinancialsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="budget-notes">Notes</Label>
+                  <Label htmlFor="budget-notes">{t("site.notes")}</Label>
                   <Textarea
                     id="budget-notes"
                     value={budgetForm.notes}
@@ -543,24 +598,24 @@ export default function FinancialsPage() {
                   />
                 </div>
                 <Button type="submit" disabled={submitting === "budget"} className="rounded-xl">
-                  {submitting === "budget" ? "Saving…" : "Save Budget Line"}
+                  {submitting === "budget" ? t("site.saving") : t("site.save_budget_line")}
                 </Button>
               </form>
             </div>
 
             {/* Expenditure form */}
             <div className="bg-card rounded-2xl p-6">
-              <h2 className="font-serif text-xl text-foreground mb-5">Log Expenditure</h2>
+              <h2 className="font-serif text-xl text-foreground mb-5">{t("site.log_expenditure")}</h2>
               <form onSubmit={submitExpenditure} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Project *</Label>
+                  <Label>{t("site.project_required")}</Label>
                   <Select
                     value={expenditureForm.projectId}
                     onValueChange={(value) =>
                       setExpenditureForm((prev) => ({ ...prev, projectId: value, budgetAllocationId: "none" }))
                     }
                   >
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select project" /></SelectTrigger>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_project")} /></SelectTrigger>
                     <SelectContent>
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
@@ -570,11 +625,11 @@ export default function FinancialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Donor</Label>
+                  <Label>{t("site.donor")}</Label>
                   <Select value={expenditureForm.donorId} onValueChange={(value) => setExpenditureForm((prev) => ({ ...prev, donorId: value }))}>
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select donor" /></SelectTrigger>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_donor")} /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Not specified</SelectItem>
+                      <SelectItem value="none">{t("site.not_specified")}</SelectItem>
                       {donors.map((donor) => (
                         <SelectItem key={donor.id} value={donor.id}>{donor.name}</SelectItem>
                       ))}
@@ -583,14 +638,14 @@ export default function FinancialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Budget Line</Label>
+                  <Label>{t("site.budget_line")}</Label>
                   <Select
                     value={expenditureForm.budgetAllocationId}
                     onValueChange={(value) => setExpenditureForm((prev) => ({ ...prev, budgetAllocationId: value }))}
                   >
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select budget line" /></SelectTrigger>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_budget_line")} /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Not linked</SelectItem>
+                      <SelectItem value="none">{t("site.not_linked")}</SelectItem>
                       {projectBudgetsForExpenditure.map((budget) => (
                         <SelectItem key={budget.id} value={budget.id}>
                           {budget.activityName} ({formatCurrency(budget.plannedAmount)})
@@ -601,7 +656,7 @@ export default function FinancialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="expenditure-activity">Activity Name</Label>
+                  <Label htmlFor="expenditure-activity">{t("site.activity_name")}</Label>
                   <Input
                     id="expenditure-activity"
                     value={expenditureForm.activityName}
@@ -611,7 +666,7 @@ export default function FinancialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="expenditure-amount">Amount *</Label>
+                  <Label htmlFor="expenditure-amount">{t("site.amount")}</Label>
                   <CurrencyInput
                     id="expenditure-amount"
                     value={expenditureForm.amount}
@@ -623,7 +678,7 @@ export default function FinancialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="expenditure-date">Date *</Label>
+                  <Label htmlFor="expenditure-date">{t("site.date")}</Label>
                   <Input
                     id="expenditure-date"
                     type="date"
@@ -635,7 +690,7 @@ export default function FinancialsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="expenditure-description">Description</Label>
+                  <Label htmlFor="expenditure-description">{t("site.description")}</Label>
                   <Textarea
                     id="expenditure-description"
                     value={expenditureForm.description}
@@ -645,7 +700,7 @@ export default function FinancialsPage() {
                 </div>
 
                 <Button type="submit" disabled={submitting === "expenditure"} className="rounded-xl">
-                  {submitting === "expenditure" ? "Saving…" : "Save Expenditure"}
+                  {submitting === "expenditure" ? t("site.saving") : t("site.save_expenditure")}
                 </Button>
               </form>
             </div>
@@ -654,21 +709,41 @@ export default function FinancialsPage() {
           {/* Budget & Expenditure lists */}
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="bg-card rounded-2xl p-6">
-              <h2 className="font-serif text-xl text-foreground mb-4">Budget Lines</h2>
-              {budgetAllocations.length === 0 ? (
+              <div className="mb-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="font-serif text-xl text-foreground">{t("site.budget_lines")}</h2>
+                  <p className="text-sm text-muted-foreground">{t("site.filter_both_panels_by_project_to_reduce_noise")}</p>
+                </div>
+                <div className="w-full md:w-72 space-y-2">
+                  <Label>{t("site.view_project")}</Label>
+                  <Select value={selectedBudgetProjectId} onValueChange={setSelectedBudgetProjectId}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder={t("site.select_project")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {filteredBudgetAllocations.length === 0 ? (
                 <div className="py-10 text-center">
                   <DollarSign className="h-8 w-8 mx-auto mb-2 text-primary/15" />
-                  <p className="text-sm text-muted-foreground">No budget allocations yet</p>
+                  <p className="text-sm text-muted-foreground">{t("site.no_budget_lines_for_this_project_yet")}</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {budgetAllocations.map((budget) => (
+                  {filteredBudgetAllocations.map((budget) => (
                     <div key={budget.id} className="rounded-xl border border-border p-4 hover:bg-muted/30 transition-colors">
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-medium text-foreground">{budget.activityName}</p>
                         <p className="font-serif text-lg text-primary">{formatCurrency(budget.plannedAmount)}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{budget.project?.name || "Unknown project"}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{budget.project?.name || t("site.unknown_project")}</p>
                     </div>
                   ))}
                 </div>
@@ -676,22 +751,22 @@ export default function FinancialsPage() {
             </div>
 
             <div className="bg-card rounded-2xl p-6">
-              <h2 className="font-serif text-xl text-foreground mb-4">Recent Expenditures</h2>
-              {expenditures.length === 0 ? (
+              <h2 className="font-serif text-xl text-foreground mb-4">{t("site.recent_expenditures")}</h2>
+              {filteredExpenditures.length === 0 ? (
                 <div className="py-10 text-center">
                   <TrendingUp className="h-8 w-8 mx-auto mb-2 text-primary/15" />
-                  <p className="text-sm text-muted-foreground">No expenditures yet</p>
+                  <p className="text-sm text-muted-foreground">{t("site.no_expenditures_for_this_project_yet")}</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {expenditures.map((expense) => (
+                  {filteredExpenditures.map((expense) => (
                     <div key={expense.id} className="rounded-xl border border-border p-4 hover:bg-muted/30 transition-colors">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="font-medium text-foreground">{expense.activityName || expense.budgetAllocation?.activityName || "General"}</p>
+                        <p className="font-medium text-foreground">{expense.activityName || expense.budgetAllocation?.activityName || t("site.general")}</p>
                         <p className="font-serif text-lg text-rose-muted">{formatCurrency(expense.amount)}</p>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {expense.project?.name || "Unknown project"} · {new Date(expense.expenditureDate).toLocaleDateString()}
+                        {expense.project?.name || t("site.unknown_project")} · {new Date(expense.expenditureDate).toLocaleDateString()}
                       </p>
                     </div>
                   ))}
@@ -706,15 +781,15 @@ export default function FinancialsPage() {
       {activeTab === "performance" && (
         <div className="bg-card rounded-2xl p-6">
           <div className="mb-5">
-            <h2 className="font-serif text-xl text-foreground">Physical vs Financial Performance</h2>
+            <h2 className="font-serif text-xl text-foreground">{t("site.physical_vs_financial_performance")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Physical = completed tasks ratio. Financial = spent budget ratio.
+              {t("site.physical_completed_tasks_ratio_financial_spent_budget_ratio")}
             </p>
           </div>
           {comparison.length === 0 ? (
             <div className="py-10 text-center">
               <Scale className="h-8 w-8 mx-auto mb-2 text-primary/15" />
-              <p className="text-sm text-muted-foreground">No project performance data available yet</p>
+              <p className="text-sm text-muted-foreground">{t("site.no_project_performance_data_available_yet")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -725,14 +800,14 @@ export default function FinancialsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-serif text-lg text-foreground">{row.projectName}</h3>
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${ps.bg} ${ps.text}`}>
-                        {ps.label}
+                        {t(ps.label)}
                       </span>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <div className="flex justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">Physical</span>
+                          <span className="text-muted-foreground">{t("site.physical")}</span>
                           <span className="font-medium text-foreground">{row.physicalPerformance}% ({row.completedTasks}/{row.totalTasks} tasks)</span>
                         </div>
                         <div className="h-2 rounded-full bg-sage-pale overflow-hidden">
@@ -744,7 +819,7 @@ export default function FinancialsPage() {
                       </div>
                       <div>
                         <div className="flex justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">Financial</span>
+                          <span className="text-muted-foreground">{t("site.financial")}</span>
                           <span className="font-medium text-foreground">{row.financialPerformance}% ({formatCurrency(row.spentAmount)} spent)</span>
                         </div>
                         <div className="h-2 rounded-full bg-lavender-pale overflow-hidden">
@@ -757,9 +832,9 @@ export default function FinancialsPage() {
                     </div>
 
                     <div className="mt-4 grid gap-2 text-sm md:grid-cols-3 p-3 bg-muted/30 rounded-xl">
-                      <p className="text-muted-foreground">Planned: <span className="font-medium text-foreground">{formatCurrency(row.plannedBudget)}</span></p>
-                      <p className="text-muted-foreground">Disbursed: <span className="font-medium text-foreground">{formatCurrency(row.disbursedAmount)}</span></p>
-                      <p className="text-muted-foreground">Variance: <span className="font-medium text-foreground">{row.variance > 0 ? `+${row.variance}` : row.variance}%</span></p>
+                      <p className="text-muted-foreground">{t("site.planned")}: <span className="font-medium text-foreground">{formatCurrency(row.plannedBudget)}</span></p>
+                      <p className="text-muted-foreground">{t("site.disbursed_label")}: <span className="font-medium text-foreground">{formatCurrency(row.disbursedAmount)}</span></p>
+                      <p className="text-muted-foreground">{t("site.variance_label")}: <span className="font-medium text-foreground">{row.variance > 0 ? `+${row.variance}` : row.variance}%</span></p>
                     </div>
                   </div>
                 );

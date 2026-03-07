@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/currency";
@@ -19,7 +20,6 @@ import {
   Shield,
   FolderOpen,
   ListTodo,
-  Milestone as MilestoneIcon,
   Users,
   Download,
   Loader2,
@@ -115,11 +115,6 @@ const taskPriorityColors: Record<string, string> = {
   high: "bg-red-100 text-red-700",
 };
 
-function formatDate(date: string | null) {
-  if (!date) return "Not set";
-  return new Date(date).toLocaleDateString();
-}
-
 function formatFileSize(bytes: number) {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -137,6 +132,7 @@ function isSafeUrl(url: string): boolean {
 }
 
 export default function DonorPortalPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const token = params.token as string;
   const encodedToken = encodeURIComponent(token);
@@ -145,6 +141,11 @@ export default function DonorPortalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
+
+  function formatDate(date: string | null) {
+    if (!date) return t("site.not_set");
+    return new Date(date).toLocaleDateString();
+  }
 
   useEffect(() => {
     async function fetchPortalData() {
@@ -190,20 +191,20 @@ export default function DonorPortalPage() {
           setExpandedProject(result.projects[0].id);
         }
       } catch {
-        setError("Failed to connect to the server");
+        setError(t("site.failed_to_connect_to_the_server"));
       } finally {
         setLoading(false);
       }
     }
 
     fetchPortalData();
-  }, [encodedToken]);
+  }, [encodedToken, t]);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        <p className="text-gray-500">Loading your project portal...</p>
+        <p className="text-gray-500">{t("site.loading_your_project_portal")}</p>
       </div>
     );
   }
@@ -213,10 +214,10 @@ export default function DonorPortalPage() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <ShieldAlert className="h-12 w-12 text-red-400" />
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">{t("site.access_denied")}</h2>
           <p className="text-gray-500 max-w-md">{error}</p>
           <p className="text-sm text-gray-400 mt-4">
-            If you believe this is an error, please contact the project administrator to request a new invite link.
+            {t("site.if_you_believe_this_is_an_error_please_contact_the_project_administrator_to_request_a_new_invite_link")}
           </p>
         </div>
       </div>
@@ -234,18 +235,28 @@ export default function DonorPortalPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">
-            Welcome, {data.donor.name}
+            {t("site.welcome_name", { name: data.donor.name })}
           </h1>
           <p className="text-gray-500 mt-1">
-            You have read-only access to {data.projects.length} project{data.projects.length !== 1 ? "s" : ""} you are associated with.
+            {t(
+              data.projects.length === 1
+                ? "site.read_only_access_to_projects_one"
+                : "site.read_only_access_to_projects_other",
+              { count: data.projects.length }
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-500 bg-white border rounded-lg px-3 py-2">
           <Shield className="h-4 w-4" />
           <span>
-            Access expires {daysUntilExpiry > 0
-              ? `in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? "s" : ""}`
-              : "today"}
+            {daysUntilExpiry > 0
+              ? t(
+                  daysUntilExpiry === 1
+                    ? "site.access_expires_in_days_one"
+                    : "site.access_expires_in_days_other",
+                  { count: daysUntilExpiry }
+                )
+              : t("site.access_expires_today")}
           </span>
         </div>
       </div>
@@ -255,7 +266,7 @@ export default function DonorPortalPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <FolderOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No projects are currently linked to your account.</p>
+            <p className="text-gray-500">{t("site.no_projects_are_currently_linked_to_your_account")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -296,7 +307,7 @@ export default function DonorPortalPage() {
                         <div className="flex items-center gap-3 mb-2">
                           <CardTitle className="text-xl">{project.name}</CardTitle>
                           <Badge className={statusColors[project.status]}>
-                            {project.status.replace("_", " ")}
+                            {t(`site.${project.status}`)}
                           </Badge>
                         </div>
                         {project.description && (
@@ -321,7 +332,7 @@ export default function DonorPortalPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-2xl font-bold text-gray-900">{milestoneProgress}%</p>
-                        <p className="text-xs text-gray-400">progress</p>
+                        <p className="text-xs text-gray-400">{t("site.progress")}</p>
                       </div>
                     </div>
                     <Progress value={milestoneProgress} className="mt-3" />
@@ -336,19 +347,19 @@ export default function DonorPortalPage() {
                     {/* Budget Overview */}
                     <div>
                       <h3 className="text-lg font-medium flex items-center gap-2 mb-4">
-                        <DollarSign className="h-5 w-5" /> Budget Overview
+                        <DollarSign className="h-5 w-5" /> {t("site.budget_overview")}
                       </h3>
                       <div className="grid gap-4 sm:grid-cols-3">
                         <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-500">Total Budget</p>
+                          <p className="text-sm text-gray-500">{t("site.total_budget")}</p>
                           <p className="text-xl font-semibold">{formatCurrency(project.totalBudget)}</p>
                         </div>
                         <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-500">Spent</p>
+                          <p className="text-sm text-gray-500">{t("site.spent")}</p>
                           <p className="text-xl font-semibold text-orange-600">{formatCurrency(project.spentBudget)}</p>
                         </div>
                         <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-500">Remaining</p>
+                          <p className="text-sm text-gray-500">{t("site.remaining")}</p>
                           <p className={`text-xl font-semibold ${budgetRemaining >= 0 ? "text-green-600" : "text-red-600"}`}>
                             {formatCurrency(budgetRemaining)}
                           </p>
@@ -357,7 +368,7 @@ export default function DonorPortalPage() {
                       {project.totalBudget > 0 && (
                         <div className="mt-3">
                           <div className="flex justify-between text-sm text-gray-500 mb-1">
-                            <span>Budget utilization</span>
+                            <span>{t("site.budget_utilization")}</span>
                             <span>{budgetPercent}%</span>
                           </div>
                           <Progress value={budgetPercent} />
@@ -365,7 +376,7 @@ export default function DonorPortalPage() {
                       )}
                       {project.budgetAllocations.length > 0 && (
                         <div className="mt-4">
-                          <p className="text-sm font-medium text-gray-700 mb-2">Budget Allocations</p>
+                          <p className="text-sm font-medium text-gray-700 mb-2">{t("site.budget_allocations")}</p>
                           <div className="space-y-1">
                             {project.budgetAllocations.map((alloc) => (
                               <div key={alloc.id} className="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
@@ -383,13 +394,16 @@ export default function DonorPortalPage() {
                     {/* Milestones */}
                     <div>
                       <h3 className="text-lg font-medium flex items-center gap-2 mb-4">
-                        <CheckCircle className="h-5 w-5" /> Milestones
+                        <CheckCircle className="h-5 w-5" /> {t("site.milestones")}
                         <Badge variant="secondary" className="ml-1">
-                          {project.milestones.filter((m) => m.status === "completed").length}/{project.milestones.length} completed
+                          {t("site.completed_count_total", {
+                            completed: project.milestones.filter((m) => m.status === "completed").length,
+                            total: project.milestones.length,
+                          })}
                         </Badge>
                       </h3>
                       {project.milestones.length === 0 ? (
-                        <p className="text-sm text-gray-500">No milestones defined.</p>
+                        <p className="text-sm text-gray-500">{t("site.no_milestones_defined")}</p>
                       ) : (
                         <div className="space-y-3">
                           {project.milestones.map((milestone) => (
@@ -409,14 +423,14 @@ export default function DonorPortalPage() {
                                 <div className="flex items-center gap-2">
                                   <h4 className="font-medium text-sm">{milestone.title}</h4>
                                   <Badge variant="outline" className={`text-xs ${milestoneStatusColors[milestone.status] || ""}`}>
-                                    {milestone.status.replace("_", " ")}
+                                    {t(`site.${milestone.status}`)}
                                   </Badge>
                                 </div>
                                 {milestone.description && (
                                   <p className="text-sm text-gray-500 mt-1">{milestone.description}</p>
                                 )}
                                 {milestone.dueDate && (
-                                  <p className="text-xs text-gray-400 mt-1">Due: {formatDate(milestone.dueDate)}</p>
+                                  <p className="text-xs text-gray-400 mt-1">{t("site.due")}: {formatDate(milestone.dueDate)}</p>
                                 )}
                               </div>
                             </div>
@@ -430,23 +444,23 @@ export default function DonorPortalPage() {
                     {/* Tasks */}
                     <div>
                       <h3 className="text-lg font-medium flex items-center gap-2 mb-4">
-                        <ListTodo className="h-5 w-5" /> Tasks & Activities
+                        <ListTodo className="h-5 w-5" /> {t("site.tasks_and_activities")}
                       </h3>
                       {taskCounts.total > 0 && (
                         <div className="flex gap-3 mb-4">
                           <Badge variant="outline" className="bg-green-50 text-green-700">
-                            {taskCounts.completed} completed
+                            {t("site.completed_count", { count: taskCounts.completed })}
                           </Badge>
                           <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                            {taskCounts.inProgress} in progress
+                            {t("site.in_progress_count", { count: taskCounts.inProgress })}
                           </Badge>
                           <Badge variant="outline" className="bg-gray-50 text-gray-600">
-                            {taskCounts.pending} pending
+                            {t("site.pending_count", { count: taskCounts.pending })}
                           </Badge>
                         </div>
                       )}
                       {project.tasks.length === 0 ? (
-                        <p className="text-sm text-gray-500">No tasks created yet.</p>
+                        <p className="text-sm text-gray-500">{t("site.no_tasks_created_yet")}</p>
                       ) : (
                         <div className="space-y-2">
                           {project.tasks.map((task) => (
@@ -466,10 +480,10 @@ export default function DonorPortalPage() {
                                     {task.title}
                                   </h4>
                                   <Badge variant="outline" className={`text-xs ${taskStatusColors[task.status] || ""}`}>
-                                    {task.status.replace("_", " ")}
+                                    {t(`site.${task.status}`)}
                                   </Badge>
                                   <Badge variant="outline" className={`text-xs ${taskPriorityColors[task.priority] || ""}`}>
-                                    {task.priority}
+                                    {t(`site.${task.priority}`)}
                                   </Badge>
                                 </div>
                                 {task.description && (
@@ -489,7 +503,7 @@ export default function DonorPortalPage() {
                                     </span>
                                   )}
                                   {task.progress > 0 && (
-                                    <span>{task.progress}% done</span>
+                                    <span>{t("site.percent_done", { percent: task.progress })}</span>
                                   )}
                                 </div>
                               </div>
@@ -504,10 +518,10 @@ export default function DonorPortalPage() {
                     {/* Documents */}
                     <div>
                       <h3 className="text-lg font-medium flex items-center gap-2 mb-4">
-                        <FileText className="h-5 w-5" /> Documents
+                        <FileText className="h-5 w-5" /> {t("site.documents")}
                       </h3>
                       {project.documents.length === 0 ? (
-                        <p className="text-sm text-gray-500">No documents uploaded yet.</p>
+                        <p className="text-sm text-gray-500">{t("site.no_documents_uploaded_yet")}</p>
                       ) : (
                         <div className="space-y-2">
                           {project.documents.map((doc) => {
@@ -541,7 +555,7 @@ export default function DonorPortalPage() {
                     {/* Team Members */}
                     <div>
                       <h3 className="text-lg font-medium flex items-center gap-2 mb-4">
-                        <Users className="h-5 w-5" /> Team Members
+                        <Users className="h-5 w-5" /> {t("site.team_members")}
                       </h3>
                       <div className="flex flex-wrap gap-3">
                         {/* Manager */}
@@ -551,7 +565,7 @@ export default function DonorPortalPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium">{project.manager.firstName} {project.manager.lastName}</p>
-                            <p className="text-xs text-gray-500">Manager</p>
+                            <p className="text-xs text-gray-500">{t("site.manager")}</p>
                           </div>
                         </div>
                         {/* Other members */}
@@ -569,7 +583,7 @@ export default function DonorPortalPage() {
                             </div>
                           ))}
                         {project.members.filter((m) => m.user.id !== project.manager.id).length === 0 && (
-                          <p className="text-sm text-gray-500">No additional team members.</p>
+                          <p className="text-sm text-gray-500">{t("site.no_additional_team_members")}</p>
                         )}
                       </div>
                     </div>

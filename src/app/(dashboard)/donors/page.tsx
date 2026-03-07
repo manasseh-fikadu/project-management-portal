@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { PortalInviteFeedbackDialog } from "@/components/portal-invite-feedback-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,12 +37,12 @@ type Donor = {
 };
 
 const donorTypeConfig: Record<string, { bg: string; text: string; label: string }> = {
-  government: { bg: "bg-lavender-pale", text: "text-lavender", label: "Government" },
-  foundation: { bg: "bg-sage-pale", text: "text-primary", label: "Foundation" },
-  corporate: { bg: "bg-amber-pale", text: "text-amber-warm", label: "Corporate" },
-  individual: { bg: "bg-rose-pale", text: "text-rose-muted", label: "Individual" },
-  multilateral: { bg: "bg-lavender-pale", text: "text-lavender", label: "Multilateral" },
-  ngo: { bg: "bg-sage-pale", text: "text-primary", label: "NGO" },
+  government: { bg: "bg-lavender-pale", text: "text-lavender", label: "site.government" },
+  foundation: { bg: "bg-sage-pale", text: "text-primary", label: "site.foundation" },
+  corporate: { bg: "bg-amber-pale", text: "text-amber-warm", label: "site.corporate" },
+  individual: { bg: "bg-rose-pale", text: "text-rose-muted", label: "site.individual" },
+  multilateral: { bg: "bg-lavender-pale", text: "text-lavender", label: "site.multilateral" },
+  ngo: { bg: "bg-sage-pale", text: "text-primary", label: "site.ngo" },
 };
 
 function isSafeWebsiteUrl(url: string): boolean {
@@ -53,6 +55,7 @@ function isSafeWebsiteUrl(url: string): boolean {
 }
 
 export default function DonorsPage() {
+  const { t } = useTranslation();
   const [donors, setDonors] = useState<Donor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,6 +64,17 @@ export default function DonorsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingDonor, setEditingDonor] = useState<Donor | null>(null);
   const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
+  const [portalInviteFeedback, setPortalInviteFeedback] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    variant: "success" | "error";
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    variant: "success",
+  });
   const [formData, setFormData] = useState({
     name: "",
     type: "",
@@ -165,7 +179,7 @@ export default function DonorsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this donor?")) return;
+    if (!confirm(t("site.are_you_sure_you_want_to_delete_this_donor"))) return;
 
     try {
       await fetch(`/api/donors/${id}`, { method: "DELETE" });
@@ -204,13 +218,28 @@ export default function DonorsPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("Portal invite sent successfully! The donor will receive an email with access instructions.");
+        setPortalInviteFeedback({
+          open: true,
+          title: t("site.invite_sent"),
+          message: t("site.donor_portal_invite_sent_message"),
+          variant: "success",
+        });
       } else {
-        alert(data.error || "Failed to send invite");
+        setPortalInviteFeedback({
+          open: true,
+          title: t("site.invite_failed"),
+          message: data.error || t("site.failed_to_send_invite"),
+          variant: "error",
+        });
       }
     } catch (error) {
       console.error("Failed to send portal invite:", error);
-      alert("Failed to send portal invite");
+      setPortalInviteFeedback({
+        open: true,
+        title: t("site.invite_failed"),
+        message: t("site.failed_to_send_portal_invite"),
+        variant: "error",
+      });
     } finally {
       setSendingInvites((prev) => {
         const next = new Set(prev);
@@ -221,7 +250,7 @@ export default function DonorsPage() {
   }
 
   function formatGrantSize(amount: number | null) {
-    if (!amount) return "Not specified";
+    if (!amount) return t("site.not_specified");
     return formatCurrency(amount, "ETB");
   }
 
@@ -246,7 +275,7 @@ export default function DonorsPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading donors…</p>
+          <p className="text-sm text-muted-foreground">{t("site.loading_donors")}</p>
         </div>
       </div>
     );
@@ -254,32 +283,39 @@ export default function DonorsPage() {
 
   return (
     <div className="p-6 lg:p-10">
+      <PortalInviteFeedbackDialog
+        open={portalInviteFeedback.open}
+        title={portalInviteFeedback.title}
+        message={portalInviteFeedback.message}
+        variant={portalInviteFeedback.variant}
+        onOpenChange={(open) => setPortalInviteFeedback((prev) => ({ ...prev, open }))}
+      />
       <header className="mb-8">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">
-              Donor Directory
+              {t("site.donor_directory")}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Manage donor contacts and grant opportunities
+              {t("site.manage_donor_contacts_and_grant_opportunities")}
             </p>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
               <Button className="rounded-xl shrink-0">
-                <Plus className="h-4 w-4 mr-2" /> Add Donor
+                <Plus className="h-4 w-4 mr-2" /> {t("site.add_donor")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="font-serif text-xl">
-                  {editingDonor ? "Edit Donor" : "Add New Donor"}
+                  {editingDonor ? t("site.edit_donor") : t("site.add_new_donor")}
                 </DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-5 mt-4">
                 <div className="grid gap-5 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Organization Name *</Label>
+                    <Label htmlFor="name">{t("site.organization_name")}</Label>
                     <Input
                       id="name"
                       value={formData.name}
@@ -289,22 +325,22 @@ export default function DonorsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="type">Donor Type *</Label>
+                    <Label htmlFor="type">{t("site.donor_type")}</Label>
                     <Select
                       value={formData.type}
                       onValueChange={(value) => setFormData({ ...formData, type: value })}
                       required
                     >
                       <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="Select type" />
+                        <SelectValue placeholder={t("site.select_type")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="government">Government</SelectItem>
-                        <SelectItem value="foundation">Foundation</SelectItem>
-                        <SelectItem value="corporate">Corporate</SelectItem>
-                        <SelectItem value="individual">Individual</SelectItem>
-                        <SelectItem value="multilateral">Multilateral</SelectItem>
-                        <SelectItem value="ngo">NGO</SelectItem>
+                        <SelectItem value="government">{t("site.government")}</SelectItem>
+                        <SelectItem value="foundation">{t("site.foundation")}</SelectItem>
+                        <SelectItem value="corporate">{t("site.corporate")}</SelectItem>
+                        <SelectItem value="individual">{t("site.individual")}</SelectItem>
+                        <SelectItem value="multilateral">{t("site.multilateral")}</SelectItem>
+                        <SelectItem value="ngo">{t("site.ngo")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -312,7 +348,7 @@ export default function DonorsPage() {
 
                 <div className="grid gap-5 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="contactPerson">Contact Person</Label>
+                    <Label htmlFor="contactPerson">{t("site.contact_person")}</Label>
                     <Input
                       id="contactPerson"
                       value={formData.contactPerson}
@@ -321,7 +357,7 @@ export default function DonorsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email">{t("site.email")}</Label>
                     <Input
                       id="email"
                       type="email"
@@ -334,7 +370,7 @@ export default function DonorsPage() {
 
                 <div className="grid gap-5 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
+                    <Label htmlFor="phone">{t("site.phone")}</Label>
                     <Input
                       id="phone"
                       value={formData.phone}
@@ -343,7 +379,7 @@ export default function DonorsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="website">Website</Label>
+                    <Label htmlFor="website">{t("site.website")}</Label>
                     <Input
                       id="website"
                       value={formData.website}
@@ -354,7 +390,7 @@ export default function DonorsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
+                  <Label htmlFor="address">{t("site.address")}</Label>
                   <Textarea
                     id="address"
                     value={formData.address}
@@ -366,35 +402,35 @@ export default function DonorsPage() {
 
                 <div className="grid gap-5 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="grantTypes">Grant Types</Label>
+                    <Label htmlFor="grantTypes">{t("site.grant_types")}</Label>
                     <Input
                       id="grantTypes"
                       value={formData.grantTypes}
                       onChange={(e) => setFormData({ ...formData, grantTypes: e.target.value })}
-                      placeholder="e.g., Project, Core, Emergency"
+                      placeholder={t("site.e_g_project_core_emergency")}
                       className="rounded-xl"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="focusAreas">Focus Areas</Label>
+                    <Label htmlFor="focusAreas">{t("site.focus_areas")}</Label>
                     <Input
                       id="focusAreas"
                       value={formData.focusAreas}
                       onChange={(e) => setFormData({ ...formData, focusAreas: e.target.value })}
-                      placeholder="e.g., Health, Education"
+                      placeholder={t("site.e_g_health_education")}
                       className="rounded-xl"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="averageGrantSize">Average Grant Size</Label>
+                  <Label htmlFor="averageGrantSize">{t("site.average_grant_size")}</Label>
                   <CurrencyInput
                     id="averageGrantSize"
                     value={formData.averageGrantSize}
                     onChange={(val) => setFormData({ ...formData, averageGrantSize: val })}
                     currency="ETB"
-                    placeholder="e.g., 500000"
+                    placeholder={t("site.e_g_500000")}
                   />
                 </div>
 
@@ -411,16 +447,16 @@ export default function DonorsPage() {
                   </button>
                   <div>
                     <Label id="active-status-label" className="text-sm font-medium">
-                      {formData.isActive ? "Active" : "Non-Active"}
+                      {formData.isActive ? t("site.active") : t("site.non_active")}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      {formData.isActive ? "Available for project assignments" : "Hidden from project selections"}
+                      {formData.isActive ? t("site.donor_is_active_and_available_for_project_assignments") : t("site.donor_is_non_active_and_hidden_from_project_selections")}
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Notes</Label>
+                  <Label htmlFor="notes">{t("site.notes")}</Label>
                   <Textarea
                     id="notes"
                     value={formData.notes}
@@ -432,10 +468,10 @@ export default function DonorsPage() {
 
                 <div className="flex gap-2 justify-end">
                   <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
-                    Cancel
+                    {t("site.cancel")}
                   </Button>
                   <Button type="submit" className="rounded-xl">
-                    {editingDonor ? "Update" : "Create"} Donor
+                    {editingDonor ? t("site.update") : t("site.create")} {t("site.donor")}
                   </Button>
                 </div>
               </form>
@@ -447,15 +483,15 @@ export default function DonorsPage() {
       {/* Summary strip */}
       <div className="flex gap-3 mb-8">
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">Total</span>
+          <span className="text-xs text-muted-foreground">{t("site.total")}</span>
           <p className="font-serif text-lg text-foreground">{donors.length}</p>
         </div>
         <div className="px-4 py-2.5 bg-sage-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">Active</span>
+          <span className="text-xs text-muted-foreground">{t("site.active")}</span>
           <p className="font-serif text-lg text-primary">{activeDonorCount}</p>
         </div>
         <div className="px-4 py-2.5 bg-rose-pale rounded-xl">
-          <span className="text-xs text-muted-foreground">Inactive</span>
+          <span className="text-xs text-muted-foreground">{t("site.inactive")}</span>
           <p className="font-serif text-lg text-rose-muted">{inactiveDonorCount}</p>
         </div>
       </div>
@@ -465,7 +501,7 @@ export default function DonorsPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search donors…"
+            placeholder={t("site.search_donors")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 rounded-xl bg-card"
@@ -476,9 +512,9 @@ export default function DonorsPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="all">{t("site.all_status")}</SelectItem>
+            <SelectItem value="active">{t("site.active")}</SelectItem>
+            <SelectItem value="inactive">{t("site.inactive")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterType} onValueChange={setFilterType}>
@@ -486,13 +522,13 @@ export default function DonorsPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="government">Government</SelectItem>
-            <SelectItem value="foundation">Foundation</SelectItem>
-            <SelectItem value="corporate">Corporate</SelectItem>
-            <SelectItem value="individual">Individual</SelectItem>
-            <SelectItem value="multilateral">Multilateral</SelectItem>
-            <SelectItem value="ngo">NGO</SelectItem>
+            <SelectItem value="all">{t("site.all_types")}</SelectItem>
+            <SelectItem value="government">{t("site.government")}</SelectItem>
+            <SelectItem value="foundation">{t("site.foundation")}</SelectItem>
+            <SelectItem value="corporate">{t("site.corporate")}</SelectItem>
+            <SelectItem value="individual">{t("site.individual")}</SelectItem>
+            <SelectItem value="multilateral">{t("site.multilateral")}</SelectItem>
+            <SelectItem value="ngo">{t("site.ngo")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -503,12 +539,12 @@ export default function DonorsPage() {
           <Users className="h-10 w-10 mx-auto mb-3 text-primary/25" />
           <p className="text-sm text-muted-foreground mb-5">
             {searchQuery || filterType !== "all" || filterStatus !== "all"
-              ? "No donors match your filters"
-              : "No donors yet — add your first one"}
+              ? t("site.no_donors_match_your_filters")
+              : t("site.no_donors_yet_add_your_first_one")}
           </p>
           {!searchQuery && filterType === "all" && filterStatus === "all" && (
             <Button onClick={() => setIsAddDialogOpen(true)} className="rounded-xl">
-              <Plus className="h-4 w-4 mr-2" /> Add your first donor
+              <Plus className="h-4 w-4 mr-2" /> {t("site.add_your_first_donor")}
             </Button>
           )}
         </div>
@@ -533,13 +569,13 @@ export default function DonorsPage() {
                       <h3 className="font-serif text-lg text-foreground leading-snug truncate">{donor.name}</h3>
                       <div className="flex items-center gap-1.5 mt-1">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${typeConf.bg} ${typeConf.text}`}>
-                          {typeConf.label}
+                          {t(typeConf.label)}
                         </span>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           donor.isActive ? "bg-sage-pale text-primary" : "bg-muted text-muted-foreground"
                         }`}>
                           <span className={`h-1 w-1 rounded-full ${donor.isActive ? "bg-primary" : "bg-muted-foreground"}`} />
-                          {donor.isActive ? "Active" : "Inactive"}
+                          {donor.isActive ? t("site.active") : t("site.inactive")}
                         </span>
                       </div>
                     </div>
@@ -552,13 +588,13 @@ export default function DonorsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openEditDialog(donor)}>
-                        <Edit className="h-4 w-4 mr-2" /> Edit
+                        <Edit className="h-4 w-4 mr-2" /> {t("site.edit")}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleToggleActive(donor)}>
                         {donor.isActive ? (
-                          <><PowerOff className="h-4 w-4 mr-2" /> Set Inactive</>
+                          <><PowerOff className="h-4 w-4 mr-2" /> {t("site.set_non_active")}</>
                         ) : (
-                          <><Power className="h-4 w-4 mr-2" /> Set Active</>
+                          <><Power className="h-4 w-4 mr-2" /> {t("site.set_active")}</>
                         )}
                       </DropdownMenuItem>
                       {donor.email && (
@@ -567,11 +603,11 @@ export default function DonorsPage() {
                           disabled={sendingInvites.has(donor.id)}
                         >
                           <Send className="h-4 w-4 mr-2" />
-                          {sendingInvites.has(donor.id) ? "Sending…" : "Send Portal Invite"}
+                          {sendingInvites.has(donor.id) ? t("site.sending") : t("site.send_portal_invite")}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-destructive">
-                        <Trash2 className="h-4 w-4 mr-2" /> Delete
+                        <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -581,7 +617,7 @@ export default function DonorsPage() {
                 <div className="space-y-2">
                   {donor.contactPerson && (
                     <p className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">Contact:</span> {donor.contactPerson}
+                      <span className="font-medium text-foreground">{t("site.contact")}</span> {donor.contactPerson}
                     </p>
                   )}
                   {donor.email && (
@@ -612,12 +648,12 @@ export default function DonorsPage() {
                   )}
                   {donor.focusAreas && (
                     <p className="text-xs text-muted-foreground pt-1">
-                      <span className="font-medium text-foreground">Focus:</span> {donor.focusAreas}
+                      <span className="font-medium text-foreground">{t("site.focus")}</span> {donor.focusAreas}
                     </p>
                   )}
                   {donor.averageGrantSize && (
                     <p className="text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">Avg. Grant:</span> {formatGrantSize(donor.averageGrantSize)}
+                      <span className="font-medium text-foreground">{t("site.avg_grant")}</span> {formatGrantSize(donor.averageGrantSize)}
                     </p>
                   )}
                 </div>

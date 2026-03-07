@@ -58,6 +58,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
           },
         },
+        budgetAllocations: {
+          orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
+        },
         members: {
           with: {
             user: {
