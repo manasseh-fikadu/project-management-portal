@@ -21,7 +21,7 @@ type Notification = {
 function entityUrl(entityType: string | null, entityId: string | null): string | null {
   if (!entityType || !entityId) return null;
   if (entityType === "task" || entityType === "project") return `/projects`;
-  if (entityType === "proposal") return `/proposals`;
+  if (entityType === "proposal") return `/proposals/${entityId}`;
   if (entityType === "milestone") return `/projects`;
   return null;
 }

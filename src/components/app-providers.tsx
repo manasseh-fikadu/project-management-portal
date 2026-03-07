@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { i18n } from "@/lib/i18n";
+import { I18nextProvider } from "react-i18next";
+import { ensureI18nInitialized, i18n, syncPreferredLanguage } from "@/lib/i18n";
 import en from "@/lib/i18n/locales/en.json";
 import am from "@/lib/i18n/locales/am.json";
 
@@ -144,8 +145,18 @@ function applyGlobalTranslation(root: ParentNode, map: Map<string, string>) {
   });
 }
 
-export function AppProviders({ children }: { children: React.ReactNode }) {
+export function AppProviders({
+  children,
+  preferredLanguage,
+}: {
+  children: React.ReactNode;
+  preferredLanguage?: string;
+}) {
+  ensureI18nInitialized(preferredLanguage);
+
   useEffect(() => {
+    syncPreferredLanguage();
+
     let scheduled = false;
     let applying = false;
 
@@ -194,5 +205,5 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  return children;
+  return <I18nextProvider i18n={i18n}>{children}</I18nextProvider>;
 }

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { projectId, activityName, plannedAmount, notes } = body;
+    const { projectId, activityName, plannedAmount, q1Amount, q2Amount, q3Amount, q4Amount, notes } = body;
 
     if (!projectId || !activityName || plannedAmount === undefined) {
       return NextResponse.json(
@@ -59,12 +59,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "plannedAmount must be a positive number" }, { status: 400 });
     }
 
+    const q1 = q1Amount === undefined ? 0 : Number(q1Amount);
+    const q2 = q2Amount === undefined ? 0 : Number(q2Amount);
+    const q3 = q3Amount === undefined ? 0 : Number(q3Amount);
+    const q4 = q4Amount === undefined ? 0 : Number(q4Amount);
+
+    if (![q1, q2, q3, q4].every((value) => Number.isFinite(value) && value >= 0)) {
+      return NextResponse.json({ error: "Quarter amounts must be zero or positive numbers" }, { status: 400 });
+    }
+
+    const roundedPlannedAmount = Math.round(amount);
+    const roundedQ1 = Math.round(q1);
+    const roundedQ2 = Math.round(q2);
+    const roundedQ3 = Math.round(q3);
+    const roundedQ4 = Math.round(q4);
+    const roundedQuarterSum = roundedQ1 + roundedQ2 + roundedQ3 + roundedQ4;
+
+    if (roundedQuarterSum > roundedPlannedAmount) {
+      return NextResponse.json(
+        {
+          error: "Rounded quarter amounts cannot exceed the rounded planned amount",
+        },
+        { status: 400 }
+      );
+    }
+
     const [newBudgetAllocation] = await db
       .insert(budgetAllocations)
       .values({
         projectId,
         activityName,
-        plannedAmount: Math.round(amount),
+        plannedAmount: roundedPlannedAmount,
+        q1Amount: roundedQ1,
+        q2Amount: roundedQ2,
+        q3Amount: roundedQ3,
+        q4Amount: roundedQ4,
         notes: notes || null,
         createdBy: session.userId,
       })

@@ -56,7 +56,7 @@ export default function DashboardLayout({
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p>{t("layout.loading")}</p>
+        <p>{t("site.loading_dashboard")}</p>
       </div>
     );
   }
@@ -68,7 +68,7 @@ export default function DashboardLayout({
   if (user.mustChangePassword && pathname !== "/profile") {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p>{t("layout.loading")}</p>
+        <p>{t("site.loading_dashboard")}</p>
       </div>
     );
   }

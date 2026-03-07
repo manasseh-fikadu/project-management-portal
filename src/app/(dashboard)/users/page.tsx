@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,13 +41,14 @@ type CurrentUser = {
 };
 
 const ROLE_CONFIG: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
-  admin: { label: "Admin", bg: "bg-rose-pale", text: "text-rose-muted", icon: Shield },
-  project_manager: { label: "Project Manager", bg: "bg-sage-pale", text: "text-primary", icon: Briefcase },
-  beneficiary: { label: "Beneficiary", bg: "bg-lavender-pale", text: "text-lavender", icon: Heart },
-  donor: { label: "Donor", bg: "bg-amber-pale", text: "text-amber-warm", icon: Users },
+  admin: { label: "roles.admin", bg: "bg-rose-pale", text: "text-rose-muted", icon: Shield },
+  project_manager: { label: "roles.project_manager", bg: "bg-sage-pale", text: "text-primary", icon: Briefcase },
+  beneficiary: { label: "roles.beneficiary", bg: "bg-lavender-pale", text: "text-lavender", icon: Heart },
+  donor: { label: "site.donor", bg: "bg-amber-pale", text: "text-amber-warm", icon: Users },
 };
 
 export default function UsersPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -117,7 +119,7 @@ export default function UsersPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Failed to create user");
+        setError(data.error || t("site.failed_to_create_user"));
         return;
       }
 
@@ -125,7 +127,7 @@ export default function UsersPage() {
       resetForm();
       fetchUsers();
     } catch {
-      setError("Network error. Please try again.");
+      setError(t("site.network_error_please_try_again"));
     } finally {
       setSubmitting(false);
     }
@@ -135,7 +137,7 @@ export default function UsersPage() {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-    const roleLabel = ROLE_CONFIG[user.role]?.label.toLowerCase() ?? user.role.toLowerCase();
+    const roleLabel = (ROLE_CONFIG[user.role] ? t(ROLE_CONFIG[user.role].label) : user.role).toLowerCase();
     return (
       fullName.includes(q) ||
       user.email.toLowerCase().includes(q) ||
@@ -150,7 +152,7 @@ export default function UsersPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading users…</p>
+          <p className="text-sm text-muted-foreground">{t("site.loading_users")}</p>
         </div>
       </div>
     );
@@ -161,9 +163,9 @@ export default function UsersPage() {
       <header className="mb-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">User Management</h1>
+            <h1 className="font-serif text-3xl lg:text-4xl text-foreground mb-2">{t("site.user_management")}</h1>
             <p className="text-sm text-muted-foreground">
-              {users.length} user{users.length !== 1 ? "s" : ""} registered
+              {t(users.length === 1 ? "site.users_registered_count_one" : "site.users_registered_count_other", { count: users.length })}
             </p>
           </div>
 
@@ -171,57 +173,57 @@ export default function UsersPage() {
             <DialogTrigger asChild>
               <Button className="rounded-xl shrink-0">
                 <UserPlus className="h-4 w-4 mr-2" />
-                Create User
+                {t("site.create_user")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle className="font-serif text-xl">Create New User</DialogTitle>
+                <DialogTitle className="font-serif text-xl">{t("site.create_new_user")}</DialogTitle>
                 <DialogDescription className="text-muted-foreground">
-                  Add a new user to the system. They will be able to log in immediately.
+                  {t("site.add_a_new_user_to_the_system_they_will_be_able_to_log_in_immediately")}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleCreateUser} className="space-y-5 mt-2">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
+                    <Label htmlFor="firstName">{t("site.first_name")}</Label>
                     <Input
                       id="firstName"
                       required
                       value={form.firstName}
                       onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
-                      placeholder="John"
+                      placeholder={t("site.john")}
                       className="rounded-xl"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
+                    <Label htmlFor="lastName">{t("site.last_name")}</Label>
                     <Input
                       id="lastName"
                       required
                       value={form.lastName}
                       onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
-                      placeholder="Doe"
+                      placeholder={t("site.doe")}
                       className="rounded-xl"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t("site.email")}</Label>
                   <Input
                     id="email"
                     type="email"
                     required
                     value={form.email}
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    placeholder="john@example.com"
+                    placeholder={t("site.john_example_com")}
                     className="rounded-xl"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">{t("auth.password")}</Label>
                   <Input
                     id="password"
                     type="password"
@@ -229,33 +231,33 @@ export default function UsersPage() {
                     minLength={6}
                     value={form.password}
                     onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder="Min. 6 characters"
+                    placeholder={t("site.min_6_characters")}
                     className="rounded-xl"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
+                  <Label htmlFor="role">{t("site.role")}</Label>
                   <Select value={form.role} onValueChange={(value) => setForm((f) => ({ ...f, role: value }))}>
                     <SelectTrigger className="w-full rounded-xl">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="project_manager">Project Manager</SelectItem>
-                      <SelectItem value="beneficiary">Beneficiary</SelectItem>
-                      <SelectItem value="donor">Donor</SelectItem>
+                      <SelectItem value="admin">{t("roles.admin")}</SelectItem>
+                      <SelectItem value="project_manager">{t("roles.project_manager")}</SelectItem>
+                      <SelectItem value="beneficiary">{t("roles.beneficiary")}</SelectItem>
+                      <SelectItem value="donor">{t("site.donor")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="department">Department <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Label htmlFor="department">{t("site.department")} <span className="text-muted-foreground font-normal">{t("site.optional")}</span></Label>
                   <Input
                     id="department"
                     value={form.department}
                     onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
-                    placeholder="e.g. Engineering"
+                    placeholder={t("site.e_g_engineering")}
                     className="rounded-xl"
                   />
                 </div>
@@ -268,10 +270,10 @@ export default function UsersPage() {
 
                 <DialogFooter>
                   <Button type="button" variant="ghost" onClick={() => { setDialogOpen(false); resetForm(); }}>
-                    Cancel
+                    {t("site.cancel")}
                   </Button>
                   <Button type="submit" disabled={submitting} className="rounded-xl">
-                    {submitting ? "Creating…" : "Create User"}
+                    {submitting ? t("site.creating") : t("site.create_user")}
                   </Button>
                 </DialogFooter>
               </form>
@@ -284,7 +286,7 @@ export default function UsersPage() {
       <div className="relative mb-8 max-w-md">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search by name, email, role…"
+          placeholder={t("site.search_users")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-10 rounded-xl bg-card"
@@ -296,7 +298,7 @@ export default function UsersPage() {
         <div className="py-20 text-center">
           <Users className="h-10 w-10 mx-auto mb-3 text-primary/25" />
           <p className="text-sm text-muted-foreground">
-            {searchQuery.trim() ? "No users match your search" : "No users found"}
+            {searchQuery.trim() ? t("site.no_users_match_your_search") : t("site.no_users_found")}
           </p>
         </div>
       ) : (
@@ -305,12 +307,12 @@ export default function UsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">Name</th>
-                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">Email</th>
-                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">Role</th>
-                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">Department</th>
-                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">Status</th>
-                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">Joined</th>
+                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">{t("site.name")}</th>
+                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">{t("site.email")}</th>
+                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">{t("site.role")}</th>
+                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">{t("site.department")}</th>
+                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">{t("site.status")}</th>
+                  <th className="px-5 py-3.5 text-left font-medium text-xs uppercase tracking-wider text-muted-foreground">{t("site.joined")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -326,7 +328,7 @@ export default function UsersPage() {
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${roleConfig.bg} ${roleConfig.text}`}>
                           <RoleIcon className="h-3 w-3" />
-                          {roleConfig.label}
+                          {t(roleConfig.label)}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-muted-foreground">{user.department || "—"}</td>
@@ -335,7 +337,7 @@ export default function UsersPage() {
                           user.isActive ? "bg-sage-pale text-primary" : "bg-muted text-muted-foreground"
                         }`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${user.isActive ? "bg-primary" : "bg-muted-foreground"}`} />
-                          {user.isActive ? "Active" : "Inactive"}
+                          {user.isActive ? t("site.active") : t("site.inactive")}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-muted-foreground">

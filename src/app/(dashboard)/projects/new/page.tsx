@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,17 +62,31 @@ type UserOption = {
   role: string;
 };
 
+type ImportPreview = {
+  name: string;
+  description: string | null;
+  totalBudget: number;
+  budgetYear: number | null;
+  sourceSheet: string;
+  allocationCount: number;
+  sampleAllocations: Array<{
+    id?: string;
+    activityName: string;
+    plannedAmount: number;
+  }>;
+};
+
 const STEPS = [
-  { id: 0, label: "Details", fullLabel: "Project Details", icon: ClipboardList },
-  { id: 1, label: "Tasks", fullLabel: "Tasks & Activities", icon: ListTodo },
-  { id: 2, label: "Donors", fullLabel: "Donors & Documents", icon: Users },
-  { id: 3, label: "Review", fullLabel: "Review & Submit", icon: Eye },
+  { id: 0, label: "site.details", fullLabel: "site.project_details", icon: ClipboardList },
+  { id: 1, label: "site.tasks", fullLabel: "site.tasks_and_activities", icon: ListTodo },
+  { id: 2, label: "site.donors", fullLabel: "site.donors_and_documents", icon: Users },
+  { id: 3, label: "site.review", fullLabel: "site.review_and_submit", icon: Eye },
 ];
 
 const priorityLabels: Record<string, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
+  low: "site.low",
+  medium: "site.medium",
+  high: "site.high",
 };
 
 const priorityConfig: Record<string, { bg: string; text: string }> = {
@@ -81,11 +96,11 @@ const priorityConfig: Record<string, { bg: string; text: string }> = {
 };
 
 const statusLabels: Record<string, string> = {
-  planning: "Planning",
-  active: "Active",
-  on_hold: "On Hold",
-  completed: "Completed",
-  cancelled: "Cancelled",
+  planning: "site.planning",
+  active: "site.active",
+  on_hold: "site.on_hold",
+  completed: "site.completed",
+  cancelled: "site.cancelled",
 };
 
 function formatLocalDate(dateStr: string): string {
@@ -94,12 +109,18 @@ function formatLocalDate(dateStr: string): string {
 }
 
 export default function NewProjectPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [previewingImport, setPreviewingImport] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [milestones, setMilestones] = useState<MilestoneInput[]>([]);
   const [taskInputs, setTaskInputs] = useState<TaskInput[]>([]);
   const [donors, setDonors] = useState<Donor[]>([]);
@@ -122,9 +143,9 @@ export default function NewProjectPage() {
       const data = await res.json();
       if (data.donors) setDonors(data.donors);
     } catch (err) {
-      console.error("Error fetching donors:", err);
+      console.error(t("site.error_fetching_donors"), err);
     }
-  }, []);
+  }, [t]);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -132,9 +153,9 @@ export default function NewProjectPage() {
       const data = await res.json();
       if (data.users) setUsers(data.users);
     } catch (err) {
-      console.error("Error fetching users:", err);
+      console.error(t("site.error_fetching_users"), err);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchDonors();
@@ -152,6 +173,69 @@ export default function NewProjectPage() {
     const selectedFiles = Array.from(e.target.files || []);
     setFiles((prev) => [...prev, ...selectedFiles]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setError(null);
+    setPreviewingImport(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append("file", file);
+
+      const res = await fetch("/api/projects/import/preview", {
+        method: "POST",
+        body: uploadFormData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || t("site.failed_to_preview_import"));
+
+      setImportFile(file);
+      setImportPreview(data.preview);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("site.an_error_occurred"));
+    } finally {
+      setPreviewingImport(false);
+      if (importFileInputRef.current) importFileInputRef.current.value = "";
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!importFile) return;
+
+    setError(null);
+    setImporting(true);
+
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append("file", importFile);
+      if (formData.managerId) uploadFormData.append("managerId", formData.managerId);
+      if (formData.status) uploadFormData.append("status", formData.status);
+      uploadFormData.append("donorIds", JSON.stringify(selectedDonorIds));
+
+      const res = await fetch("/api/projects/import", {
+        method: "POST",
+        body: uploadFormData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || t("site.failed_to_import_project"));
+
+      router.push(`/projects/${data.project.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("site.an_error_occurred"));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function clearImportPreview() {
+    setImportFile(null);
+    setImportPreview(null);
   }
 
   function removeFile(index: number) {
@@ -237,7 +321,7 @@ export default function NewProjectPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create project");
+      if (!res.ok) throw new Error(data.error || t("site.failed_to_create_project"));
 
       const projectId = data.project.id;
 
@@ -270,7 +354,7 @@ export default function NewProjectPage() {
 
       router.push(`/projects/${projectId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : t("site.an_error_occurred"));
     } finally {
       setLoading(false);
     }
@@ -292,7 +376,7 @@ export default function NewProjectPage() {
 
   function getUserName(userId: string): string {
     const u = users.find((user) => user.id === userId);
-    return u ? `${u.firstName} ${u.lastName}` : "Unassigned";
+    return u ? `${u.firstName} ${u.lastName}` : t("site.unassigned");
   }
 
   return (
@@ -303,11 +387,11 @@ export default function NewProjectPage() {
           onClick={() => router.back()}
           className="text-muted-foreground hover:text-foreground -ml-3 mb-4"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back
+          <ArrowLeft className="h-4 w-4 mr-2" /> {t("site.back")}
         </Button>
-        <h1 className="font-serif text-3xl text-foreground">New Project</h1>
+        <h1 className="font-serif text-3xl text-foreground">{t("site.new_project")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Set up your project in a few steps
+          {t("site.set_up_your_project_in_a_few_steps")}
         </p>
       </div>
 
@@ -351,7 +435,7 @@ export default function NewProjectPage() {
                       idx + 1
                     )}
                   </span>
-                  <span className="hidden md:inline">{step.label}</span>
+                  <span className="hidden md:inline">{t(step.label)}</span>
                 </button>
                 {idx < STEPS.length - 1 && (
                   <div
@@ -375,20 +459,189 @@ export default function NewProjectPage() {
       {/* Step 1: Project Details */}
       {currentStep === 0 && (
         <div className="bg-card rounded-2xl p-6 lg:p-8">
-          <h2 className="font-serif text-xl text-foreground mb-1">Project Information</h2>
+          <h2 className="font-serif text-xl text-foreground mb-1">{t("site.project_information")}</h2>
           <p className="text-sm text-muted-foreground mb-8">
-            Enter the basic details for your new project
+            {t("site.enter_the_basic_details_for_your_new_project")}
           </p>
+
+          <div className="mb-8 rounded-[28px] border border-primary/10 bg-[linear-gradient(180deg,rgba(132,158,112,0.12),rgba(132,158,112,0.04))] p-6 lg:p-7">
+            <div className="flex flex-col gap-4 border-b border-primary/10 pb-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/70">
+                  {t("site.quick_import")}
+                </p>
+                <h3 className="mt-2 font-serif text-[1.45rem] leading-tight text-foreground">{t("site.import_from_spreadsheet_template")}</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {t("site.upload_a_supported_project_budget_workbook_to_review_the_parsed_structure_then_confirm_the_import_when_it_looks_right")}
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={() => importFileInputRef.current?.click()}
+                disabled={loading || importing || previewingImport}
+                className="rounded-full px-5 shrink-0"
+              >
+                {previewingImport ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-2" />
+                )}
+                {previewingImport ? t("site.reading_template") : t("site.upload_template")}
+              </Button>
+            </div>
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".xlsx"
+              onChange={handleImportFileChange}
+              className="hidden"
+            />
+            <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <Label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("site.donor_links")}</Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedDonorIds.length > 0 ? (
+                    getSelectedDonors().map((donor) => (
+                      <Badge
+                        key={donor.id}
+                        variant="secondary"
+                        className="rounded-full bg-primary/10 px-3 py-1 text-primary hover:bg-primary/10"
+                      >
+                        {donor.name}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      {t("site.no_donors_selected_you_can_still_import_and_link_donors_later")}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="w-full lg:w-80">
+                <Select value="" onValueChange={toggleDonor}>
+                  <SelectTrigger className="rounded-xl bg-card/80">
+                    <SelectValue placeholder={t("site.link_donors_during_import")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {donors
+                      .filter((donor) => donor.isActive)
+                      .map((donor) => (
+                        <SelectItem key={donor.id} value={donor.id}>
+                          {donor.name} ({donor.type})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {importPreview && importFile && (
+              <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(19rem,0.9fr)]">
+                <div className="rounded-[24px] bg-card/90 p-5 ring-1 ring-black/5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/70">
+                      {t("site.import_preview")}
+                    </p>
+                    <Badge variant="secondary" className="rounded-full bg-primary/10 px-3 py-1 text-[11px] text-primary hover:bg-primary/10">
+                      {t("site.ready_to_import")}
+                    </Badge>
+                  </div>
+                  <h4 className="mt-3 max-w-3xl font-serif text-[1.9rem] leading-[1.2] text-foreground">
+                    {importPreview.name}
+                  </h4>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    {t("site.source_file")}: <span className="font-medium text-foreground">{importFile.name}</span>
+                  </p>
+
+                  {importPreview.description && (
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{importPreview.description}</p>
+                  )}
+
+                  <div className="mt-6">
+                    <p className="mb-3 text-sm font-medium text-foreground">{t("site.sample_budget_lines")}</p>
+                    <div className="space-y-2">
+                      {importPreview.sampleAllocations.map((allocation, index) => (
+                        <div
+                          key={allocation.id ?? index}
+                          className="flex items-center justify-between gap-3 rounded-2xl bg-muted/40 px-4 py-3 text-sm"
+                        >
+                          <span className="min-w-0 text-foreground">{allocation.activityName}</span>
+                          <span className="shrink-0 rounded-full bg-background px-3 py-1 font-medium text-foreground shadow-sm">
+                            {formatCurrency(allocation.plannedAmount, "ETB")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-[22px] bg-card/90 p-4 ring-1 ring-black/5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("site.year")}</div>
+                      <div className="mt-2 text-2xl font-semibold text-foreground">{importPreview.budgetYear ?? t("site.n_a")}</div>
+                    </div>
+                    <div className="rounded-[22px] bg-card/90 p-4 ring-1 ring-black/5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("site.sheet")}</div>
+                      <div className="mt-2 text-base font-semibold leading-snug text-foreground">{importPreview.sourceSheet}</div>
+                    </div>
+                    <div className="rounded-[22px] bg-card/90 p-4 ring-1 ring-black/5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("site.budget_lines")}</div>
+                      <div className="mt-2 text-2xl font-semibold text-foreground">{importPreview.allocationCount}</div>
+                    </div>
+                    <div className="rounded-[22px] bg-card/90 p-4 ring-1 ring-black/5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("site.total_budget")}</div>
+                      <div className="mt-2 text-base font-semibold leading-snug text-foreground">
+                        {formatCurrency(importPreview.totalBudget, "ETB")}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] bg-card/90 p-5 ring-1 ring-black/5">
+                    <p className="text-sm font-medium text-foreground">{t("site.next_step")}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {t("site.confirm_to_create_the_project_import_the_budget_lines_and_attach_the_uploaded_workbook_as_the_source_document")}
+                    </p>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        onClick={handleConfirmImport}
+                        disabled={loading || importing}
+                        className="rounded-full px-5"
+                      >
+                        {importing ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
+                        {importing ? t("site.creating_project") : t("site.confirm_import")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={clearImportPreview}
+                        disabled={loading || importing}
+                        className="rounded-full px-5"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        {t("site.discard_preview")}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Project Name *</Label>
+              <Label htmlFor="name">{t("site.project_name")}</Label>
               <Input
                 id="name"
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                placeholder="Enter project name"
+                placeholder={t("site.enter_project_name")}
                 required
                 disabled={loading}
                 className="rounded-xl"
@@ -396,14 +649,14 @@ export default function NewProjectPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t("site.description")}</Label>
               <Textarea
                 id="description"
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
                 rows={3}
-                placeholder="Describe the project objectives and scope"
+                placeholder={t("site.describe_the_project_objectives_and_scope")}
                 disabled={loading}
                 className="rounded-xl"
               />
@@ -411,7 +664,7 @@ export default function NewProjectPage() {
 
             <div className="grid gap-5 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="managerId">Project Manager</Label>
+                <Label htmlFor="managerId">{t("site.project_manager")}</Label>
                 <Select
                   value={formData.managerId}
                   onValueChange={(value) =>
@@ -420,7 +673,7 @@ export default function NewProjectPage() {
                   disabled={loading}
                 >
                   <SelectTrigger className="rounded-xl">
-                    <SelectValue placeholder="Select manager (defaults to you)" />
+                    <SelectValue placeholder={t("site.select_project_manager_defaults_to_you")} />
                   </SelectTrigger>
                   <SelectContent>
                     {users.map((user) => (
@@ -433,7 +686,7 @@ export default function NewProjectPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="totalBudget">Total Budget</Label>
+                <Label htmlFor="totalBudget">{t("site.total_budget")}</Label>
                 <CurrencyInput
                   id="totalBudget"
                   value={formData.totalBudget}
@@ -448,7 +701,7 @@ export default function NewProjectPage() {
 
             <div className="grid gap-5 md:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
+                <Label htmlFor="status">{t("site.status")}</Label>
                 <Select
                   value={formData.status}
                   onValueChange={(value) =>
@@ -460,17 +713,17 @@ export default function NewProjectPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="planning">Planning</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="on_hold">On Hold</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="planning">{t("site.planning")}</SelectItem>
+                    <SelectItem value="active">{t("site.active")}</SelectItem>
+                    <SelectItem value="on_hold">{t("site.on_hold")}</SelectItem>
+                    <SelectItem value="completed">{t("site.completed")}</SelectItem>
+                    <SelectItem value="cancelled">{t("site.cancelled")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="startDate">Start Date</Label>
+                <Label htmlFor="startDate">{t("site.start_date")}</Label>
                 <Input
                   id="startDate"
                   name="startDate"
@@ -483,7 +736,7 @@ export default function NewProjectPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="endDate">End Date</Label>
+                <Label htmlFor="endDate">{t("site.end_date")}</Label>
                 <Input
                   id="endDate"
                   name="endDate"
@@ -499,7 +752,7 @@ export default function NewProjectPage() {
             <div className="border-t border-border pt-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-serif text-lg text-foreground">
-                  Work Plan / Milestones
+                  {t("site.work_plan_milestones")}
                 </h3>
                 <Button
                   type="button"
@@ -509,7 +762,7 @@ export default function NewProjectPage() {
                   disabled={loading}
                   className="rounded-xl"
                 >
-                  <Plus className="h-4 w-4 mr-1" /> Add Milestone
+                  <Plus className="h-4 w-4 mr-1" /> {t("site.add_milestone")}
                 </Button>
               </div>
 
@@ -523,7 +776,7 @@ export default function NewProjectPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 space-y-2">
                           <Input
-                            placeholder="Milestone title *"
+                            placeholder={t("site.milestone_title")}
                             value={milestone.title}
                             onChange={(e) =>
                               updateMilestone(index, "title", e.target.value)
@@ -544,7 +797,7 @@ export default function NewProjectPage() {
                         </Button>
                       </div>
                       <Textarea
-                        placeholder="Description"
+                        placeholder={t("site.description")}
                         value={milestone.description}
                         onChange={(e) =>
                           updateMilestone(index, "description", e.target.value)
@@ -567,8 +820,7 @@ export default function NewProjectPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No milestones added yet. Click &quot;Add Milestone&quot; to
-                  create your work plan.
+                  {t("site.no_milestones_added_yet_click_add_milestone_to_create_your_work_plan")}
                 </p>
               )}
             </div>
@@ -581,9 +833,9 @@ export default function NewProjectPage() {
         <div className="bg-card rounded-2xl p-6 lg:p-8">
           <div className="flex items-start justify-between gap-4 mb-8">
             <div>
-              <h2 className="font-serif text-xl text-foreground mb-1">Tasks & Activities</h2>
+              <h2 className="font-serif text-xl text-foreground mb-1">{t("site.tasks_and_activities")}</h2>
               <p className="text-sm text-muted-foreground">
-                Define the work items — you can always add more later
+                {t("site.define_the_work_items_you_can_always_add_more_later")}
               </p>
             </div>
             <Button
@@ -594,7 +846,7 @@ export default function NewProjectPage() {
               disabled={loading}
               className="rounded-xl shrink-0"
             >
-              <Plus className="h-4 w-4 mr-1" /> Add Task
+              <Plus className="h-4 w-4 mr-1" /> {t("site.add_task")}
             </Button>
           </div>
 
@@ -607,7 +859,7 @@ export default function NewProjectPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Task {index + 1}
+                      {t("site.task_number", { number: index + 1 })}
                     </span>
                     <Button
                       type="button"
@@ -622,9 +874,9 @@ export default function NewProjectPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Title *</Label>
+                    <Label>{t("site.title")}</Label>
                     <Input
-                      placeholder="Task title"
+                      placeholder={t("site.task_title")}
                       value={task.title}
                       onChange={(e) =>
                         updateTask(index, "title", e.target.value)
@@ -635,9 +887,9 @@ export default function NewProjectPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Description</Label>
+                    <Label>{t("site.description")}</Label>
                     <Textarea
-                      placeholder="What needs to be done?"
+                      placeholder={t("site.what_needs_to_be_done")}
                       value={task.description}
                       onChange={(e) =>
                         updateTask(index, "description", e.target.value)
@@ -650,7 +902,7 @@ export default function NewProjectPage() {
 
                   <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
-                      <Label>Priority</Label>
+                      <Label>{t("site.priority")}</Label>
                       <Select
                         value={task.priority}
                         onValueChange={(value) =>
@@ -662,15 +914,15 @@ export default function NewProjectPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
+                          <SelectItem value="low">{t("site.low")}</SelectItem>
+                          <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                          <SelectItem value="high">{t("site.high")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Due Date</Label>
+                      <Label>{t("site.due_date")}</Label>
                       <Input
                         type="date"
                         value={task.dueDate}
@@ -683,7 +935,7 @@ export default function NewProjectPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Assign To</Label>
+                      <Label>{t("site.assign_to")}</Label>
                       <Select
                         value={task.assignedTo}
                         onValueChange={(value) =>
@@ -696,10 +948,10 @@ export default function NewProjectPage() {
                         disabled={loading}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select assignee" />
+                          <SelectValue placeholder={t("site.select_assignee")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="_none">Unassigned</SelectItem>
+                          <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
                           {users.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.firstName} {user.lastName}
@@ -716,7 +968,7 @@ export default function NewProjectPage() {
             <div className="text-center py-16 border border-dashed border-border rounded-2xl">
               <ListTodo className="h-10 w-10 mx-auto text-primary/20 mb-3" />
               <p className="text-sm text-muted-foreground mb-4">
-                No tasks yet — define the work items for this project
+                {t("site.no_tasks_yet_define_the_work_items_for_this_project")}
               </p>
               <Button
                 type="button"
@@ -725,7 +977,7 @@ export default function NewProjectPage() {
                 disabled={loading}
                 className="rounded-xl"
               >
-                <Plus className="h-4 w-4 mr-1" /> Add Your First Task
+                <Plus className="h-4 w-4 mr-1" /> {t("site.add_your_first_task")}
               </Button>
             </div>
           )}
@@ -735,16 +987,16 @@ export default function NewProjectPage() {
       {/* Step 3: Donor & Documents */}
       {currentStep === 2 && (
         <div className="bg-card rounded-2xl p-6 lg:p-8">
-          <h2 className="font-serif text-xl text-foreground mb-1">Donors & Documents</h2>
+          <h2 className="font-serif text-xl text-foreground mb-1">{t("site.donors_and_documents")}</h2>
           <p className="text-sm text-muted-foreground mb-8">
-            Link funding partners and upload relevant files
+            {t("site.link_funding_partners_and_upload_relevant_files")}
           </p>
 
           <div className="space-y-8">
             <div>
-              <h3 className="font-serif text-lg text-foreground mb-1">Donors</h3>
+              <h3 className="font-serif text-lg text-foreground mb-1">{t("site.donors")}</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Select one or more donors for this project
+                {t("site.select_one_or_more_donors_for_this_project")}
               </p>
 
               {donors.filter((d) => d.isActive).length > 0 ? (
@@ -784,14 +1036,14 @@ export default function NewProjectPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No donors available. Create donors first from the Donors page.
+                  {t("site.no_donors_available_create_donors_first_from_the_donors_page")}
                 </p>
               )}
 
               {selectedDonorIds.length > 0 && (
                 <div className="mt-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                    Selected ({selectedDonorIds.length})
+                    {t("site.selected_count", { count: selectedDonorIds.length })}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {getSelectedDonors().map((donor) => (
@@ -815,7 +1067,7 @@ export default function NewProjectPage() {
             </div>
 
             <div className="border-t border-border pt-8">
-              <h3 className="font-serif text-lg text-foreground mb-4">Project Documents</h3>
+              <h3 className="font-serif text-lg text-foreground mb-4">{t("site.project_documents")}</h3>
               <div className="border border-dashed border-border rounded-2xl p-8 text-center">
                 <input
                   ref={fileInputRef}
@@ -833,10 +1085,10 @@ export default function NewProjectPage() {
                   disabled={loading}
                   className="rounded-xl"
                 >
-                  Select Files
+                  {t("site.select_files")}
                 </Button>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Proposals, contracts, budgets, or any relevant documents
+                  {t("site.proposals_contracts_budgets_or_any_relevant_documents")}
                 </p>
               </div>
 
@@ -870,45 +1122,45 @@ export default function NewProjectPage() {
       {/* Step 4: Review */}
       {currentStep === 3 && (
         <div className="bg-card rounded-2xl p-6 lg:p-8">
-          <h2 className="font-serif text-xl text-foreground mb-1">Review & Submit</h2>
+          <h2 className="font-serif text-xl text-foreground mb-1">{t("site.review_and_submit")}</h2>
           <p className="text-sm text-muted-foreground mb-8">
-            Confirm everything looks right before creating your project
+            {t("site.confirm_everything_looks_right_before_creating_your_project")}
           </p>
 
           <div className="space-y-8">
             {/* Project Details */}
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
-                <ClipboardList className="h-4 w-4" /> Project Details
+                <ClipboardList className="h-4 w-4" /> {t("site.project_details")}
               </h3>
               <div className="grid gap-4 md:grid-cols-2 p-5 bg-muted/30 rounded-xl">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Name</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">{t("site.name")}</p>
                   <p className="font-medium text-foreground">{formData.name}</p>
                 </div>
                 {formData.description && (
                   <div className="md:col-span-2">
-                    <p className="text-xs text-muted-foreground mb-0.5">Description</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">{t("site.description")}</p>
                     <p className="text-sm text-foreground">{formData.description}</p>
                   </div>
                 )}
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Status</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">{t("site.status")}</p>
                   <p className="text-sm font-medium text-foreground">
-                    {statusLabels[formData.status] || formData.status}
+                    {t(statusLabels[formData.status] || formData.status)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Project Manager</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">{t("site.project_manager")}</p>
                   <p className="text-sm text-foreground">
                     {getSelectedManager()
                       ? `${getSelectedManager()!.firstName} ${getSelectedManager()!.lastName}`
-                      : "You (default)"}
+                      : t("site.you_default")}
                   </p>
                 </div>
                 {formData.totalBudget && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Budget</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">{t("site.budget")}</p>
                     <p className="text-sm font-medium text-foreground">
                       {formatCurrency(parseInt(formData.totalBudget), "ETB")}
                     </p>
@@ -916,7 +1168,7 @@ export default function NewProjectPage() {
                 )}
                 {formData.startDate && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">Start Date</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">{t("site.start_date")}</p>
                     <p className="text-sm text-foreground">
                       {formatLocalDate(formData.startDate)}
                     </p>
@@ -924,7 +1176,7 @@ export default function NewProjectPage() {
                 )}
                 {formData.endDate && (
                   <div>
-                    <p className="text-xs text-muted-foreground mb-0.5">End Date</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">{t("site.end_date")}</p>
                     <p className="text-sm text-foreground">
                       {formatLocalDate(formData.endDate)}
                     </p>
@@ -935,7 +1187,7 @@ export default function NewProjectPage() {
               {milestones.filter((m) => m.title.trim()).length > 0 && (
                 <div className="mt-4 pl-1">
                   <p className="text-xs text-muted-foreground mb-2">
-                    Milestones ({milestones.filter((m) => m.title.trim()).length})
+                    {t("site.milestones_count", { count: milestones.filter((m) => m.title.trim()).length })}
                   </p>
                   <div className="space-y-1.5">
                     {milestones
@@ -959,7 +1211,7 @@ export default function NewProjectPage() {
             {/* Tasks */}
             <div className="border-t border-border pt-8">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
-                <ListTodo className="h-4 w-4" /> Tasks & Activities
+                <ListTodo className="h-4 w-4" /> {t("site.tasks_and_activities")}
               </h3>
               {taskInputs.filter((t) => t.title.trim()).length > 0 ? (
                 <div className="space-y-2">
@@ -982,13 +1234,13 @@ export default function NewProjectPage() {
                               const pc = priorityConfig[task.priority] || priorityConfig.medium;
                               return (
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${pc.bg} ${pc.text}`}>
-                                  {priorityLabels[task.priority] || task.priority}
+                                  {t(priorityLabels[task.priority] || task.priority)}
                                 </span>
                               );
                             })()}
                             {task.dueDate && (
                               <span className="text-xs text-muted-foreground">
-                                Due {formatLocalDate(task.dueDate)}
+                                {t("site.due")} {formatLocalDate(task.dueDate)}
                               </span>
                             )}
                             {task.assignedTo && (
@@ -1003,7 +1255,7 @@ export default function NewProjectPage() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No tasks added. You can add tasks later from the project page.
+                  {t("site.no_tasks_added_you_can_add_tasks_later_from_the_project_page")}
                 </p>
               )}
             </div>
@@ -1011,11 +1263,11 @@ export default function NewProjectPage() {
             {/* Donors & Documents */}
             <div className="border-t border-border pt-8">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-primary flex items-center gap-2 mb-4">
-                <Users className="h-4 w-4" /> Donors & Documents
+                <Users className="h-4 w-4" /> {t("site.donors_and_documents")}
               </h3>
               <div className="p-5 bg-muted/30 rounded-xl space-y-4">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1.5">Donors</p>
+                  <p className="text-xs text-muted-foreground mb-1.5">{t("site.donors")}</p>
                   {getSelectedDonors().length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {getSelectedDonors().map((donor) => (
@@ -1025,11 +1277,11 @@ export default function NewProjectPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No donors selected</p>
+                    <p className="text-sm text-muted-foreground">{t("site.no_donors_selected")}</p>
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1.5">Documents</p>
+                  <p className="text-xs text-muted-foreground mb-1.5">{t("site.documents")}</p>
                   {files.length > 0 ? (
                     <div className="space-y-1">
                       {files.map((f, i) => (
@@ -1040,7 +1292,7 @@ export default function NewProjectPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No documents uploaded</p>
+                    <p className="text-sm text-muted-foreground">{t("site.no_documents_uploaded")}</p>
                   )}
                 </div>
               </div>
@@ -1059,7 +1311,7 @@ export default function NewProjectPage() {
           className="text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
-          {currentStep === 0 ? "Cancel" : "Previous"}
+          {currentStep === 0 ? t("site.cancel") : t("site.previous")}
         </Button>
 
         <div className="flex gap-3">
@@ -1071,7 +1323,7 @@ export default function NewProjectPage() {
               disabled={loading || !canProceed()}
               className="text-muted-foreground"
             >
-              Skip to Review
+              {t("site.skip_to_review")}
             </Button>
           )}
 
@@ -1082,7 +1334,7 @@ export default function NewProjectPage() {
               disabled={loading || !canProceed()}
               className="rounded-xl"
             >
-              Next
+              {t("site.next")}
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (
@@ -1095,12 +1347,12 @@ export default function NewProjectPage() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating…
+                  {t("site.creating")}
                 </>
               ) : (
                 <>
                   <Check className="h-4 w-4 mr-1" />
-                  Create Project
+                  {t("site.create_project")}
                 </>
               )}
             </Button>

@@ -12,11 +12,29 @@ const DEFAULT_LANGUAGE: AppLanguage = "en";
 const SUPPORTED_LANGUAGES: readonly AppLanguage[] = ["en", "am"] as const;
 const STORAGE_KEY = "app.language";
 
+function normalizeLanguage(value: string | null | undefined): AppLanguage | null {
+  if (!value) return null;
+
+  const normalized = value.toLowerCase();
+  if (normalized.startsWith("am")) return "am";
+  if (normalized.startsWith("en")) return "en";
+
+  return null;
+}
+
+function syncResourceBundles() {
+  (Object.entries(resources) as Array<[AppLanguage, (typeof resources)[AppLanguage]]>).forEach(
+    ([language, resource]) => {
+      i18n.addResourceBundle(language, "translation", resource.translation, true, true);
+    }
+  );
+}
+
 function isSupportedLanguage(value: string | null | undefined): value is AppLanguage {
   return !!value && SUPPORTED_LANGUAGES.includes(value as AppLanguage);
 }
 
-function getInitialLanguage(): AppLanguage {
+function getPreferredLanguage(): AppLanguage {
   if (typeof window === "undefined") {
     return DEFAULT_LANGUAGE;
   }
@@ -34,16 +52,25 @@ function getInitialLanguage(): AppLanguage {
   return DEFAULT_LANGUAGE;
 }
 
-if (!i18n.isInitialized) {
-  void i18n.use(initReactI18next).init({
-    resources,
-    lng: getInitialLanguage(),
-    fallbackLng: DEFAULT_LANGUAGE,
-    interpolation: {
-      escapeValue: false,
-    },
-  });
+export function ensureI18nInitialized(preferredLanguage?: string | null) {
+  const seedLanguage = normalizeLanguage(preferredLanguage) ?? getPreferredLanguage();
+
+  if (!i18n.isInitialized) {
+    void i18n.use(initReactI18next).init({
+      resources,
+      lng: seedLanguage,
+      fallbackLng: DEFAULT_LANGUAGE,
+      interpolation: {
+        escapeValue: false,
+      },
+    });
+    return;
+  }
+
+  syncResourceBundles();
 }
+
+ensureI18nInitialized();
 
 if (typeof window !== "undefined") {
   if (!globalThis.__appI18nLanguageListenerBound__) {
@@ -58,4 +85,19 @@ if (typeof window !== "undefined") {
 }
 
 export const appLanguages: AppLanguage[] = ["en", "am"];
+
+export function syncPreferredLanguage() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const preferredLanguage = getPreferredLanguage();
+  if (preferredLanguage !== i18n.language) {
+    void i18n.changeLanguage(preferredLanguage);
+    return;
+  }
+
+  document.documentElement.lang = preferredLanguage;
+}
+
 export { i18n, STORAGE_KEY as languageStorageKey };

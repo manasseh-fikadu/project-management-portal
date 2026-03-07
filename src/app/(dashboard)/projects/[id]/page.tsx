@@ -2,13 +2,15 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { PortalInviteFeedbackDialog } from "@/components/portal-invite-feedback-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +34,6 @@ import {
   ListTodo,
   AlertCircle,
   HandCoins,
-  X,
   Send,
   Leaf,
 } from "lucide-react";
@@ -119,6 +120,38 @@ type ProjectDonorLink = {
   };
 };
 
+type BudgetImportNotes = {
+  template?: string;
+  sourceSheet?: string;
+  sourceRow?: number;
+  rowCode?: string | null;
+  categoryCode?: string | null;
+  categoryName?: string | null;
+  parentActivityCode?: string | null;
+  parentActivityName?: string | null;
+  description?: string | null;
+  unitCost?: number | null;
+  unitCount?: number | null;
+  quarters?: {
+    q1?: number | null;
+    q2?: number | null;
+    q3?: number | null;
+    q4?: number | null;
+  };
+  rawTotalCost?: number | null;
+};
+
+type BudgetAllocation = {
+  id: string;
+  activityName: string;
+  plannedAmount: number;
+  q1Amount: number;
+  q2Amount: number;
+  q3Amount: number;
+  q4Amount: number;
+  notes: string | null;
+};
+
 type Project = {
   id: string;
   name: string;
@@ -141,6 +174,7 @@ type Project = {
   milestones: Milestone[];
   tasks: Task[];
   documents: Document[];
+  budgetAllocations: BudgetAllocation[];
   members: Array<{
     role: string;
     user: {
@@ -161,12 +195,41 @@ function isValidExternalUrl(url: string): boolean {
   }
 }
 
+function parseBudgetImportNotes(notes: string | null): BudgetImportNotes | null {
+  if (!notes) return null;
+  try {
+    const parsed = JSON.parse(notes);
+    return parsed && typeof parsed === "object" ? parsed as BudgetImportNotes : null;
+  } catch {
+    return null;
+  }
+}
+
+function getPortalInviteErrorMessageKey(code: unknown, error: unknown): string | null {
+  const errorIdentifier =
+    typeof code === "string" && code.trim().length > 0
+      ? code.trim().toLowerCase()
+      : typeof error === "string" && error.trim().length > 0
+        ? error.trim().toLowerCase()
+        : "";
+
+  const errorKeyMap: Record<string, string> = {
+    unauthorized: "site.portal_invite_unauthorized",
+    "forbidden: insufficient role permissions": "site.portal_invite_forbidden",
+    "donorid is required and must be a valid uuid": "site.portal_invite_invalid_donor",
+    "donor not found": "site.portal_invite_donor_not_found",
+    "donor does not have an email address": "site.portal_invite_missing_email",
+  };
+
+  return errorKeyMap[errorIdentifier] ?? null;
+}
+
 const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  planning: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "Planning" },
-  active: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "Active" },
-  on_hold: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "On Hold" },
-  completed: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "Completed" },
-  cancelled: { bg: "bg-destructive/10", text: "text-destructive", dot: "bg-destructive", label: "Cancelled" },
+  planning: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "site.planning" },
+  active: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "site.active" },
+  on_hold: { bg: "bg-rose-pale", text: "text-rose-muted", dot: "bg-rose-muted", label: "site.on_hold" },
+  completed: { bg: "bg-lavender-pale", text: "text-lavender", dot: "bg-lavender", label: "site.completed" },
+  cancelled: { bg: "bg-destructive/10", text: "text-destructive", dot: "bg-destructive", label: "site.cancelled" },
 };
 
 const milestoneStatusConfig: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
@@ -195,11 +258,39 @@ const donorStatusConfig: Record<string, { bg: string; text: string }> = {
   withdrawn: { bg: "bg-rose-pale", text: "text-rose-muted" },
 };
 
+const milestoneStatusLabels: Record<string, string> = {
+  pending: "site.pending",
+  in_progress: "site.in_progress",
+  completed: "site.completed",
+  cancelled: "site.cancelled",
+};
+
+const taskStatusLabels: Record<string, string> = {
+  pending: "site.pending",
+  in_progress: "site.in_progress",
+  completed: "site.completed",
+};
+
+const taskPriorityLabels: Record<string, string> = {
+  low: "site.low",
+  medium: "site.medium",
+  high: "site.high",
+};
+
+const donorStatusLabels: Record<string, string> = {
+  active: "site.active",
+  pending: "site.pending",
+  completed: "site.completed",
+  withdrawn: "site.withdrawn",
+};
+
 export default function ProjectProfilePage() {
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const projectId = params.id as string;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialVisibleBudgetLines = 12;
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,7 +309,19 @@ export default function ProjectProfilePage() {
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
+  const [showAllBudgetLines, setShowAllBudgetLines] = useState(false);
   const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
+  const [portalInviteFeedback, setPortalInviteFeedback] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    variant: "success" | "error";
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    variant: "success",
+  });
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -226,9 +329,9 @@ export default function ProjectProfilePage() {
       const data = await res.json();
       if (data.users) setUsers(data.users);
     } catch (err) {
-      console.error("Error fetching users:", err);
+      console.error(t("site.error_fetching_users"), err);
     }
-  }, []);
+  }, [t]);
 
   const fetchDonors = useCallback(async () => {
     try {
@@ -236,9 +339,9 @@ export default function ProjectProfilePage() {
       const data = await res.json();
       if (data.donors) setAllDonors(data.donors);
     } catch (err) {
-      console.error("Error fetching donors:", err);
+      console.error(t("site.error_fetching_donors"), err);
     }
-  }, []);
+  }, [t]);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -257,14 +360,24 @@ export default function ProjectProfilePage() {
   }, [projectId, router]);
 
   useEffect(() => {
+    setShowAllBudgetLines(false);
+  }, [projectId]);
+
+  useEffect(() => {
     fetchProject();
     fetchUsers();
     fetchDonors();
   }, [fetchProject, fetchUsers, fetchDonors]);
 
   function formatDate(date: string | null) {
-    if (!date) return "Not set";
-    return new Date(date).toLocaleDateString();
+    if (!date) return t("site.not_set");
+    const dateObj = new Date(date);
+    if (Number.isNaN(dateObj.getTime())) return t("site.not_set");
+    return dateObj.toLocaleDateString(i18n.language, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   }
 
   function formatBudget(amount: number) {
@@ -275,6 +388,18 @@ export default function ProjectProfilePage() {
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function getEnumLabel(translationKey: string | undefined, rawValue: string) {
+    return translationKey ? t(translationKey) : rawValue.replace(/_/g, " ");
+  }
+
+  function getRoleLabel(role: string) {
+    if (role === "admin" || role === "project_manager" || role === "beneficiary" || role === "user") {
+      return t(`roles.${role}`);
+    }
+
+    return role.replace(/_/g, " ");
   }
 
   function getProgress() {
@@ -295,7 +420,7 @@ export default function ProjectProfilePage() {
         await fetchProject();
       }
     } catch (error) {
-      console.error("Failed to update manager:", error);
+      console.error(t("site.failed_to_update_manager"), error);
     }
   }
 
@@ -327,7 +452,7 @@ export default function ProjectProfilePage() {
         ),
       });
     } catch (error) {
-      console.error("Failed to update milestone:", error);
+      console.error(t("site.failed_to_update_milestone"), error);
     }
   }
 
@@ -351,12 +476,12 @@ export default function ProjectProfilePage() {
         setIsAddMilestoneOpen(false);
       }
     } catch (error) {
-      console.error("Failed to add milestone:", error);
+      console.error(t("site.failed_to_add_milestone"), error);
     }
   }
 
   async function handleDeleteMilestone(milestoneId: string) {
-    if (!project || !confirm("Are you sure you want to delete this milestone?")) return;
+    if (!project || !confirm(t("site.are_you_sure_you_want_to_delete_this_milestone"))) return;
 
     try {
       await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
@@ -365,7 +490,7 @@ export default function ProjectProfilePage() {
         milestones: project.milestones.filter((m) => m.id !== milestoneId),
       });
     } catch (error) {
-      console.error("Failed to delete milestone:", error);
+      console.error(t("site.failed_to_delete_milestone"), error);
     }
   }
 
@@ -396,7 +521,7 @@ export default function ProjectProfilePage() {
         setIsAddTaskOpen(false);
       }
     } catch (error) {
-      console.error("Failed to add task:", error);
+      console.error(t("site.failed_to_add_task"), error);
     }
   }
 
@@ -415,12 +540,12 @@ export default function ProjectProfilePage() {
         ),
       });
     } catch (error) {
-      console.error("Failed to update task:", error);
+      console.error(t("site.failed_to_update_task"), error);
     }
   }
 
   async function handleDeleteTask(taskId: string) {
-    if (!project || !confirm("Are you sure you want to delete this task?")) return;
+    if (!project || !confirm(t("site.are_you_sure_you_want_to_delete_this_task"))) return;
     try {
       await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
       setProject({
@@ -428,7 +553,7 @@ export default function ProjectProfilePage() {
         tasks: project.tasks.filter((t) => t.id !== taskId),
       });
     } catch (error) {
-      console.error("Failed to delete task:", error);
+      console.error(t("site.failed_to_delete_task"), error);
     }
   }
 
@@ -460,7 +585,7 @@ export default function ProjectProfilePage() {
           );
         }
       } catch (error) {
-        console.error("Failed to upload document:", error);
+        console.error(t("site.failed_to_upload_document"), error);
       }
 
       setUploadingFiles((prev) =>
@@ -478,7 +603,7 @@ export default function ProjectProfilePage() {
   }
 
   async function handleDeleteDocument(documentId: string) {
-    if (!project || !confirm("Are you sure you want to delete this document?")) return;
+    if (!project || !confirm(t("site.are_you_sure_you_want_to_delete_this_document"))) return;
 
     try {
       await fetch(`/api/documents/${documentId}`, { method: "DELETE" });
@@ -487,18 +612,18 @@ export default function ProjectProfilePage() {
         documents: project.documents.filter((d) => d.id !== documentId),
       });
     } catch (error) {
-      console.error("Failed to delete document:", error);
+      console.error(t("site.failed_to_delete_document"), error);
     }
   }
 
   async function handleDeleteProject() {
-    if (!confirm("Are you sure you want to delete this project? This action cannot be undone.")) return;
+    if (!confirm(t("site.are_you_sure_you_want_to_delete_this_project_this_action_cannot_be_undone"))) return;
 
     try {
       await fetch(`/api/projects/${projectId}`, { method: "DELETE" });
       router.push("/projects");
     } catch (error) {
-      console.error("Failed to delete project:", error);
+      console.error(t("site.failed_to_delete_project"), error);
     }
   }
 
@@ -520,7 +645,7 @@ export default function ProjectProfilePage() {
         setIsAddDonorOpen(false);
       }
     } catch (error) {
-      console.error("Failed to add donor:", error);
+      console.error(t("site.failed_to_add_donor"), error);
     }
   }
 
@@ -539,12 +664,12 @@ export default function ProjectProfilePage() {
         ),
       });
     } catch (error) {
-      console.error("Failed to update donor status:", error);
+      console.error(t("site.failed_to_update_donor_status"), error);
     }
   }
 
   async function handleRemoveDonor(donorId: string) {
-    if (!project || !confirm("Remove this donor from the project?")) return;
+    if (!project || !confirm(t("site.remove_this_donor_from_the_project"))) return;
     try {
       await fetch(`/api/projects/${projectId}/donors?donorId=${donorId}`, {
         method: "DELETE",
@@ -554,7 +679,7 @@ export default function ProjectProfilePage() {
         projectDonors: project.projectDonors.filter((pd) => pd.donorId !== donorId),
       });
     } catch (error) {
-      console.error("Failed to remove donor:", error);
+      console.error(t("site.failed_to_remove_donor"), error);
     }
   }
 
@@ -566,15 +691,31 @@ export default function ProjectProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ donorId }),
       });
-      const data = await res.json();
+      const data: { code?: unknown; error?: unknown } = await res.json();
       if (res.ok) {
-        alert("Portal invite sent successfully! The donor will receive an email with access instructions.");
+        setPortalInviteFeedback({
+          open: true,
+          title: t("site.invite_sent"),
+          message: t("site.donor_portal_invite_sent_message"),
+          variant: "success",
+        });
       } else {
-        alert(data.error || "Failed to send invite");
+        const messageKey = getPortalInviteErrorMessageKey(data.code, data.error);
+        setPortalInviteFeedback({
+          open: true,
+          title: t("site.invite_failed"),
+          message: messageKey ? t(messageKey) : t("site.failed_to_send_invite"),
+          variant: "error",
+        });
       }
     } catch (error) {
-      console.error("Failed to send portal invite:", error);
-      alert("Failed to send portal invite");
+      console.error(t("site.failed_to_send_portal_invite"), error);
+      setPortalInviteFeedback({
+        open: true,
+        title: t("site.invite_failed"),
+        message: t("site.failed_to_send_portal_invite"),
+        variant: "error",
+      });
     } finally {
       setSendingInvites((prev) => {
         const next = new Set(prev);
@@ -589,7 +730,7 @@ export default function ProjectProfilePage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Leaf className="h-6 w-6 animate-pulse text-primary" />
-          <p className="text-sm text-muted-foreground">Loading project…</p>
+          <p className="text-sm text-muted-foreground">{t("site.loading_project")}</p>
         </div>
       </div>
     );
@@ -601,9 +742,23 @@ export default function ProjectProfilePage() {
 
   const status = statusConfig[project.status] || statusConfig.planning;
   const progress = getProgress();
+  const budgetLines = project.budgetAllocations ?? [];
+  const visibleBudgetLines = showAllBudgetLines ? budgetLines : budgetLines.slice(0, initialVisibleBudgetLines);
+  const hiddenBudgetLineCount = Math.max(budgetLines.length - visibleBudgetLines.length, 0);
+  const importedBudgetLines = budgetLines
+    .map((line) => ({ line, metadata: parseBudgetImportNotes(line.notes) }))
+    .filter((entry) => entry.metadata?.template === "AGRA_WRF_BUDGET_DETAIL");
+  const importedTotal = importedBudgetLines.reduce((sum, entry) => sum + entry.line.plannedAmount, 0);
 
   return (
     <div className="p-6 lg:p-10">
+      <PortalInviteFeedbackDialog
+        open={portalInviteFeedback.open}
+        title={portalInviteFeedback.title}
+        message={portalInviteFeedback.message}
+        variant={portalInviteFeedback.variant}
+        onOpenChange={(open) => setPortalInviteFeedback((prev) => ({ ...prev, open }))}
+      />
       {/* Top bar */}
       <div className="mb-8 flex items-center justify-between">
         <Button
@@ -611,7 +766,7 @@ export default function ProjectProfilePage() {
           onClick={() => router.push("/projects")}
           className="text-muted-foreground hover:text-foreground -ml-3"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Projects
+          <ArrowLeft className="h-4 w-4 mr-2" /> {t("site.back_to_projects")}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -619,26 +774,26 @@ export default function ProjectProfilePage() {
               variant="ghost"
               size="icon"
               className="text-muted-foreground"
-              aria-label="More project options"
+              aria-label={t("site.more_project_options")}
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => handleStatusChange("active")}>
-              Set Active
+              {t("site.set_active")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleStatusChange("on_hold")}>
-              Set On Hold
+              {t("site.set_on_hold")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleStatusChange("completed")}>
-              Set Completed
+              {t("site.set_completed")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleStatusChange("cancelled")}>
-              Set Cancelled
+              {t("site.set_cancelled")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleDeleteProject} className="text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" /> Delete Project
+              <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete_project")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -653,19 +808,19 @@ export default function ProjectProfilePage() {
               <div className="min-w-0">
                 <h1 className="font-serif text-2xl lg:text-3xl text-foreground mb-2">{project.name}</h1>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  {project.description || "No description provided"}
+                  {project.description || t("site.no_description_provided")}
                 </p>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${status.bg} ${status.text}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-                {status.label}
+                  {t(status.label)}
               </span>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 mb-6">
               <div>
                 <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <User className="h-3 w-3" /> Project Manager
+                  <User className="h-3 w-3" /> {t("site.project_manager")}
                 </p>
                 <Select
                   value={project.manager.id}
@@ -684,7 +839,7 @@ export default function ProjectProfilePage() {
                 </Select>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-1.5">Donors</p>
+                <p className="text-xs text-muted-foreground mb-1.5">{t("site.donors")}</p>
                 {project.projectDonors && project.projectDonors.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {project.projectDonors.map((pd) => {
@@ -699,35 +854,35 @@ export default function ProjectProfilePage() {
                 ) : project.donor ? (
                   <p className="text-sm text-foreground">{project.donor.name}</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground">None assigned</p>
+                  <p className="text-sm text-muted-foreground">{t("site.none_assigned")}</p>
                 )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-                  <DollarSign className="h-3 w-3" /> Budget
+                  <DollarSign className="h-3 w-3" /> {t("site.budget")}
                 </p>
                 <p className="text-sm font-medium text-foreground">
                   {formatBudget(project.totalBudget)}
                   {project.spentBudget > 0 && (
                     <span className="text-muted-foreground font-normal ml-1.5">
-                      ({formatBudget(project.spentBudget)} spent)
+                      {t("site.spent_parenthetical", { amount: formatBudget(project.spentBudget) })}
                     </span>
                   )}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1.5">
-                  <Calendar className="h-3 w-3" /> Timeline
+                  <Calendar className="h-3 w-3" /> {t("site.timeline")}
                 </p>
                 <p className="text-sm text-foreground">
-                  {formatDate(project.startDate)} — {formatDate(project.endDate)}
+                  {formatDate(project.startDate)} - {formatDate(project.endDate)}
                 </p>
               </div>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-2">
-                <span className="text-muted-foreground">Overall Progress</span>
+                <span className="text-muted-foreground">{t("site.overall_progress")}</span>
                 <span className="font-medium text-foreground">{progress}%</span>
               </div>
               <div className="h-2 rounded-full bg-sage-pale overflow-hidden">
@@ -739,23 +894,165 @@ export default function ProjectProfilePage() {
             </div>
           </div>
 
+          {budgetLines.length > 0 && (
+            <div className="bg-card rounded-2xl p-6 lg:p-8">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-6">
+                <div>
+                  <h2 className="font-serif text-xl text-foreground">{t("site.budget_structure")}</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {t("site.imported_budget_lines_categories_and_quarterly_split_metadata")}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary" className="rounded-full px-3 py-1">
+                    {t("site.lines_count", { count: budgetLines.length })}
+                  </Badge>
+                  {importedBudgetLines.length > 0 && (
+                    <Badge variant="secondary" className="rounded-full bg-primary/10 px-3 py-1 text-primary hover:bg-primary/10">
+                      {t("site.imported_total_amount", { amount: formatBudget(importedTotal) })}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-5 mb-5">
+                <div className="rounded-xl bg-muted/35 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t("site.q1")}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {formatBudget(budgetLines.reduce((sum, line) => sum + (line.q1Amount ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/35 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t("site.q2")}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {formatBudget(budgetLines.reduce((sum, line) => sum + (line.q2Amount ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/35 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t("site.q3")}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {formatBudget(budgetLines.reduce((sum, line) => sum + (line.q3Amount ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/35 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t("site.q4")}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {formatBudget(budgetLines.reduce((sum, line) => sum + (line.q4Amount ?? 0), 0))}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-primary/5 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-primary/70">{t("site.planned")}</p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    {formatBudget(budgetLines.reduce((sum, line) => sum + line.plannedAmount, 0))}
+                  </p>
+                </div>
+              </div>
+
+              {budgetLines.length > initialVisibleBudgetLines && (
+                <div className="mb-5 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {t("site.showing_budget_lines_count_of_total", {
+                        shown: visibleBudgetLines.length,
+                        total: budgetLines.length,
+                      })}
+                    </p>
+                    {hiddenBudgetLineCount > 0 && !showAllBudgetLines && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("site.more_budget_lines_hidden_count", { count: hiddenBudgetLineCount })}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => setShowAllBudgetLines((current) => !current)}
+                  >
+                    {showAllBudgetLines
+                      ? t("site.show_less_budget_lines")
+                      : t("site.show_all_budget_lines")}
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {visibleBudgetLines.map((line) => {
+                  const metadata = parseBudgetImportNotes(line.notes);
+                  return (
+                    <div key={line.id} className="rounded-xl border border-border/70 px-4 py-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-foreground">{line.activityName}</p>
+                            {metadata?.rowCode && (
+                              <Badge variant="secondary" className="rounded-full text-[11px]">
+                                {metadata.rowCode}
+                              </Badge>
+                            )}
+                            {metadata?.categoryName && (
+                              <span className="text-xs text-muted-foreground">
+                                {metadata.categoryName}
+                              </span>
+                            )}
+                          </div>
+                          {metadata?.description && (
+                            <p className="mt-2 text-sm leading-6 text-muted-foreground">{metadata.description}</p>
+                          )}
+                          {(metadata?.unitCost || metadata?.unitCount) && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {t("site.unit_cost_amount_units_count", {
+                                amount: formatBudget(metadata.unitCost ?? 0),
+                                count: metadata.unitCount ?? 0,
+                              })}
+                            </p>
+                          )}
+                        </div>
+                        <div className="shrink-0 rounded-full bg-muted/40 px-3 py-1.5 text-sm font-semibold text-foreground">
+                          {formatBudget(line.plannedAmount)}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                        {[
+                          { label: "Q1", value: line.q1Amount },
+                          { label: "Q2", value: line.q2Amount },
+                          { label: "Q3", value: line.q3Amount },
+                          { label: "Q4", value: line.q4Amount },
+                        ].map((quarter) => (
+                          <div key={quarter.label} className="rounded-lg bg-muted/30 px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{t(`site.${quarter.label.toLowerCase()}`)}</p>
+                            <p className="mt-1 text-sm font-medium text-foreground">
+                              {formatBudget(quarter.value ?? 0)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Milestones */}
           <div className="bg-card rounded-2xl p-6 lg:p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-serif text-xl text-foreground">Work Plan / Milestones</h2>
+              <h2 className="font-serif text-xl text-foreground">{t("site.work_plan_milestones")}</h2>
               <Dialog open={isAddMilestoneOpen} onOpenChange={setIsAddMilestoneOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="rounded-xl">
-                    <Plus className="h-4 w-4 mr-1" /> Add
+                    <Plus className="h-4 w-4 mr-1" /> {t("site.add")}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle className="font-serif">Add New Milestone</DialogTitle>
+                    <DialogTitle className="font-serif">{t("site.add_new_milestone")}</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleAddMilestone} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <Label htmlFor="milestone-title">Title *</Label>
+                      <Label htmlFor="milestone-title">{t("site.title")}</Label>
                       <Input
                         id="milestone-title"
                         value={newMilestone.title}
@@ -765,7 +1062,7 @@ export default function ProjectProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="milestone-description">Description</Label>
+                      <Label htmlFor="milestone-description">{t("site.description")}</Label>
                       <Textarea
                         id="milestone-description"
                         value={newMilestone.description}
@@ -774,7 +1071,7 @@ export default function ProjectProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="milestone-due">Due Date</Label>
+                      <Label htmlFor="milestone-due">{t("site.due_date")}</Label>
                       <Input
                         id="milestone-due"
                         type="date"
@@ -785,9 +1082,9 @@ export default function ProjectProfilePage() {
                     </div>
                     <div className="flex gap-2 justify-end">
                       <Button type="button" variant="ghost" onClick={() => setIsAddMilestoneOpen(false)}>
-                        Cancel
+                        {t("site.cancel")}
                       </Button>
-                      <Button type="submit" className="rounded-xl">Add Milestone</Button>
+                      <Button type="submit" className="rounded-xl">{t("site.add_milestone")}</Button>
                     </div>
                   </form>
                 </DialogContent>
@@ -797,7 +1094,7 @@ export default function ProjectProfilePage() {
             {project.milestones.length === 0 ? (
               <div className="py-10 text-center">
                 <Leaf className="h-8 w-8 mx-auto mb-2 text-primary/20" />
-                <p className="text-sm text-muted-foreground">No milestones defined yet</p>
+                <p className="text-sm text-muted-foreground">{t("site.no_milestones_defined_yet")}</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -812,7 +1109,7 @@ export default function ProjectProfilePage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-medium text-sm text-foreground">{milestone.title}</h4>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ms.bg} ${ms.text}`}>
-                            {milestone.status.replace("_", " ")}
+                            {getEnumLabel(milestoneStatusLabels[milestone.status], milestone.status)}
                           </span>
                         </div>
                         {milestone.description && (
@@ -820,7 +1117,7 @@ export default function ProjectProfilePage() {
                         )}
                         {milestone.dueDate && (
                           <p className="text-xs text-muted-foreground mt-1.5">
-                            Due {formatDate(milestone.dueDate)}
+                            {t("site.due")} {formatDate(milestone.dueDate)}
                           </p>
                         )}
                       </div>
@@ -830,23 +1127,23 @@ export default function ProjectProfilePage() {
                             variant="ghost"
                             size="sm"
                             className="h-7 w-7 p-0 text-muted-foreground"
-                            aria-label="More milestone options"
+                            aria-label={t("site.more_milestone_options")}
                           >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "in_progress")}>
-                            Set In Progress
+                            {t("site.set_in_progress")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "completed")}>
-                            Set Completed
+                            {t("site.set_completed")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleMilestoneStatusChange(milestone.id, "cancelled")}>
-                            Set Cancelled
+                            {t("site.set_cancelled")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDeleteMilestone(milestone.id)} className="text-destructive">
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -860,43 +1157,43 @@ export default function ProjectProfilePage() {
           {/* Tasks */}
           <div className="bg-card rounded-2xl p-6 lg:p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-serif text-xl text-foreground">Tasks & Activities</h2>
+              <h2 className="font-serif text-xl text-foreground">{t("site.tasks_and_activities")}</h2>
               <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="rounded-xl">
-                    <Plus className="h-4 w-4 mr-1" /> Add
+                    <Plus className="h-4 w-4 mr-1" /> {t("site.add")}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle className="font-serif">Add New Task</DialogTitle>
+                    <DialogTitle className="font-serif">{t("site.add_new_task")}</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleAddTask} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <Label htmlFor="task-title">Title *</Label>
+                      <Label htmlFor="task-title">{t("site.title")}</Label>
                       <Input
                         id="task-title"
                         value={newTask.title}
                         onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                        placeholder="Task title"
+                        placeholder={t("site.task_title")}
                         required
                         className="rounded-xl"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="task-description">Description</Label>
+                      <Label htmlFor="task-description">{t("site.description")}</Label>
                       <Textarea
                         id="task-description"
                         value={newTask.description}
                         onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                        placeholder="What needs to be done?"
+                        placeholder={t("site.what_needs_to_be_done")}
                         rows={2}
                         className="rounded-xl"
                       />
                     </div>
                     <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="task-priority">Priority</Label>
+                        <Label htmlFor="task-priority">{t("site.priority")}</Label>
                         <Select
                           value={newTask.priority}
                           onValueChange={(value) => setNewTask({ ...newTask, priority: value })}
@@ -905,14 +1202,14 @@ export default function ProjectProfilePage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="low">{t("site.low")}</SelectItem>
+                            <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                            <SelectItem value="high">{t("site.high")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="task-due">Due Date</Label>
+                        <Label htmlFor="task-due">{t("site.due_date")}</Label>
                         <Input
                           id="task-due"
                           type="date"
@@ -923,16 +1220,16 @@ export default function ProjectProfilePage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="task-assignee">Assign To</Label>
+                      <Label htmlFor="task-assignee">{t("site.assign_to")}</Label>
                       <Select
                         value={newTask.assignedTo}
                         onValueChange={(value) => setNewTask({ ...newTask, assignedTo: value === "_none" ? "" : value })}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Select assignee" />
+                          <SelectValue placeholder={t("site.select_assignee")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="_none">Unassigned</SelectItem>
+                          <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
                           {users.map((user) => (
                             <SelectItem key={user.id} value={user.id}>
                               {user.firstName} {user.lastName}
@@ -943,9 +1240,9 @@ export default function ProjectProfilePage() {
                     </div>
                     <div className="flex gap-2 justify-end">
                       <Button type="button" variant="ghost" onClick={() => setIsAddTaskOpen(false)}>
-                        Cancel
+                        {t("site.cancel")}
                       </Button>
-                      <Button type="submit" className="rounded-xl">Add Task</Button>
+                      <Button type="submit" className="rounded-xl">{t("site.add_task")}</Button>
                     </div>
                   </form>
                 </DialogContent>
@@ -955,7 +1252,7 @@ export default function ProjectProfilePage() {
             {project.tasks.length === 0 ? (
               <div className="py-10 text-center">
                 <ListTodo className="h-8 w-8 mx-auto mb-2 text-primary/20" />
-                <p className="text-sm text-muted-foreground">No tasks created yet</p>
+                <p className="text-sm text-muted-foreground">{t("site.no_tasks_created_yet")}</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -979,10 +1276,10 @@ export default function ProjectProfilePage() {
                             {task.title}
                           </h4>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ts.bg} ${ts.text}`}>
-                            {task.status.replace("_", " ")}
+                            {getEnumLabel(taskStatusLabels[task.status], task.status)}
                           </span>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${tp.bg} ${tp.text}`}>
-                            {task.priority}
+                            {getEnumLabel(taskPriorityLabels[task.priority], task.priority)}
                           </span>
                         </div>
                         {task.description && (
@@ -1002,7 +1299,7 @@ export default function ProjectProfilePage() {
                             </span>
                           )}
                           {task.progress > 0 && (
-                            <span>{task.progress}% done</span>
+                            <span>{t("site.percent_done", { percent: task.progress })}</span>
                           )}
                         </div>
                       </div>
@@ -1012,23 +1309,23 @@ export default function ProjectProfilePage() {
                             variant="ghost"
                             size="sm"
                             className="h-7 w-7 p-0 text-muted-foreground"
-                            aria-label="More task options"
+                            aria-label={t("site.more_task_options")}
                           >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "pending")}>
-                            Set Pending
+                            {t("site.set_pending")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "in_progress")}>
-                            Set In Progress
+                            {t("site.set_in_progress")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "completed")}>
-                            Set Completed
+                            {t("site.set_completed")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDeleteTask(task.id)} className="text-destructive">
-                            <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1045,9 +1342,9 @@ export default function ProjectProfilePage() {
           {/* Documents */}
           <div className="bg-card rounded-2xl p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-serif text-lg text-foreground">Documents</h2>
+              <h2 className="font-serif text-lg text-foreground">{t("site.documents")}</h2>
               <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="rounded-xl">
-                <Upload className="h-3.5 w-3.5 mr-1.5" /> Upload
+                <Upload className="h-3.5 w-3.5 mr-1.5" /> {t("site.upload")}
               </Button>
               <input
                 ref={fileInputRef}
@@ -1080,7 +1377,7 @@ export default function ProjectProfilePage() {
             {project.documents.length === 0 && uploadingFiles.length === 0 ? (
               <div className="py-8 text-center">
                 <FileText className="h-7 w-7 mx-auto mb-2 text-primary/20" />
-                <p className="text-xs text-muted-foreground">No documents yet</p>
+                <p className="text-xs text-muted-foreground">{t("site.no_documents_uploaded_yet")}</p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -1111,7 +1408,7 @@ export default function ProjectProfilePage() {
                       size="icon"
                       className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity h-6 w-6 text-destructive focus-visible:ring-2 focus-visible:ring-destructive/40 focus-visible:ring-offset-2"
                       onClick={() => handleDeleteDocument(doc.id)}
-                      aria-label="Delete document"
+                      aria-label={t("site.delete")}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
@@ -1124,26 +1421,26 @@ export default function ProjectProfilePage() {
           {/* Donors */}
           <div className="bg-card rounded-2xl p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-serif text-lg text-foreground">Donors</h2>
+              <h2 className="font-serif text-lg text-foreground">{t("site.donors")}</h2>
               <Dialog open={isAddDonorOpen} onOpenChange={setIsAddDonorOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" variant="outline" className="rounded-xl">
-                    <Plus className="h-3.5 w-3.5 mr-1.5" /> Add
+                    <Plus className="h-3.5 w-3.5 mr-1.5" /> {t("site.add")}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle className="font-serif">Add Donor to Project</DialogTitle>
+                    <DialogTitle className="font-serif">{t("site.add_donor_to_project")}</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <Label>Select Donor</Label>
+                      <Label>{t("site.select_donor_2")}</Label>
                       <Select
                         value={addingDonorId}
                         onValueChange={setAddingDonorId}
                       >
                         <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder="Choose a donor" />
+                          <SelectValue placeholder={t("site.choose_a_donor")} />
                         </SelectTrigger>
                         <SelectContent>
                           {allDonors
@@ -1171,7 +1468,7 @@ export default function ProjectProfilePage() {
                           setAddingDonorId("");
                         }}
                       >
-                        Cancel
+                        {t("site.cancel")}
                       </Button>
                       <Button
                         type="button"
@@ -1179,7 +1476,7 @@ export default function ProjectProfilePage() {
                         disabled={!addingDonorId}
                         className="rounded-xl"
                       >
-                        Add Donor
+                        {t("site.add_donor")}
                       </Button>
                     </div>
                   </div>
@@ -1190,7 +1487,7 @@ export default function ProjectProfilePage() {
             {(!project.projectDonors || project.projectDonors.length === 0) ? (
               <div className="py-8 text-center">
                 <HandCoins className="h-7 w-7 mx-auto mb-2 text-primary/20" />
-                <p className="text-xs text-muted-foreground">No donors linked yet</p>
+                <p className="text-xs text-muted-foreground">{t("site.no_donors_linked_yet")}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1206,7 +1503,7 @@ export default function ProjectProfilePage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-foreground">{pd.donor.name}</p>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${ds.text}`}>
-                            {pd.status}
+                            {getEnumLabel(donorStatusLabels[pd.status], pd.status)}
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground capitalize mt-0.5">
@@ -1220,36 +1517,36 @@ export default function ProjectProfilePage() {
                             variant="ghost"
                             size="sm"
                             className="h-7 w-7 p-0 text-muted-foreground"
-                            aria-label="More donor options"
+                            aria-label={t("site.more_donor_options")}
                           >
                             <MoreVertical className="h-3.5 w-3.5" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "active")}>
-                            Set Active
+                            {t("site.set_active")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "pending")}>
-                            Set Pending
+                            {t("site.set_pending")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "completed")}>
-                            Set Completed
+                            {t("site.set_completed")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDonorStatusChange(pd.donorId, "withdrawn")}>
-                            Set Withdrawn
+                            {t("site.set_withdrawn")}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleSendPortalInvite(pd.donorId)}
                             disabled={sendingInvites.has(pd.donorId) || !pd.donor.email}
                           >
                             <Send className="h-4 w-4 mr-2" />
-                            {sendingInvites.has(pd.donorId) ? "Sending…" : "Send Portal Invite"}
+                            {sendingInvites.has(pd.donorId) ? t("site.sending") : t("site.send_portal_invite")}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleRemoveDonor(pd.donorId)}
                             className="text-destructive"
                           >
-                            <Trash2 className="h-4 w-4 mr-2" /> Remove
+                            <Trash2 className="h-4 w-4 mr-2" /> {t("site.remove")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1262,12 +1559,12 @@ export default function ProjectProfilePage() {
 
           {/* Team */}
           <div className="bg-card rounded-2xl p-6">
-            <h2 className="font-serif text-lg text-foreground mb-5">Team Members</h2>
+            <h2 className="font-serif text-lg text-foreground mb-5">{t("site.team_members")}</h2>
 
             {project.members.length === 0 ? (
               <div className="py-8 text-center">
                 <User className="h-7 w-7 mx-auto mb-2 text-primary/20" />
-                <p className="text-xs text-muted-foreground">No team members assigned</p>
+                <p className="text-xs text-muted-foreground">{t("site.no_team_members_assigned")}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1281,7 +1578,7 @@ export default function ProjectProfilePage() {
                       <p className="text-sm font-medium text-foreground truncate">
                         {member.user.firstName} {member.user.lastName}
                       </p>
-                      <p className="text-[11px] text-muted-foreground capitalize">{member.role}</p>
+                      <p className="text-[11px] text-muted-foreground capitalize">{getRoleLabel(member.role)}</p>
                     </div>
                   </div>
                 ))}

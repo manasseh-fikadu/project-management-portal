@@ -19,8 +19,8 @@ import {
   UserCog,
   FileBarChart,
   Leaf,
-  Menu,
-  X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -131,8 +131,20 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
       style={{ transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
     >
       <div className="flex h-full flex-col">
-        <div className="flex h-16 items-center justify-between px-4">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+        <div
+          className={cn(
+            "px-4 pt-4",
+            isCollapsed ? "flex flex-col items-center gap-2 pb-3" : "flex h-16 items-center justify-between"
+          )}
+        >
+          <Link
+            href="/dashboard"
+            className={cn(
+              "flex items-center gap-2.5",
+              isCollapsed &&
+                "rounded-full border border-sidebar-border/70 bg-sidebar-accent/35 p-2 shadow-sm"
+            )}
+          >
             <div className="h-8 w-8 rounded-full bg-sage-pale flex items-center justify-center shrink-0">
               <Image
                 src="/motri.png"
@@ -150,14 +162,19 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
           </Link>
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 rounded-full text-muted-foreground hover:text-sidebar-foreground transition-colors"
-            aria-label={isCollapsed ? "Open sidebar" : "Close sidebar"}
+            className={cn(
+              "flex items-center justify-center rounded-full border text-muted-foreground transition-all duration-200 hover:text-sidebar-foreground",
+              isCollapsed
+                ? "h-8 w-8 border-sidebar-border/80 bg-transparent hover:border-sidebar-border hover:bg-sidebar-accent/55"
+                : "h-9 w-9 border-transparent hover:border-sidebar-border hover:bg-sidebar-accent/50"
+            )}
+            aria-label={isCollapsed ? t("site.open_sidebar") : t("site.close_sidebar")}
             aria-expanded={!isCollapsed}
           >
             {isCollapsed ? (
-              <Menu className="h-4 w-4" />
+              <PanelLeftOpen className="h-4 w-4" />
             ) : (
-              <X className="h-4 w-4" />
+              <PanelLeftClose className="h-4 w-4" />
             )}
           </button>
         </div>
@@ -282,12 +299,15 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
             {!isCollapsed && <span className="ml-2">{t("sidebar.signOut")}</span>}
           </Button>
           {!isCollapsed && (
-            <div className="mt-4 flex items-center gap-2 px-1">
+            <a
+              href="https://africonnect.africa.com"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 flex items-center gap-2 px-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-sidebar-foreground"
+            >
               <Leaf className="h-3.5 w-3.5 text-primary/40" />
-              <span className="text-[11px] text-muted-foreground/60">
-                {t("sidebar.growWithPurpose")}
-              </span>
-            </div>
+              <span>{t("sidebar.growWithPurpose")}</span>
+            </a>
           )}
         </div>
       </div>
