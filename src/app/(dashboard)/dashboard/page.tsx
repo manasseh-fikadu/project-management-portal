@@ -126,7 +126,7 @@ export default function DashboardPage() {
                     outerRadius={95}
                     innerRadius={55}
                     strokeWidth={0}
-                    label={({ localizedName, percent }) => `${localizedName} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}
                   >
                     {statusColors.map((entry, i) => (
                       <Cell key={i} fill={entry.color} />

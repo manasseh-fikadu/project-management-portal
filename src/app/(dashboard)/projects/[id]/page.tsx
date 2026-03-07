@@ -266,7 +266,7 @@ const donorStatusLabels: Record<string, string> = {
 };
 
 export default function ProjectProfilePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const projectId = params.id as string;
@@ -352,7 +352,11 @@ export default function ProjectProfilePage() {
 
   function formatDate(date: string | null) {
     if (!date) return t("site.not_set");
-    return new Date(date).toLocaleDateString();
+    return new Date(date).toLocaleDateString(i18n.language, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   }
 
   function formatBudget(amount: number) {
@@ -366,7 +370,7 @@ export default function ProjectProfilePage() {
   }
 
   function getRoleLabel(role: string) {
-    if (role === "admin" || role === "project_manager" || role === "beneficiary") {
+    if (role === "admin" || role === "project_manager" || role === "beneficiary" || role === "user") {
       return t(`roles.${role}`);
     }
 
