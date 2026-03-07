@@ -8,9 +8,6 @@ export async function POST(request: NextRequest) {
     const session = await getSession();
     const accessError = ensureEditAccess(session?.user);
     if (accessError) return accessError;
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
     const formData = await request.formData();
     const file = formData.get("file");

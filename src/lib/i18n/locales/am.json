@@ -683,9 +683,13 @@
     "no_projects_yet_start_by_creating_one": "እስካሁን ምንም ፕሮጀክቶች የሉም — አንዱን በመፍጠር ይጀምሩ",
     "open_project_workspace": "የፕሮጀክት የስራ ቦታ ክፈት",
     "open_sidebar": "የጎን አሞሌን ክፈት",
+    "more_budget_lines_hidden_count": "{{count}} ተጨማሪ የበጀት መስመሮች ተደብቀዋል",
     "project_in_view_one": "{{count}} ፕሮጀክት ታይቷል",
     "project_in_view_other": "{{count}} ፕሮጀክቶች ታይተዋል",
-    "search_projects": "በስም፣ በኃላፊ፣ በለጋሽ ፈልግ…"
+    "search_projects": "በስም፣ በኃላፊ፣ በለጋሽ ፈልግ…",
+    "show_all_budget_lines": "ሁሉንም የበጀት መስመሮች አሳይ",
+    "show_less_budget_lines": "ያነሱ የበጀት መስመሮችን አሳይ",
+    "showing_budget_lines_count_of_total": "ከ{{total}} የበጀት መስመሮች {{shown}} እየታዩ ነው"
   },
   "reports": {
     "title": "ሪፖርት ፈጣሪ",

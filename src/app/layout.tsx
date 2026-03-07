@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { DM_Sans, DM_Serif_Display } from "next/font/google";
 import { Geist_Mono } from "next/font/google";
 import { AppProviders } from "@/components/app-providers";
@@ -30,17 +31,28 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+function getInitialLanguage(acceptLanguage: string | null) {
+  if (acceptLanguage?.toLowerCase().includes("am")) {
+    return "am";
+  }
+
+  return "en";
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const acceptLanguage = (await headers()).get("accept-language");
+  const initialLanguage = getInitialLanguage(acceptLanguage);
+
   return (
-    <html lang="en">
+    <html lang={initialLanguage}>
       <body
         className={`${dmSans.variable} ${dmSerif.variable} ${geistMono.variable} antialiased`}
       >
-        <AppProviders>{children}</AppProviders>
+        <AppProviders preferredLanguage={initialLanguage}>{children}</AppProviders>
       </body>
     </html>
   );

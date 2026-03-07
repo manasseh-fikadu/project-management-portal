@@ -115,19 +115,42 @@ export async function getTorExportData(proposalId: string): Promise<TorExportDat
   if (!proposal || proposal.proposalType !== "tor") return null;
 
   const templateLabels = new Map<string, string>();
-  for (const section of (proposal.template?.sections as ProposalSection[] | null) || []) {
+  const templateSections = (proposal.template?.sections as ProposalSection[] | null) || [];
+  const templateData = (proposal.templateData || {}) as Record<string, string>;
+  const usedKeys = new Set<string>();
+
+  for (const section of templateSections) {
     const key = section.key || section.name;
     const label = section.label || section.name;
     if (key && label) templateLabels.set(key, label);
   }
 
-  const sections = Object.entries((proposal.templateData || {}) as Record<string, string>)
+  const sections = templateSections
+    .map((section) => {
+      const key = section.key || section.name;
+      if (!key) return null;
+
+      const value = templateData[key];
+      if (typeof value !== "string" || value.trim().length === 0) return null;
+
+      usedKeys.add(key);
+      return {
+        key,
+        label: templateLabels.get(key) || prettyKey(key),
+        value,
+      };
+    })
+    .filter((section): section is { key: string; label: string; value: string } => section !== null)
+    .concat(
+      Object.entries(templateData)
     .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    .filter(([key]) => !usedKeys.has(key))
     .map(([key, value]) => ({
       key,
       label: templateLabels.get(key) || prettyKey(key),
       value,
-    }));
+    }))
+    );
 
   return {
     proposal: {

@@ -70,6 +70,7 @@ type ImportPreview = {
   sourceSheet: string;
   allocationCount: number;
   sampleAllocations: Array<{
+    id?: string;
     activityName: string;
     plannedAmount: number;
   }>;
@@ -558,9 +559,9 @@ export default function NewProjectPage() {
                   <div className="mt-6">
                     <p className="mb-3 text-sm font-medium text-foreground">{t("site.sample_budget_lines")}</p>
                     <div className="space-y-2">
-                      {importPreview.sampleAllocations.map((allocation) => (
+                      {importPreview.sampleAllocations.map((allocation, index) => (
                         <div
-                          key={`${allocation.activityName}-${allocation.plannedAmount}`}
+                          key={allocation.id ?? index}
                           className="flex items-center justify-between gap-3 rounded-2xl bg-muted/40 px-4 py-3 text-sm"
                         >
                           <span className="min-w-0 text-foreground">{allocation.activityName}</span>

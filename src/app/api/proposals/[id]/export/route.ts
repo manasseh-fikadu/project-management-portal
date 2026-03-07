@@ -32,6 +32,7 @@ export async function GET(
       return new NextResponse(new Uint8Array(buffer), {
         status: 200,
         headers: {
+          "Cache-Control": "private, no-store",
           "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           "Content-Disposition": `attachment; filename="tor-${safeName}.docx"`,
         },
@@ -42,6 +43,7 @@ export async function GET(
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
+        "Cache-Control": "private, no-store",
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="tor-${safeName}.pdf"`,
       },

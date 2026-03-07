@@ -250,7 +250,7 @@ export default function DonorsPage() {
   }
 
   function formatGrantSize(amount: number | null) {
-    if (!amount) return t("site.not_specified");
+    if (amount == null) return t("site.not_specified");
     return formatCurrency(amount, "ETB");
   }
 

@@ -124,6 +124,10 @@ export default function TasksPage() {
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [movingTaskIds, setMovingTaskIds] = useState<string[]>([]);
+  function isMoving(taskId: string) {
+    return movingTaskIds.includes(taskId);
+  }
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{ name: string; progress: number }[]>([]);
   const [formData, setFormData] = useState({
@@ -230,6 +234,8 @@ export default function TasksPage() {
   }
 
   async function handleStatusChange(taskId: string, newStatus: string) {
+    if (isMoving(taskId)) return;
+
     const previousTask = tasks.find((task) => task.id === taskId);
     if (!previousTask || previousTask.status === newStatus) return;
 
@@ -425,6 +431,11 @@ export default function TasksPage() {
   }
 
   function handleDragStart(e: React.DragEvent, task: Task) {
+    if (isMoving(task.id)) {
+      e.preventDefault();
+      return;
+    }
+
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = "move";
   }
@@ -448,7 +459,7 @@ export default function TasksPage() {
     e.preventDefault();
     setDragOverColumn(null);
     
-    if (draggedTask && draggedTask.status !== newStatus) {
+    if (draggedTask && !isMoving(draggedTask.id) && draggedTask.status !== newStatus) {
       handleStatusChange(draggedTask.id, newStatus);
     }
     setDraggedTask(null);
@@ -670,37 +681,42 @@ export default function TasksPage() {
               <div className="p-2.5 min-h-[220px] space-y-2.5">
                 {column.tasks.map((task) => {
                   const pc = priorityConfig[task.priority] || priorityConfig.medium;
-                  const isMoving = movingTaskIds.includes(task.id);
+                  const taskIsMoving = isMoving(task.id);
                   return (
                     <div
                       key={task.id}
-                      draggable
+                      draggable={!taskIsMoving}
                       onDragStart={(e) => handleDragStart(e, task)}
                       onDragEnd={handleDragEnd}
                       className={`bg-card rounded-xl p-3.5 cursor-pointer transition-all duration-150 hover:shadow-md hover:-translate-y-0.5 ${
                         draggedTask?.id === task.id ? "opacity-40" : ""
-                      } ${isMoving ? "ring-1 ring-primary/20" : ""}`}
+                      } ${taskIsMoving ? "ring-1 ring-primary/20" : ""}`}
                       onClick={() => openTaskDetail(task)}
                     >
                       <div className="flex items-start justify-between gap-2 mb-2.5">
                         <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">{task.title}</h3>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={taskIsMoving}
+                              className="h-6 w-6 shrink-0 text-muted-foreground"
+                            >
                               <MoreVertical className="h-3 w-3" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "pending"); }}>
+                            <DropdownMenuItem disabled={taskIsMoving} onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "pending"); }}>
                               {t("site.move_to_pending")}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "in_progress"); }}>
+                            <DropdownMenuItem disabled={taskIsMoving} onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "in_progress"); }}>
                               {t("site.move_to_in_progress")}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "completed"); }}>
+                            <DropdownMenuItem disabled={taskIsMoving} onClick={(e) => { e.stopPropagation(); handleStatusChange(task.id, "completed"); }}>
                               {t("site.move_to_completed")}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="text-destructive">
+                            <DropdownMenuItem disabled={taskIsMoving} onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="text-destructive">
                               <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -723,7 +739,7 @@ export default function TasksPage() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${pc.bg} ${pc.text}`}>
                           {t(pc.label)}
                         </span>
-                        {isMoving ? (
+                        {taskIsMoving ? (
                           <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-primary/70">
                             {t("site.saving_short")}
                           </span>
@@ -1054,23 +1070,29 @@ export default function TasksPage() {
 
                   {/* Actions */}
                   <div className="flex gap-2 pt-4 border-t border-border">
-                    <Button variant="outline" size="sm" onClick={startEditing} className="rounded-xl">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isMoving(selectedTask.id)}
+                      onClick={startEditing}
+                      className="rounded-xl"
+                    >
                       <Edit className="h-3.5 w-3.5 mr-1.5" /> {t("site.edit")}
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="rounded-xl">
+                        <Button variant="outline" size="sm" disabled={isMoving(selectedTask.id)} className="rounded-xl">
                           <MoreVertical className="h-3.5 w-3.5 mr-1.5" /> {t("site.status")}
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start">
-                        <DropdownMenuItem onClick={() => handleStatusChange(selectedTask.id, "pending")}>
+                        <DropdownMenuItem disabled={isMoving(selectedTask.id)} onClick={() => handleStatusChange(selectedTask.id, "pending")}>
                           {t("site.move_to_pending")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleStatusChange(selectedTask.id, "in_progress")}>
+                        <DropdownMenuItem disabled={isMoving(selectedTask.id)} onClick={() => handleStatusChange(selectedTask.id, "in_progress")}>
                           {t("site.move_to_in_progress")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleStatusChange(selectedTask.id, "completed")}>
+                        <DropdownMenuItem disabled={isMoving(selectedTask.id)} onClick={() => handleStatusChange(selectedTask.id, "completed")}>
                           {t("site.move_to_completed")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -1078,6 +1100,7 @@ export default function TasksPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      disabled={isMoving(selectedTask.id)}
                       onClick={() => handleDelete(selectedTask.id)}
                       className="ml-auto text-destructive hover:text-destructive hover:bg-rose-pale rounded-xl"
                     >

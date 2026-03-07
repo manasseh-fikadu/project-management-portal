@@ -5,7 +5,6 @@ import { eq, and, desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
-import { processPendingEmailOutbox } from "@/lib/email-outbox";
 import { createHash, randomBytes } from "crypto";
 
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -97,12 +96,6 @@ export async function POST(request: NextRequest) {
       });
     } catch (auditError) {
       console.error("Non-critical: failed to log audit event for token creation:", auditError);
-    }
-
-    try {
-      await processPendingEmailOutbox(10);
-    } catch (emailError) {
-      console.error("Failed to process donor invite email outbox:", emailError);
     }
 
     return NextResponse.json({

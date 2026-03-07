@@ -106,6 +106,41 @@ function buildAllocationName(context: RowContext, rowCode: string | null, rowNam
   return rowName;
 }
 
+function roundQuarterSplit(totalCost: number, quarterValues: { q1: number | null; q2: number | null; q3: number | null; q4: number | null }) {
+  const roundedTotal = Math.round(totalCost);
+  const roundedQuarters = [
+    Math.round(quarterValues.q1 ?? 0),
+    Math.round(quarterValues.q2 ?? 0),
+    Math.round(quarterValues.q3 ?? 0),
+    Math.round(quarterValues.q4 ?? 0),
+  ];
+
+  let difference = roundedTotal - roundedQuarters.reduce((sum, value) => sum + value, 0);
+
+  if (difference > 0) {
+    roundedQuarters[3] += difference;
+    difference = 0;
+  } else if (difference < 0) {
+    let remaining = -difference;
+
+    for (let index = roundedQuarters.length - 1; index >= 0 && remaining > 0; index -= 1) {
+      const adjustment = Math.min(roundedQuarters[index], remaining);
+      roundedQuarters[index] -= adjustment;
+      remaining -= adjustment;
+    }
+
+    difference = -remaining;
+  }
+
+  return {
+    plannedAmount: roundedTotal,
+    q1: roundedQuarters[0],
+    q2: roundedQuarters[1],
+    q3: roundedQuarters[2],
+    q4: roundedQuarters[3],
+  };
+}
+
 export async function parseAgraBudgetWorkbook(buffer: Buffer): Promise<ParsedProjectImport> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
@@ -190,13 +225,15 @@ export async function parseAgraBudgetWorkbook(buffer: Buffer): Promise<ParsedPro
       rawTotalCost: totalCost,
     });
 
+    const roundedAllocation = roundQuarterSplit(totalCost, quarterValues);
+
     allocations.push({
       activityName,
-      plannedAmount: Math.round(totalCost),
-      q1: Math.round(quarterValues.q1 ?? 0),
-      q2: Math.round(quarterValues.q2 ?? 0),
-      q3: Math.round(quarterValues.q3 ?? 0),
-      q4: Math.round(quarterValues.q4 ?? 0),
+      plannedAmount: roundedAllocation.plannedAmount,
+      q1: roundedAllocation.q1,
+      q2: roundedAllocation.q2,
+      q3: roundedAllocation.q3,
+      q4: roundedAllocation.q4,
       notes,
     });
   }

@@ -271,6 +271,7 @@ export default function ProjectProfilePage() {
   const params = useParams();
   const projectId = params.id as string;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialVisibleBudgetLines = 12;
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -289,6 +290,7 @@ export default function ProjectProfilePage() {
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
+  const [showAllBudgetLines, setShowAllBudgetLines] = useState(false);
   const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
   const [portalInviteFeedback, setPortalInviteFeedback] = useState<{
     open: boolean;
@@ -337,6 +339,10 @@ export default function ProjectProfilePage() {
       setLoading(false);
     }
   }, [projectId, router]);
+
+  useEffect(() => {
+    setShowAllBudgetLines(false);
+  }, [projectId]);
 
   useEffect(() => {
     fetchProject();
@@ -707,6 +713,8 @@ export default function ProjectProfilePage() {
   const status = statusConfig[project.status] || statusConfig.planning;
   const progress = getProgress();
   const budgetLines = project.budgetAllocations ?? [];
+  const visibleBudgetLines = showAllBudgetLines ? budgetLines : budgetLines.slice(0, initialVisibleBudgetLines);
+  const hiddenBudgetLineCount = Math.max(budgetLines.length - visibleBudgetLines.length, 0);
   const importedBudgetLines = budgetLines
     .map((line) => ({ line, metadata: parseBudgetImportNotes(line.notes) }))
     .filter((entry) => entry.metadata?.template === "AGRA_WRF_BUDGET_DETAIL");
@@ -910,8 +918,37 @@ export default function ProjectProfilePage() {
                 </div>
               </div>
 
+              {budgetLines.length > initialVisibleBudgetLines && (
+                <div className="mb-5 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {t("site.showing_budget_lines_count_of_total", {
+                        shown: visibleBudgetLines.length,
+                        total: budgetLines.length,
+                      })}
+                    </p>
+                    {hiddenBudgetLineCount > 0 && !showAllBudgetLines && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("site.more_budget_lines_hidden_count", { count: hiddenBudgetLineCount })}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => setShowAllBudgetLines((current) => !current)}
+                  >
+                    {showAllBudgetLines
+                      ? t("site.show_less_budget_lines")
+                      : t("site.show_all_budget_lines")}
+                  </Button>
+                </div>
+              )}
+
               <div className="space-y-3">
-                {budgetLines.slice(0, 12).map((line) => {
+                {visibleBudgetLines.map((line) => {
                   const metadata = parseBudgetImportNotes(line.notes);
                   return (
                     <div key={line.id} className="rounded-xl border border-border/70 px-4 py-4">

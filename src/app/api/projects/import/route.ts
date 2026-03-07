@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { db, budgetAllocations, projectDocuments, projectDonors, projectMembers, projects } from "@/db";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { parseAgraBudgetWorkbook } from "@/lib/project-budget-import";
 import { R2_BUCKET, R2_PUBLIC_URL, r2Client } from "@/lib/storage";
+
+const PROJECT_STATUSES = new Set(["planning", "active", "on_hold", "completed", "cancelled"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,19 +35,44 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const parsed = await parseAgraBudgetWorkbook(buffer);
     const assignedManagerId = typeof managerIdValue === "string" && managerIdValue ? managerIdValue : session.userId;
-    const projectStatus = typeof statusValue === "string" && statusValue ? statusValue : "planning";
-    const donorIds = typeof donorIdsRaw === "string"
-      ? (() => {
-          try {
-            const parsedValue = JSON.parse(donorIdsRaw);
-            return Array.isArray(parsedValue)
-              ? parsedValue.filter((value): value is string => typeof value === "string" && value.length > 0)
-              : [];
-          } catch {
-            return [];
-          }
-        })()
-      : [];
+    let projectStatus = "planning";
+    if (statusValue !== null) {
+      if (typeof statusValue !== "string" || !statusValue) {
+        return NextResponse.json({ error: "status must be a non-empty string when provided" }, { status: 400 });
+      }
+
+      if (!PROJECT_STATUSES.has(statusValue)) {
+        return NextResponse.json(
+          { error: "status must be one of planning, active, on_hold, completed, or cancelled" },
+          { status: 400 }
+        );
+      }
+
+      projectStatus = statusValue;
+    }
+
+    let donorIds: string[] = [];
+    if (donorIdsRaw !== null) {
+      if (typeof donorIdsRaw !== "string") {
+        return NextResponse.json({ error: "donorIds must be a JSON array of donor id strings" }, { status: 400 });
+      }
+
+      let parsedDonorIds: unknown;
+      try {
+        parsedDonorIds = JSON.parse(donorIdsRaw);
+      } catch {
+        return NextResponse.json({ error: "donorIds must be valid JSON" }, { status: 400 });
+      }
+
+      if (!Array.isArray(parsedDonorIds) || !parsedDonorIds.every((value) => typeof value === "string" && value.length > 0)) {
+        return NextResponse.json(
+          { error: "donorIds must be a JSON array of non-empty strings" },
+          { status: 400 }
+        );
+      }
+
+      donorIds = parsedDonorIds;
+    }
 
     const result = await db.transaction(async (tx) => {
       const [project] = await tx
@@ -90,36 +117,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const fileExtension = file.name.split(".").pop() || "xlsx";
-      const storedFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExtension}`;
-      const objectKey = `${project.id}/${storedFileName}`;
-
-      await r2Client.send(
-        new PutObjectCommand({
-          Bucket: R2_BUCKET,
-          Key: objectKey,
-          Body: buffer,
-          ContentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        })
-      );
-
-      const fileUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${objectKey}` : `/uploads/${objectKey}`;
-
-      const [document] = await tx
-        .insert(projectDocuments)
-        .values({
-          projectId: project.id,
-          name: file.name,
-          type: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          url: fileUrl,
-          size: file.size,
-          uploadedBy: session.userId,
-        })
-        .returning();
-
       return {
         project,
-        document,
         importSummary: {
           sourceSheet: parsed.sourceSheet,
           budgetYear: parsed.budgetYear,
@@ -128,6 +127,49 @@ export async function POST(request: NextRequest) {
         },
       };
     });
+
+    const fileExtension = file.name.split(".").pop() || "xlsx";
+    const storedFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${fileExtension}`;
+    const objectKey = `${result.project.id}/${storedFileName}`;
+
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: objectKey,
+        Body: buffer,
+        ContentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+    );
+
+    const fileUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${objectKey}` : `/uploads/${objectKey}`;
+
+    let document;
+    try {
+      [document] = await db
+        .insert(projectDocuments)
+        .values({
+          projectId: result.project.id,
+          name: file.name,
+          type: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          url: fileUrl,
+          size: file.size,
+          uploadedBy: session.userId,
+        })
+        .returning();
+    } catch (documentError) {
+      try {
+        await r2Client.send(
+          new DeleteObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: objectKey,
+          })
+        );
+      } catch (cleanupError) {
+        console.error("Failed to clean up uploaded import workbook after document insert failure:", cleanupError);
+      }
+
+      throw documentError;
+    }
 
     await logAuditEvent({
       actorUserId: session.userId,
@@ -138,12 +180,12 @@ export async function POST(request: NextRequest) {
         after: result.project,
         importSummary: result.importSummary,
         sourceFileName: file.name,
-        sourceDocumentId: result.document.id,
+        sourceDocumentId: document.id,
       },
       request,
     });
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json({ ...result, document }, { status: 201 });
   } catch (error) {
     console.error("Error importing project from workbook:", error);
     const message = error instanceof Error ? error.message : "Internal server error";

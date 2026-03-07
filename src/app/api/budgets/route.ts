@@ -68,16 +68,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Quarter amounts must be zero or positive numbers" }, { status: 400 });
     }
 
+    const roundedPlannedAmount = Math.round(amount);
+    const roundedQ1 = Math.round(q1);
+    const roundedQ2 = Math.round(q2);
+    const roundedQ3 = Math.round(q3);
+    const roundedQ4 = Math.round(q4);
+    const roundedQuarterSum = roundedQ1 + roundedQ2 + roundedQ3 + roundedQ4;
+
+    if (roundedQuarterSum > roundedPlannedAmount) {
+      return NextResponse.json(
+        {
+          error: "Rounded quarter amounts cannot exceed the rounded planned amount",
+        },
+        { status: 400 }
+      );
+    }
+
     const [newBudgetAllocation] = await db
       .insert(budgetAllocations)
       .values({
         projectId,
         activityName,
-        plannedAmount: Math.round(amount),
-        q1Amount: Math.round(q1),
-        q2Amount: Math.round(q2),
-        q3Amount: Math.round(q3),
-        q4Amount: Math.round(q4),
+        plannedAmount: roundedPlannedAmount,
+        q1Amount: roundedQ1,
+        q2Amount: roundedQ2,
+        q3Amount: roundedQ3,
+        q4Amount: roundedQ4,
         notes: notes || null,
         createdBy: session.userId,
       })

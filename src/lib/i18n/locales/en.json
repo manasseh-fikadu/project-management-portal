@@ -683,9 +683,13 @@
     "no_projects_yet_start_by_creating_one": "No projects yet — start by creating one",
     "open_project_workspace": "Open project workspace",
     "open_sidebar": "Open sidebar",
+    "more_budget_lines_hidden_count": "{{count}} more budget lines are hidden",
     "project_in_view_one": "{{count}} project in view",
     "project_in_view_other": "{{count}} projects in view",
-    "search_projects": "Search by name, manager, donor…"
+    "search_projects": "Search by name, manager, donor…",
+    "show_all_budget_lines": "Show all budget lines",
+    "show_less_budget_lines": "Show fewer budget lines",
+    "showing_budget_lines_count_of_total": "Showing {{shown}} of {{total}} budget lines"
   },
   "reports": {
     "title": "Report Generator",

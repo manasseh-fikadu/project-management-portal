@@ -12,6 +12,16 @@ const DEFAULT_LANGUAGE: AppLanguage = "en";
 const SUPPORTED_LANGUAGES: readonly AppLanguage[] = ["en", "am"] as const;
 const STORAGE_KEY = "app.language";
 
+function normalizeLanguage(value: string | null | undefined): AppLanguage | null {
+  if (!value) return null;
+
+  const normalized = value.toLowerCase();
+  if (normalized.startsWith("am")) return "am";
+  if (normalized.startsWith("en")) return "en";
+
+  return null;
+}
+
 function syncResourceBundles() {
   (Object.entries(resources) as Array<[AppLanguage, (typeof resources)[AppLanguage]]>).forEach(
     ([language, resource]) => {
@@ -42,20 +52,25 @@ function getPreferredLanguage(): AppLanguage {
   return DEFAULT_LANGUAGE;
 }
 
-if (!i18n.isInitialized) {
-  void i18n.use(initReactI18next).init({
-    resources,
-    lng: DEFAULT_LANGUAGE,
-    fallbackLng: DEFAULT_LANGUAGE,
-    interpolation: {
-      escapeValue: false,
-    },
-  });
-} else {
+export function ensureI18nInitialized(preferredLanguage?: string | null) {
+  const seedLanguage = normalizeLanguage(preferredLanguage) ?? getPreferredLanguage();
+
+  if (!i18n.isInitialized) {
+    void i18n.use(initReactI18next).init({
+      resources,
+      lng: seedLanguage,
+      fallbackLng: DEFAULT_LANGUAGE,
+      interpolation: {
+        escapeValue: false,
+      },
+    });
+    return;
+  }
+
   syncResourceBundles();
 }
 
-syncResourceBundles();
+ensureI18nInitialized();
 
 if (typeof window !== "undefined") {
   if (!globalThis.__appI18nLanguageListenerBound__) {

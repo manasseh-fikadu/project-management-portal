@@ -134,9 +134,9 @@ function normalizeCurrency(currency: string): CurrencyCode {
   return SUPPORTED_CURRENCY_SET.has(currency) ? (currency as CurrencyCode) : "ETB";
 }
 
-function formatDate(date: string | null, fallback: string) {
+function formatDate(date: string | null, fallback: string, locale?: string) {
   if (!date) return fallback;
-  return new Date(date).toLocaleDateString("en-US", {
+  return new Date(date).toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -149,6 +149,15 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isValidExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function prettyKey(value: string) {
   return value
     .replace(/_/g, " ")
@@ -159,7 +168,7 @@ function prettyKey(value: string) {
 }
 
 export default function ProposalDetailsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const proposalId = params.id as string;
@@ -192,19 +201,36 @@ export default function ProposalDetailsPage() {
     if (!entries.length) return [];
 
     const labels = new Map<string, string>();
+    const sections: Array<{ key: string; label: string; value: string }> = [];
+    const seenKeys = new Set<string>();
+
     for (const section of proposal.template?.sections || []) {
       const key = section.key || section.name;
       const label = section.label || section.name;
+      if (!key) continue;
+
       if (key && label) labels.set(key, label);
+
+      const value = proposal.templateData?.[key];
+      if (typeof value !== "string" || value.trim().length === 0) continue;
+
+      sections.push({
+        key,
+        label: label ?? prettyKey(key),
+        value,
+      });
+      seenKeys.add(key);
     }
 
-    return entries
-      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    const remainingSections = entries
+      .filter(([key, value]) => !seenKeys.has(key) && typeof value === "string" && value.trim().length > 0)
       .map(([key, value]) => ({
         key,
         label: labels.get(key) || prettyKey(key),
         value,
       }));
+
+    return [...sections, ...remainingSections];
   }, [proposal]);
 
   if (loading) {
@@ -358,19 +384,19 @@ export default function ProposalDetailsPage() {
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl bg-muted/40 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t("site.submitted")}</p>
-                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.submissionDate, t("site.not_set"))}</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.submissionDate, t("site.not_set"), i18n.language)}</p>
               </div>
               <div className="rounded-2xl bg-muted/40 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t("site.decision")}</p>
-                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.decisionDate, t("site.not_set"))}</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.decisionDate, t("site.not_set"), i18n.language)}</p>
               </div>
               <div className="rounded-2xl bg-muted/40 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t("site.start_date")}</p>
-                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.startDate, t("site.not_set"))}</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.startDate, t("site.not_set"), i18n.language)}</p>
               </div>
               <div className="rounded-2xl bg-muted/40 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t("site.end_date")}</p>
-                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.endDate, t("site.not_set"))}</p>
+                <p className="mt-2 text-sm font-medium text-foreground">{formatDate(proposal.endDate, t("site.not_set"), i18n.language)}</p>
               </div>
               {proposal.torCode && (
                 <div className="rounded-2xl bg-muted/40 p-4">
@@ -426,11 +452,11 @@ export default function ProposalDetailsPage() {
             <div className="mt-5 space-y-4 text-sm">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t("site.created")}</p>
-                <p className="mt-1 font-medium text-foreground">{formatDate(proposal.createdAt, t("site.not_set"))}</p>
+                <p className="mt-1 font-medium text-foreground">{formatDate(proposal.createdAt, t("site.not_set"), i18n.language)}</p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{t("site.last_updated")}</p>
-                <p className="mt-1 font-medium text-foreground">{formatDate(proposal.updatedAt || proposal.createdAt, t("site.not_set"))}</p>
+                <p className="mt-1 font-medium text-foreground">{formatDate(proposal.updatedAt || proposal.createdAt, t("site.not_set"), i18n.language)}</p>
               </div>
             </div>
           </div>
@@ -446,26 +472,46 @@ export default function ProposalDetailsPage() {
                   {t("site.no_documents_uploaded_for_this_proposal_yet")}
                 </div>
               ) : (
-                proposal.documents.map((document) => (
-                  <a
-                    key={document.id}
-                    href={document.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block rounded-2xl border border-border/60 bg-muted/20 px-4 py-4 transition-colors hover:bg-muted/40"
-                  >
-                    <p className="font-medium text-foreground">{document.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatFileSize(document.size)} • {formatDate(document.createdAt, t("site.not_set"))}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("site.uploaded_by_name", {
-                        firstName: document.uploader.firstName,
-                        lastName: document.uploader.lastName,
-                      })}
-                    </p>
-                  </a>
-                ))
+                proposal.documents.map((document) => {
+                  const isSafeUrl = isValidExternalUrl(document.url);
+                  const content = (
+                    <>
+                      <p className="font-medium text-foreground">{document.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {formatFileSize(document.size)} • {formatDate(document.createdAt, t("site.not_set"), i18n.language)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t("site.uploaded_by_name", {
+                          firstName: document.uploader.firstName,
+                          lastName: document.uploader.lastName,
+                        })}
+                      </p>
+                    </>
+                  );
+
+                  if (!isSafeUrl) {
+                    return (
+                      <div
+                        key={document.id}
+                        className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-4"
+                      >
+                        {content}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <a
+                      key={document.id}
+                      href={document.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-2xl border border-border/60 bg-muted/20 px-4 py-4 transition-colors hover:bg-muted/40"
+                    >
+                      {content}
+                    </a>
+                  );
+                })
               )}
             </div>
           </div>
