@@ -205,6 +205,25 @@ function parseBudgetImportNotes(notes: string | null): BudgetImportNotes | null 
   }
 }
 
+function getPortalInviteErrorMessageKey(code: unknown, error: unknown): string | null {
+  const errorIdentifier =
+    typeof code === "string" && code.trim().length > 0
+      ? code.trim().toLowerCase()
+      : typeof error === "string" && error.trim().length > 0
+        ? error.trim().toLowerCase()
+        : "";
+
+  const errorKeyMap: Record<string, string> = {
+    unauthorized: "site.portal_invite_unauthorized",
+    "forbidden: insufficient role permissions": "site.portal_invite_forbidden",
+    "donorid is required and must be a valid uuid": "site.portal_invite_invalid_donor",
+    "donor not found": "site.portal_invite_donor_not_found",
+    "donor does not have an email address": "site.portal_invite_missing_email",
+  };
+
+  return errorKeyMap[errorIdentifier] ?? null;
+}
+
 const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
   planning: { bg: "bg-amber-pale", text: "text-amber-warm", dot: "bg-amber-warm", label: "site.planning" },
   active: { bg: "bg-sage-pale", text: "text-primary", dot: "bg-primary", label: "site.active" },
@@ -352,7 +371,9 @@ export default function ProjectProfilePage() {
 
   function formatDate(date: string | null) {
     if (!date) return t("site.not_set");
-    return new Date(date).toLocaleDateString(i18n.language, {
+    const dateObj = new Date(date);
+    if (Number.isNaN(dateObj.getTime())) return t("site.not_set");
+    return dateObj.toLocaleDateString(i18n.language, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -367,6 +388,10 @@ export default function ProjectProfilePage() {
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function getEnumLabel(translationKey: string | undefined, rawValue: string) {
+    return translationKey ? t(translationKey) : rawValue.replace(/_/g, " ");
   }
 
   function getRoleLabel(role: string) {
@@ -666,7 +691,7 @@ export default function ProjectProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ donorId }),
       });
-      const data = await res.json();
+      const data: { code?: unknown; error?: unknown } = await res.json();
       if (res.ok) {
         setPortalInviteFeedback({
           open: true,
@@ -675,10 +700,11 @@ export default function ProjectProfilePage() {
           variant: "success",
         });
       } else {
+        const messageKey = getPortalInviteErrorMessageKey(data.code, data.error);
         setPortalInviteFeedback({
           open: true,
           title: t("site.invite_failed"),
-          message: data.error || t("site.failed_to_send_invite"),
+          message: messageKey ? t(messageKey) : t("site.failed_to_send_invite"),
           variant: "error",
         });
       }
@@ -839,7 +865,7 @@ export default function ProjectProfilePage() {
                   {formatBudget(project.totalBudget)}
                   {project.spentBudget > 0 && (
                     <span className="text-muted-foreground font-normal ml-1.5">
-                      ({formatBudget(project.spentBudget)} {t("site.spent").toLowerCase()})
+                      {t("site.spent_parenthetical", { amount: formatBudget(project.spentBudget) })}
                     </span>
                   )}
                 </p>
@@ -1083,7 +1109,7 @@ export default function ProjectProfilePage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-medium text-sm text-foreground">{milestone.title}</h4>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ms.bg} ${ms.text}`}>
-                            {t(milestoneStatusLabels[milestone.status] || "site.status")}
+                            {getEnumLabel(milestoneStatusLabels[milestone.status], milestone.status)}
                           </span>
                         </div>
                         {milestone.description && (
@@ -1250,10 +1276,10 @@ export default function ProjectProfilePage() {
                             {task.title}
                           </h4>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${ts.bg} ${ts.text}`}>
-                            {t(taskStatusLabels[task.status] || "site.status")}
+                            {getEnumLabel(taskStatusLabels[task.status], task.status)}
                           </span>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${tp.bg} ${tp.text}`}>
-                            {t(taskPriorityLabels[task.priority] || "site.priority")}
+                            {getEnumLabel(taskPriorityLabels[task.priority], task.priority)}
                           </span>
                         </div>
                         {task.description && (
@@ -1477,7 +1503,7 @@ export default function ProjectProfilePage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-foreground">{pd.donor.name}</p>
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${ds.text}`}>
-                            {t(donorStatusLabels[pd.status] || "site.status")}
+                            {getEnumLabel(donorStatusLabels[pd.status], pd.status)}
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground capitalize mt-0.5">

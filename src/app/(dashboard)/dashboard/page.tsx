@@ -22,8 +22,8 @@ export default function DashboardPage() {
     };
     return d.projectStatusData.map((entry, i) => ({
       ...entry,
-      localizedName: t(`site.${entry.name.replace(" ", "_")}`, { defaultValue: entry.name }),
-      color: map[entry.name.replace(" ", "_")] || PIE_COLORS[i % PIE_COLORS.length],
+      localizedName: t(`site.${entry.name.replace(/\s+/g, "_")}`, { defaultValue: entry.name }),
+      color: map[entry.name.replace(/\s+/g, "_")] || PIE_COLORS[i % PIE_COLORS.length],
     }));
   }, [d.projectStatusData, t]);
 
