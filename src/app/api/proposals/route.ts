@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, proposals } from "@/db";
-import { and, desc, ilike, or, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, ilike, or, eq, sql, type SQL, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessDonor, canAccessProject, ensureEditAccess, getAccessibleProposalIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification, getAdminUserIds } from "@/lib/notifications";
 
@@ -49,8 +49,19 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") || "25", 10) || 25));
     const offset = (page - 1) * limit;
+    const accessibleProposalIds = await getAccessibleProposalIds(session.user);
+
+    if (accessibleProposalIds?.length === 0) {
+      return NextResponse.json({
+        proposals: [],
+        pagination: { total: 0, page, limit },
+      });
+    }
 
     const conditions: SQL<unknown>[] = [];
+    if (accessibleProposalIds) {
+      conditions.push(inArray(proposals.id, accessibleProposalIds));
+    }
     if (status && status !== "all" && proposalStatuses.has(status as ProposalStatus)) {
       conditions.push(eq(proposals.status, status as ProposalStatus));
     }
@@ -151,6 +162,21 @@ export async function POST(request: NextRequest) {
     if (!title || parsedAmountRequested === null) {
       return NextResponse.json({ error: "Title and amount requested are required" }, { status: 400 });
     }
+
+    if (typeof projectId === "string" && projectId) {
+      const canUseProject = await canAccessProject(session.user, projectId);
+      if (!canUseProject) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
+    if (typeof donorId === "string" && donorId) {
+      const canUseDonor = await canAccessDonor(session.user, donorId);
+      if (!canUseDonor) {
+        return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+      }
+    }
+
     const safeStatus: ProposalStatus = proposalStatuses.has(status as ProposalStatus) ? (status as ProposalStatus) : "draft";
 
     const [newProposal] = await db

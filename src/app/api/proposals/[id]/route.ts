@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, proposals } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessDonor, canAccessProject, canAccessProposal, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification, getAdminUserIds } from "@/lib/notifications";
 
@@ -39,6 +39,11 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProposal(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
     const proposal = await db.query.proposals.findFirst({
       where: eq(proposals.id, id),
       with: {
@@ -83,6 +88,11 @@ export async function PUT(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProposal(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const existingProposal = await db.query.proposals.findFirst({
       where: eq(proposals.id, id),
@@ -90,6 +100,20 @@ export async function PUT(
 
     if (!existingProposal) {
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
+    if (typeof body.projectId === "string" && body.projectId) {
+      const canUseProject = await canAccessProject(session.user, body.projectId);
+      if (!canUseProject) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
+    if (typeof body.donorId === "string" && body.donorId) {
+      const canUseDonor = await canAccessDonor(session.user, body.donorId);
+      if (!canUseDonor) {
+        return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+      }
     }
 
     if (body.status && body.status !== existingProposal.status) {
@@ -196,6 +220,11 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProposal(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
     const [deletedProposal] = await db.delete(proposals).where(eq(proposals.id, id)).returning();
 
     if (!deletedProposal) {

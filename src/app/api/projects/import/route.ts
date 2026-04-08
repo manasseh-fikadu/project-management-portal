@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { db, budgetAllocations, projectDocuments, projectDonors, projectMembers, projects } from "@/db";
+import { db, budgetAllocations, projectDocuments, projectDonors, projectMembers, projects, reportingProfiles } from "@/db";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
-import { parseAgraBudgetWorkbook } from "@/lib/project-budget-import";
+import { parseProjectBudgetWorkbook } from "@/lib/project-budget-import";
+import { hasReportingTables } from "@/lib/reports/schema-availability";
 import { R2_BUCKET, R2_PUBLIC_URL, r2Client } from "@/lib/storage";
 
 const PROJECT_STATUSES = new Set(["planning", "active", "on_hold", "completed", "cancelled"]);
+
+function normalizeActivityNameForStorage(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= 255) return normalized;
+  return `${normalized.slice(0, 252).trimEnd()}...`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +40,8 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await parseAgraBudgetWorkbook(buffer);
+    const parsed = await parseProjectBudgetWorkbook(buffer, file.name);
+    const reportingTablesAvailable = await hasReportingTables();
     const assignedManagerId = typeof managerIdValue === "string" && managerIdValue ? managerIdValue : session.userId;
     let projectStatus = "planning";
     if (statusValue !== null) {
@@ -74,6 +82,11 @@ export async function POST(request: NextRequest) {
       donorIds = parsedDonorIds;
     }
 
+    const normalizedAllocations = parsed.allocations.map((allocation) => ({
+      ...allocation,
+      activityName: normalizeActivityNameForStorage(allocation.activityName),
+    }));
+
     const result = await db.transaction(async (tx) => {
       const [project] = await tx
         .insert(projects)
@@ -94,7 +107,7 @@ export async function POST(request: NextRequest) {
       });
 
       await tx.insert(budgetAllocations).values(
-        parsed.allocations.map((allocation) => ({
+        normalizedAllocations.map((allocation) => ({
           projectId: project.id,
           activityName: allocation.activityName,
           plannedAmount: allocation.plannedAmount,
@@ -106,6 +119,24 @@ export async function POST(request: NextRequest) {
           createdBy: session.userId,
         }))
       );
+
+      if (reportingTablesAvailable) {
+        await tx.insert(reportingProfiles).values({
+          projectId: project.id,
+          primaryTemplate: parsed.reportingDefaults.primaryTemplate,
+          currency: parsed.reportingDefaults.currency,
+          country: parsed.reportingDefaults.country,
+          reportingStartDate: parsed.reportingDefaults.reportingStartDate,
+          reportingEndDate: parsed.reportingDefaults.reportingEndDate,
+          annualYear: parsed.reportingDefaults.annualYear,
+          fundingFacility1Label: parsed.reportingDefaults.fundingFacility1Label,
+          fundingFacility2Label: parsed.reportingDefaults.fundingFacility2Label,
+          otherFundingLabel: parsed.reportingDefaults.otherFundingLabel,
+          leadAgency: parsed.reportingDefaults.leadAgency,
+          implementingPartner: parsed.reportingDefaults.implementingPartner,
+          procurementNotes: parsed.reportingDefaults.procurementNotes,
+        });
+      }
 
       if (donorIds.length > 0) {
         await tx.insert(projectDonors).values(
@@ -120,6 +151,8 @@ export async function POST(request: NextRequest) {
       return {
         project,
         importSummary: {
+          templateId: parsed.templateId,
+          templateLabel: parsed.templateLabel,
           sourceSheet: parsed.sourceSheet,
           budgetYear: parsed.budgetYear,
           allocationCount: parsed.allocations.length,

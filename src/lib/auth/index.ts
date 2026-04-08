@@ -22,7 +22,7 @@ export type ProfileRole = typeof profiles.$inferSelect.role;
 function mapLegacyRoleToProfileRole(role: typeof users.$inferSelect.role): ProfileRole {
   if (role === "admin") return "admin";
   if (role === "manager") return "project_manager";
-  return "beneficiary";
+  return "team_member";
 }
 
 function mapProfileRoleToLegacyRole(role: ProfileRole): typeof users.$inferSelect.role {
@@ -125,7 +125,7 @@ export async function registerUser(
   password: string,
   firstName: string,
   lastName: string,
-  role: ProfileRole = "beneficiary",
+  role: ProfileRole = "team_member",
   department?: string,
   options?: { mustChangePassword?: boolean }
 ) {

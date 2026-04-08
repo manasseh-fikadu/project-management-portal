@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TorDocumentEditor } from "@/components/ui/tor-document-editor";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -1117,13 +1118,13 @@ export default function ProposalsPage() {
                   <Plus className="h-4 w-4 mr-2" /> {t("site.new_entry")}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0">
                 <DialogHeader>
-                  <DialogTitle className="font-serif text-xl">
+                  <DialogTitle className="border-b border-border/70 px-6 py-4 font-serif text-xl">
                     {editingProposal ? t("site.edit_entry") : t("site.create_new_entry")}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+                <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
                   <div className="space-y-2">
                     <Label htmlFor="title">{t("site.proposal_title")}</Label>
                     <Input
@@ -1213,49 +1214,25 @@ export default function ProposalsPage() {
                   )}
 
                   {formData.proposalType === "tor" && selectedTemplate?.sections?.length ? (
-                    <div className="space-y-3 rounded-xl border border-border p-4">
-                      <p className="text-sm font-medium text-foreground">{t("site.template_sections")}</p>
-                      {selectedTemplate.sections.map((section, index) => {
-                        const fieldKey = section.key || section.name || `section_${index}`;
-                        const fieldLabel = section.label || section.name || t("site.section_number", { number: index + 1 });
-                        const isLongText = section.type === "textarea" || section.type === "long_text";
-                        return (
-                          <div key={fieldKey} className="space-y-2">
-                            <Label htmlFor={`template-${fieldKey}`}>
-                              {fieldLabel}
-                              {section.required ? " *" : ""}
-                            </Label>
-                            {isLongText ? (
-                              <Textarea
-                                id={`template-${fieldKey}`}
-                                value={formData.templateData[fieldKey] || ""}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    templateData: { ...prev.templateData, [fieldKey]: e.target.value },
-                                  }))
-                                }
-                                placeholder={section.placeholder || ""}
-                                rows={3}
-                                className="rounded-xl"
-                              />
-                            ) : (
-                              <Input
-                                id={`template-${fieldKey}`}
-                                value={formData.templateData[fieldKey] || ""}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    templateData: { ...prev.templateData, [fieldKey]: e.target.value },
-                                  }))
-                                }
-                                placeholder={section.placeholder || ""}
-                                className="rounded-xl"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="space-y-3 rounded-[1.5rem] border border-border/70 bg-[linear-gradient(180deg,rgba(254,255,254,0.96),rgba(242,247,240,0.76))] p-5 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-foreground">{t("site.template_sections")}</p>
+                        <p className="text-xs text-muted-foreground">{t("site.write_your_tor_in_one_flow")}</p>
+                      </div>
+                      <TorDocumentEditor
+                        sections={selectedTemplate.sections.map((section, index) => ({
+                          key: section.key || section.name || `section_${index}`,
+                          label: `${section.label || section.name || t("site.section_number", { number: index + 1 })}${section.required ? " *" : ""}`,
+                          placeholder: section.placeholder || "",
+                        }))}
+                        values={formData.templateData}
+                        onChange={(nextValue) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            templateData: nextValue,
+                          }))
+                        }
+                      />
                     </div>
                   ) : null}
 

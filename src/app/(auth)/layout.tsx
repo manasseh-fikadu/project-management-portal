@@ -13,7 +13,7 @@ function BrandedPanel() {
       className="relative hidden lg:flex lg:w-[44%] xl:w-[42%] flex-col items-center justify-center overflow-hidden"
       style={{
         background:
-          "linear-gradient(160deg, #1E271E 0%, #2A3328 30%, #3D5335 65%, #5C7A50 100%)",
+          "linear-gradient(160deg, #0E2218 0%, #163D28 30%, #1E5038 65%, #2B7A4B 100%)",
       }}
     >
       <svg
@@ -22,10 +22,10 @@ function BrandedPanel() {
         fill="none"
         preserveAspectRatio="xMidYMid slice"
       >
-        <circle cx="-30" cy="60" r="220" fill="rgba(143,184,131,0.06)" />
-        <circle cx="560" cy="180" r="180" fill="rgba(143,184,131,0.04)" />
-        <circle cx="280" cy="480" r="300" fill="rgba(143,184,131,0.03)" />
-        <circle cx="80" cy="820" r="220" fill="rgba(143,184,131,0.05)" />
+        <circle cx="-30" cy="60" r="220" fill="rgba(72,185,110,0.08)" />
+        <circle cx="560" cy="180" r="180" fill="rgba(72,185,110,0.05)" />
+        <circle cx="280" cy="480" r="300" fill="rgba(72,185,110,0.04)" />
+        <circle cx="80" cy="820" r="220" fill="rgba(72,185,110,0.06)" />
         <circle cx="520" cy="720" r="130" fill="rgba(139,126,184,0.03)" />
 
         <ellipse
@@ -34,7 +34,7 @@ function BrandedPanel() {
           rx="38"
           ry="14"
           transform="rotate(-35 460 110)"
-          fill="rgba(143,184,131,0.08)"
+          fill="rgba(72,185,110,0.10)"
         />
         <ellipse
           cx="100"
@@ -42,7 +42,7 @@ function BrandedPanel() {
           rx="50"
           ry="18"
           transform="rotate(25 100 380)"
-          fill="rgba(143,184,131,0.06)"
+          fill="rgba(72,185,110,0.08)"
         />
         <ellipse
           cx="400"
@@ -50,7 +50,7 @@ function BrandedPanel() {
           rx="34"
           ry="13"
           transform="rotate(-20 400 660)"
-          fill="rgba(143,184,131,0.07)"
+          fill="rgba(72,185,110,0.09)"
         />
         <ellipse
           cx="200"
@@ -58,16 +58,16 @@ function BrandedPanel() {
           rx="42"
           ry="16"
           transform="rotate(15 200 720)"
-          fill="rgba(143,184,131,0.05)"
+          fill="rgba(72,185,110,0.06)"
         />
 
-        <circle cx="180" cy="140" r="2.5" fill="rgba(143,184,131,0.14)" />
-        <circle cx="420" cy="320" r="2" fill="rgba(143,184,131,0.12)" />
-        <circle cx="130" cy="580" r="3" fill="rgba(143,184,131,0.10)" />
-        <circle cx="490" cy="480" r="2" fill="rgba(143,184,131,0.13)" />
-        <circle cx="320" cy="230" r="2.5" fill="rgba(143,184,131,0.11)" />
-        <circle cx="380" cy="820" r="2" fill="rgba(143,184,131,0.09)" />
-        <circle cx="250" cy="350" r="1.5" fill="rgba(143,184,131,0.12)" />
+        <circle cx="180" cy="140" r="2.5" fill="rgba(72,185,110,0.16)" />
+        <circle cx="420" cy="320" r="2" fill="rgba(72,185,110,0.14)" />
+        <circle cx="130" cy="580" r="3" fill="rgba(72,185,110,0.12)" />
+        <circle cx="490" cy="480" r="2" fill="rgba(72,185,110,0.15)" />
+        <circle cx="320" cy="230" r="2.5" fill="rgba(72,185,110,0.13)" />
+        <circle cx="380" cy="820" r="2" fill="rgba(72,185,110,0.11)" />
+        <circle cx="250" cy="350" r="1.5" fill="rgba(72,185,110,0.14)" />
       </svg>
 
       <div className="relative z-10 flex flex-col items-center text-center px-10">

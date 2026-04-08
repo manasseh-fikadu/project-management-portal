@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, donors } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessDonor, getAccessibleProposalIds, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(
@@ -16,6 +16,12 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessDonor(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+    }
+
+    const accessibleProposalIds = await getAccessibleProposalIds(session.user);
     const donor = await db.query.donors.findFirst({
       where: eq(donors.id, id),
       with: {
@@ -27,7 +33,14 @@ export async function GET(
       return NextResponse.json({ error: "Donor not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ donor });
+    return NextResponse.json({
+      donor: {
+        ...donor,
+        proposals: accessibleProposalIds === null
+          ? donor.proposals
+          : donor.proposals.filter((proposal) => accessibleProposalIds.includes(proposal.id)),
+      },
+    });
   } catch (error) {
     console.error("Error fetching donor:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -47,6 +60,11 @@ export async function PUT(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessDonor(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const existingDonor = await db.query.donors.findFirst({
       where: eq(donors.id, id),
@@ -98,6 +116,11 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessDonor(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+    }
+
     const [deletedDonor] = await db.delete(donors).where(eq(donors.id, id)).returning();
 
     if (!deletedDonor) {

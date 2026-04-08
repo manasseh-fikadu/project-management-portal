@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar, SidebarProvider, MainContent } from "@/components/sidebar";
 import { NotificationBell } from "@/components/notification-bell";
@@ -28,18 +28,34 @@ export default function DashboardLayout({
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) {
-          setUser(data.user);
-        } else {
-          router.replace("/login");
-        }
-      })
-      .finally(() => setLoading(false));
+  const refreshCurrentUser = useCallback(async () => {
+    const response = await fetch("/api/auth/me", { cache: "no-store" });
+    const data = await response.json();
+
+    if (data.user) {
+      setUser(data.user);
+      return;
+    }
+
+    setUser(null);
+    router.replace("/login");
   }, [router]);
+
+  useEffect(() => {
+    refreshCurrentUser()
+      .finally(() => setLoading(false));
+  }, [refreshCurrentUser]);
+
+  useEffect(() => {
+    function handleSessionUserUpdated() {
+      void refreshCurrentUser();
+    }
+
+    window.addEventListener("session-user-updated", handleSessionUserUpdated);
+    return () => {
+      window.removeEventListener("session-user-updated", handleSessionUserUpdated);
+    };
+  }, [refreshCurrentUser]);
 
   useEffect(() => {
     if (user?.mustChangePassword && pathname !== "/profile") {

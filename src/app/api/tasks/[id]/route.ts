@@ -2,9 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, tasks } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProject, canAccessTask, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+
+const ASSIGNEE_MUTABLE_FIELDS = new Set(["status", "progress", "completedAt"]);
+
+function isAssigneeStatusUpdate(payload: unknown): payload is Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+
+  const keys = Object.keys(payload);
+  return keys.length > 0 && keys.every((key) => ASSIGNEE_MUTABLE_FIELDS.has(key));
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,6 +28,11 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const task = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
       with: {
@@ -56,13 +72,16 @@ export async function PUT(
 ) {
   try {
     const session = await getSession();
-    const accessError = ensureEditAccess(session?.user);
-    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const existingTask = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
@@ -70,6 +89,21 @@ export async function PUT(
 
     if (!existingTask) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    const accessError = ensureEditAccess(session.user);
+    const isAssigneeManagingOwnTask =
+      existingTask.assignedTo === session.user.id && isAssigneeStatusUpdate(body);
+
+    if (accessError && !isAssigneeManagingOwnTask) {
+      return accessError;
+    }
+
+    if (typeof body.projectId === "string" && body.projectId) {
+      const canUseProject = await canAccessProject(session.user, body.projectId);
+      if (!canUseProject) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
     }
 
     const updateData: Record<string, unknown> = {
@@ -175,6 +209,11 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const [deletedTask] = await db.delete(tasks).where(eq(tasks.id, id)).returning();
 
     if (!deletedTask) {

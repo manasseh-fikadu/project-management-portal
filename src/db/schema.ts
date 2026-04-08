@@ -1,8 +1,8 @@
-import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check, index, AnyPgColumn } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
-export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "beneficiary", "donor"]);
+export const profileRoleEnum = pgEnum("profile_role", ["admin", "project_manager", "team_member", "donor"]);
 export const auditActionEnum = pgEnum("audit_action", ["create", "update", "delete"]);
 export const emailOutboxStatusEnum = pgEnum("email_outbox_status", ["pending", "processing", "sent", "failed"]);
 export const notificationTypeEnum = pgEnum("notification_type", [
@@ -30,7 +30,7 @@ export const users = pgTable("users", {
 export const profiles = pgTable("profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
-  role: profileRoleEnum("role").default("beneficiary").notNull(),
+  role: profileRoleEnum("role").default("team_member").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -136,6 +136,10 @@ export const projectMembers = pgTable("project_members", {
 export const donorStatusEnum = pgEnum("donor_status", ["active", "pending", "completed", "withdrawn"]);
 
 export const donorTypeEnum = pgEnum("donor_type", ["government", "foundation", "corporate", "individual", "multilateral", "ngo"]);
+export const reportingTemplateEnum = pgEnum("reporting_template", ["agra_budget_breakdown", "eif_cpd_annex", "ppg_boost"]);
+export const reportingNodeTypeEnum = pgEnum("reporting_node_type", ["outcome", "output", "activity", "sub_activity"]);
+export const reportingFundingFacilityEnum = pgEnum("reporting_funding_facility", ["ff1", "ff2", "eif", "other", "unspecified"]);
+export const reportingTransactionTypeEnum = pgEnum("reporting_transaction_type", ["expenditure", "disbursement"]);
 
 export const donors = pgTable("donors", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -315,6 +319,119 @@ export const donorAccessTokens = pgTable("donor_access_tokens", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const reportingProfiles = pgTable("reporting_profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  primaryTemplate: reportingTemplateEnum("primary_template").default("eif_cpd_annex").notNull(),
+  country: varchar("country", { length: 120 }),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  reportingStartDate: timestamp("reporting_start_date"),
+  reportingEndDate: timestamp("reporting_end_date"),
+  annualYear: integer("annual_year"),
+  fundingFacility1Label: varchar("funding_facility_1_label", { length: 120 }),
+  fundingFacility2Label: varchar("funding_facility_2_label", { length: 120 }),
+  otherFundingLabel: varchar("other_funding_label", { length: 120 }),
+  leadAgency: varchar("lead_agency", { length: 255 }),
+  implementingPartner: varchar("implementing_partner", { length: 255 }),
+  procurementNotes: text("procurement_notes"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  reportingProfilesProjectUnique: uniqueIndex("reporting_profiles_project_id_key").on(table.projectId),
+}));
+
+export const reportingResults = pgTable("reporting_results", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  profileId: uuid("profile_id").references(() => reportingProfiles.id, { onDelete: "set null" }),
+  parentId: uuid("parent_id").references((): AnyPgColumn => reportingResults.id, { onDelete: "cascade" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  milestoneId: uuid("milestone_id").references(() => milestones.id, { onDelete: "set null" }),
+  sourceBudgetAllocationId: uuid("source_budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
+  nodeType: reportingNodeTypeEnum("node_type").notNull(),
+  code: varchar("code", { length: 100 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  indicatorCode: varchar("indicator_code", { length: 100 }),
+  indicatorLabel: text("indicator_label"),
+  baselineValue: integer("baseline_value"),
+  targetValue: integer("target_value"),
+  actualValue: integer("actual_value"),
+  unitType: varchar("unit_type", { length: 100 }),
+  targetGroup: text("target_group"),
+  responsibleEntity: varchar("responsible_entity", { length: 255 }),
+  leadEntity: varchar("lead_entity", { length: 255 }),
+  meansOfVerification: text("means_of_verification"),
+  assumptions: text("assumptions"),
+  category: varchar("category", { length: 120 }),
+  procurementCategory: varchar("procurement_category", { length: 120 }),
+  procurementMethod: varchar("procurement_method", { length: 120 }),
+  comment: text("comment"),
+  executionRate: integer("execution_rate"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  reportingResultsProjectIdx: index("reporting_results_project_id_idx").on(table.projectId),
+  reportingResultsParentIdx: index("reporting_results_parent_id_idx").on(table.parentId),
+  reportingResultsCodeIdx: index("reporting_results_code_idx").on(table.projectId, table.code),
+}));
+
+export const reportingBudgetLines = pgTable("reporting_budget_lines", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  profileId: uuid("profile_id").references(() => reportingProfiles.id, { onDelete: "set null" }),
+  reportingResultId: uuid("reporting_result_id").references(() => reportingResults.id, { onDelete: "set null" }),
+  sourceBudgetAllocationId: uuid("source_budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
+  accountCode: varchar("account_code", { length: 100 }),
+  accountTitle: varchar("account_title", { length: 255 }),
+  lineDescription: text("line_description"),
+  fundingFacility: reportingFundingFacilityEnum("funding_facility").default("unspecified").notNull(),
+  otherFundingSource: varchar("other_funding_source", { length: 255 }),
+  unit: varchar("unit", { length: 80 }),
+  quantity: integer("quantity"),
+  unitCost: integer("unit_cost"),
+  plannedAmount: integer("planned_amount").default(0).notNull(),
+  actualAmount: integer("actual_amount").default(0).notNull(),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  year: integer("year"),
+  month: integer("month"),
+  quarter: integer("quarter"),
+  procurementCategory: varchar("procurement_category", { length: 120 }),
+  procurementMethod: varchar("procurement_method", { length: 120 }),
+  comment: text("comment"),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  reportingBudgetLinesProjectIdx: index("reporting_budget_lines_project_id_idx").on(table.projectId),
+  reportingBudgetLinesResultIdx: index("reporting_budget_lines_result_id_idx").on(table.reportingResultId),
+  reportingBudgetLinesAccountIdx: index("reporting_budget_lines_account_idx").on(table.projectId, table.accountCode),
+}));
+
+export const reportingTransactions = pgTable("reporting_transactions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  reportingResultId: uuid("reporting_result_id").references(() => reportingResults.id, { onDelete: "set null" }),
+  reportingBudgetLineId: uuid("reporting_budget_line_id").references(() => reportingBudgetLines.id, { onDelete: "set null" }),
+  donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
+  sourceExpenditureId: uuid("source_expenditure_id").references(() => expenditures.id, { onDelete: "set null" }),
+  sourceDisbursementId: uuid("source_disbursement_id").references(() => disbursementLogs.id, { onDelete: "set null" }),
+  transactionType: reportingTransactionTypeEnum("transaction_type").notNull(),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  occurredAt: timestamp("occurred_at").notNull(),
+  notes: text("notes"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  reportingTransactionsProjectIdx: index("reporting_transactions_project_id_idx").on(table.projectId),
+  reportingTransactionsBudgetLineIdx: index("reporting_transactions_budget_line_id_idx").on(table.reportingBudgetLineId),
+}));
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, {
     fields: [users.id],
@@ -382,6 +499,13 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   budgetAllocations: many(budgetAllocations),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  reportingProfile: one(reportingProfiles, {
+    fields: [projects.id],
+    references: [reportingProfiles.projectId],
+  }),
+  reportingResults: many(reportingResults),
+  reportingBudgetLines: many(reportingBudgetLines),
+  reportingTransactions: many(reportingTransactions),
 }));
 
 export const projectDocumentsRelations = relations(projectDocuments, ({ one }) => ({
@@ -524,6 +648,8 @@ export const budgetAllocationsRelations = relations(budgetAllocations, ({ one, m
   }),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  reportingResults: many(reportingResults),
+  reportingBudgetLines: many(reportingBudgetLines),
 }));
 
 export const expendituresRelations = relations(expenditures, ({ one, many }) => ({
@@ -548,6 +674,7 @@ export const expendituresRelations = relations(expenditures, ({ one, many }) => 
     references: [users.id],
   }),
   disbursementLogs: many(disbursementLogs),
+  reportingTransactions: many(reportingTransactions),
 }));
 
 export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) => ({
@@ -573,6 +700,95 @@ export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) =
   }),
 }));
 
+export const reportingProfilesRelations = relations(reportingProfiles, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [reportingProfiles.projectId],
+    references: [projects.id],
+  }),
+  results: many(reportingResults),
+  budgetLines: many(reportingBudgetLines),
+}));
+
+export const reportingResultsRelations = relations(reportingResults, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [reportingResults.projectId],
+    references: [projects.id],
+  }),
+  profile: one(reportingProfiles, {
+    fields: [reportingResults.profileId],
+    references: [reportingProfiles.id],
+  }),
+  parent: one(reportingResults, {
+    fields: [reportingResults.parentId],
+    references: [reportingResults.id],
+    relationName: "reporting_result_hierarchy",
+  }),
+  children: many(reportingResults, {
+    relationName: "reporting_result_hierarchy",
+  }),
+  task: one(tasks, {
+    fields: [reportingResults.taskId],
+    references: [tasks.id],
+  }),
+  milestone: one(milestones, {
+    fields: [reportingResults.milestoneId],
+    references: [milestones.id],
+  }),
+  sourceBudgetAllocation: one(budgetAllocations, {
+    fields: [reportingResults.sourceBudgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
+  budgetLines: many(reportingBudgetLines),
+  transactions: many(reportingTransactions),
+}));
+
+export const reportingBudgetLinesRelations = relations(reportingBudgetLines, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [reportingBudgetLines.projectId],
+    references: [projects.id],
+  }),
+  profile: one(reportingProfiles, {
+    fields: [reportingBudgetLines.profileId],
+    references: [reportingProfiles.id],
+  }),
+  result: one(reportingResults, {
+    fields: [reportingBudgetLines.reportingResultId],
+    references: [reportingResults.id],
+  }),
+  sourceBudgetAllocation: one(budgetAllocations, {
+    fields: [reportingBudgetLines.sourceBudgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
+  transactions: many(reportingTransactions),
+}));
+
+export const reportingTransactionsRelations = relations(reportingTransactions, ({ one }) => ({
+  project: one(projects, {
+    fields: [reportingTransactions.projectId],
+    references: [projects.id],
+  }),
+  result: one(reportingResults, {
+    fields: [reportingTransactions.reportingResultId],
+    references: [reportingResults.id],
+  }),
+  budgetLine: one(reportingBudgetLines, {
+    fields: [reportingTransactions.reportingBudgetLineId],
+    references: [reportingBudgetLines.id],
+  }),
+  donor: one(donors, {
+    fields: [reportingTransactions.donorId],
+    references: [donors.id],
+  }),
+  sourceExpenditure: one(expenditures, {
+    fields: [reportingTransactions.sourceExpenditureId],
+    references: [expenditures.id],
+  }),
+  sourceDisbursement: one(disbursementLogs, {
+    fields: [reportingTransactions.sourceDisbursementId],
+    references: [disbursementLogs.id],
+  }),
+}));
+
 export type Donor = typeof donors.$inferSelect;
 export type NewDonor = typeof donors.$inferInsert;
 export type ProjectDonor = typeof projectDonors.$inferSelect;
@@ -593,6 +809,14 @@ export type Expenditure = typeof expenditures.$inferSelect;
 export type NewExpenditure = typeof expenditures.$inferInsert;
 export type DisbursementLog = typeof disbursementLogs.$inferSelect;
 export type NewDisbursementLog = typeof disbursementLogs.$inferInsert;
+export type ReportingProfile = typeof reportingProfiles.$inferSelect;
+export type NewReportingProfile = typeof reportingProfiles.$inferInsert;
+export type ReportingResult = typeof reportingResults.$inferSelect;
+export type NewReportingResult = typeof reportingResults.$inferInsert;
+export type ReportingBudgetLine = typeof reportingBudgetLines.$inferSelect;
+export type NewReportingBudgetLine = typeof reportingBudgetLines.$inferInsert;
+export type ReportingTransaction = typeof reportingTransactions.$inferSelect;
+export type NewReportingTransaction = typeof reportingTransactions.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;

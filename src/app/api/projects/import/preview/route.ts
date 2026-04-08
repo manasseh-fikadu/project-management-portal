@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
-import { parseAgraBudgetWorkbook } from "@/lib/project-budget-import";
+import { parseProjectBudgetWorkbook } from "@/lib/project-budget-import";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,12 +21,14 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await parseAgraBudgetWorkbook(buffer);
+    const parsed = await parseProjectBudgetWorkbook(buffer, file.name);
 
     return NextResponse.json({
       preview: {
         name: parsed.name,
         description: parsed.description,
+        templateId: parsed.templateId,
+        templateLabel: parsed.templateLabel,
         totalBudget: parsed.totalBudget,
         budgetYear: parsed.budgetYear,
         sourceSheet: parsed.sourceSheet,

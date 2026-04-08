@@ -3,8 +3,9 @@ import { db } from "@/db";
 import { donorAccessTokens, donors, emailOutbox } from "@/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessDonor, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { processPendingEmailOutbox } from "@/lib/email-outbox";
 import { createHash, randomBytes } from "crypto";
 
 const DEFAULT_EXPIRY_DAYS = 30;
@@ -29,6 +30,11 @@ export async function POST(request: NextRequest) {
 
     if (!donorId || typeof donorId !== "string" || !UUID_RE.test(donorId)) {
       return NextResponse.json({ error: "donorId is required and must be a valid UUID" }, { status: 400 });
+    }
+
+    const hasAccess = await canAccessDonor(session.user, donorId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Donor not found" }, { status: 404 });
     }
 
     const donor = await db.query.donors.findFirst({
@@ -78,6 +84,7 @@ export async function POST(request: NextRequest) {
 
       return created;
     });
+    await processPendingEmailOutbox(10);
 
     try {
       await logAuditEvent({
@@ -129,6 +136,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "donorId query parameter is required and must be a valid UUID" }, { status: 400 });
     }
 
+    const hasAccess = await canAccessDonor(session.user, donorId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+    }
+
     const tokens = await db.query.donorAccessTokens.findMany({
       columns: {
         id: true,
@@ -171,6 +183,20 @@ export async function DELETE(request: NextRequest) {
 
     if (!tokenId || !UUID_RE.test(tokenId)) {
       return NextResponse.json({ error: "tokenId query parameter is required and must be a valid UUID" }, { status: 400 });
+    }
+
+    const existingToken = await db.query.donorAccessTokens.findFirst({
+      where: eq(donorAccessTokens.id, tokenId),
+      columns: { donorId: true },
+    });
+
+    if (!existingToken) {
+      return NextResponse.json({ error: "Token not found" }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessDonor(session.user, existingToken.donorId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Token not found" }, { status: 404 });
     }
 
     const [revoked] = await db

@@ -33,6 +33,8 @@ import {
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency } from "@/lib/currency";
 
+const PROJECT_CREATION_ROLES = new Set(["admin", "project_manager"]);
+
 type MilestoneInput = {
   title: string;
   description: string;
@@ -65,6 +67,8 @@ type UserOption = {
 type ImportPreview = {
   name: string;
   description: string | null;
+  templateId?: string;
+  templateLabel?: string;
   totalBudget: number;
   budgetYear: number | null;
   sourceSheet: string;
@@ -118,6 +122,16 @@ export default function NewProjectPage() {
   const [importing, setImporting] = useState(false);
   const [previewingImport, setPreviewingImport] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [hasCreateAccess, setHasCreateAccess] = useState(false);
+
+  function getRoleLabel(role: string) {
+    if (role === "user") {
+      return t("roles.team_member");
+    }
+
+    return t(`roles.${role}`, { defaultValue: role.replace(/_/g, " ") });
+  }
   const [files, setFiles] = useState<File[]>([]);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
@@ -158,9 +172,46 @@ export default function NewProjectPage() {
   }, [t]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function checkAccess() {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const data = await res.json();
+        const allowed = PROJECT_CREATION_ROLES.has(data.user?.role);
+
+        if (cancelled) return;
+
+        if (!allowed) {
+          router.replace("/projects");
+          return;
+        }
+
+        setHasCreateAccess(true);
+      } catch {
+        if (!cancelled) {
+          router.replace("/projects");
+        }
+      } finally {
+        if (!cancelled) {
+          setAccessChecked(true);
+        }
+      }
+    }
+
+    void checkAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!hasCreateAccess) return;
+
     fetchDonors();
     fetchUsers();
-  }, [fetchDonors, fetchUsers]);
+  }, [fetchDonors, fetchUsers, hasCreateAccess]);
 
   function handleInputChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -379,6 +430,17 @@ export default function NewProjectPage() {
     return u ? `${u.firstName} ${u.lastName}` : t("site.unassigned");
   }
 
+  if (!accessChecked || !hasCreateAccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">{t("site.loading_projects")}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 lg:p-10 max-w-4xl mx-auto">
       <div className="mb-8">
@@ -541,6 +603,11 @@ export default function NewProjectPage() {
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/70">
                       {t("site.import_preview")}
                     </p>
+                    {importPreview.templateLabel && (
+                      <Badge variant="secondary" className="rounded-full bg-muted px-3 py-1 text-[11px] text-foreground hover:bg-muted">
+                        {importPreview.templateLabel}
+                      </Badge>
+                    )}
                     <Badge variant="secondary" className="rounded-full bg-primary/10 px-3 py-1 text-[11px] text-primary hover:bg-primary/10">
                       {t("site.ready_to_import")}
                     </Badge>
@@ -678,7 +745,7 @@ export default function NewProjectPage() {
                   <SelectContent>
                     {users.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
-                        {user.firstName} {user.lastName} ({user.role})
+                        {user.firstName} {user.lastName} ({getRoleLabel(user.role)})
                       </SelectItem>
                     ))}
                   </SelectContent>

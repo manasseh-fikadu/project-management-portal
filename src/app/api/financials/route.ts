@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, budgetAllocations, disbursementLogs, expenditures, projects } from "@/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
+import { canAccessProject, getAccessibleProjectIds } from "@/lib/rbac";
 
 function toPercent(numerator: number, denominator: number): number {
   if (denominator <= 0) return 0;
@@ -17,9 +18,56 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");
+    const accessibleProjectIds = await getAccessibleProjectIds(session.user);
+
+    if (projectId) {
+      const hasAccess = await canAccessProject(session.user, projectId);
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
+    if (accessibleProjectIds?.length === 0) {
+      return NextResponse.json({
+        comparison: [],
+        totals: {
+          plannedBudget: 0,
+          spentAmount: 0,
+          disbursedAmount: 0,
+          totalTasks: 0,
+          completedTasks: 0,
+          physicalPerformance: 0,
+          financialPerformance: 0,
+        },
+      });
+    }
+
+    const projectScope = projectId
+      ? eq(projects.id, projectId)
+      : accessibleProjectIds
+        ? inArray(projects.id, accessibleProjectIds)
+        : undefined;
+
+    const budgetScope = projectId
+      ? eq(budgetAllocations.projectId, projectId)
+      : accessibleProjectIds
+        ? inArray(budgetAllocations.projectId, accessibleProjectIds)
+        : undefined;
+
+    const expenditureScope = projectId
+      ? eq(expenditures.projectId, projectId)
+      : accessibleProjectIds
+        ? inArray(expenditures.projectId, accessibleProjectIds)
+        : undefined;
+
+    const disbursementScope = projectId
+      ? eq(disbursementLogs.projectId, projectId)
+      : accessibleProjectIds
+        ? inArray(disbursementLogs.projectId, accessibleProjectIds)
+        : undefined;
 
     const projectRows = await db.query.projects.findMany({
-      where: projectId ? eq(projects.id, projectId) : undefined,
+      where: projectScope,
       with: {
         tasks: {
           columns: { id: true, status: true, progress: true },
@@ -29,17 +77,17 @@ export async function GET(request: NextRequest) {
     });
 
     const budgetRows = await db.query.budgetAllocations.findMany({
-      where: projectId ? eq(budgetAllocations.projectId, projectId) : undefined,
+      where: budgetScope,
       columns: { projectId: true, plannedAmount: true },
     });
 
     const expenditureRows = await db.query.expenditures.findMany({
-      where: projectId ? eq(expenditures.projectId, projectId) : undefined,
+      where: expenditureScope,
       columns: { projectId: true, amount: true },
     });
 
     const disbursementRows = await db.query.disbursementLogs.findMany({
-      where: projectId ? eq(disbursementLogs.projectId, projectId) : undefined,
+      where: disbursementScope,
       columns: { projectId: true, amount: true },
     });
 

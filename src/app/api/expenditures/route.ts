@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, expenditures, projects } from "@/db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessDonor, canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(request: NextRequest) {
@@ -15,9 +15,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");
     const budgetAllocationId = searchParams.get("budgetAllocationId");
+    const accessibleProjectIds = await getAccessibleProjectIds(session.user);
+
+    if (projectId) {
+      const hasAccess = await canAccessProject(session.user, projectId);
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
+    if (accessibleProjectIds?.length === 0) {
+      return NextResponse.json({ expenditures: [] });
+    }
 
     const filters = [
       projectId ? eq(expenditures.projectId, projectId) : undefined,
+      !projectId && accessibleProjectIds ? inArray(expenditures.projectId, accessibleProjectIds) : undefined,
       budgetAllocationId ? eq(expenditures.budgetAllocationId, budgetAllocationId) : undefined,
     ].filter(Boolean);
 
@@ -81,6 +94,18 @@ export async function POST(request: NextRequest) {
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       return NextResponse.json({ error: "amount must be a positive number" }, { status: 400 });
+    }
+
+    const hasProjectAccess = await canAccessProject(session.user, projectId);
+    if (!hasProjectAccess) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
+    if (typeof donorId === "string" && donorId) {
+      const hasDonorAccess = await canAccessDonor(session.user, donorId);
+      if (!hasDonorAccess) {
+        return NextResponse.json({ error: "Donor not found" }, { status: 404 });
+      }
     }
 
     const [newExpenditure] = await db

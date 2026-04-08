@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, projects, projectMembers } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProject, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { hasReportingTables, isMissingReportingTableError } from "@/lib/reports/schema-availability";
 
 const PROJECT_STATUSES = new Set(["planning", "active", "on_hold", "completed", "cancelled"]);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,62 +21,175 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProject(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
 
-    const project = await db.query.projects.findFirst({
-      where: eq(projects.id, id),
-      with: {
-        manager: {
-          columns: { id: true, firstName: true, lastName: true, email: true },
-        },
-        donor: {
-          columns: { id: true, name: true, type: true },
-        },
-        projectDonors: {
-          with: {
-            donor: {
-              columns: { id: true, name: true, type: true, email: true, contactPerson: true, isActive: true },
+    const reportingTablesAvailable = await hasReportingTables();
+
+    let project;
+    try {
+      project = reportingTablesAvailable
+        ? await db.query.projects.findFirst({
+            where: eq(projects.id, id),
+            with: {
+              manager: {
+                columns: { id: true, firstName: true, lastName: true, email: true },
+              },
+              donor: {
+                columns: { id: true, name: true, type: true },
+              },
+              projectDonors: {
+                with: {
+                  donor: {
+                    columns: { id: true, name: true, type: true, email: true, contactPerson: true, isActive: true },
+                  },
+                },
+              },
+              milestones: {
+                orderBy: (milestones, { asc }) => [asc(milestones.order)],
+              },
+              tasks: {
+                with: {
+                  assignee: {
+                    columns: { id: true, firstName: true, lastName: true, email: true },
+                  },
+                  creator: {
+                    columns: { id: true, firstName: true, lastName: true },
+                  },
+                },
+                orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
+              },
+              documents: {
+                with: {
+                  uploader: {
+                    columns: { id: true, firstName: true, lastName: true },
+                  },
+                },
+              },
+              budgetAllocations: {
+                orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
+              },
+              members: {
+                with: {
+                  user: {
+                    columns: { id: true, firstName: true, lastName: true, email: true },
+                  },
+                },
+              },
+              reportingProfile: true,
+            },
+          })
+        : await db.query.projects.findFirst({
+            where: eq(projects.id, id),
+            with: {
+              manager: {
+                columns: { id: true, firstName: true, lastName: true, email: true },
+              },
+              donor: {
+                columns: { id: true, name: true, type: true },
+              },
+              projectDonors: {
+                with: {
+                  donor: {
+                    columns: { id: true, name: true, type: true, email: true, contactPerson: true, isActive: true },
+                  },
+                },
+              },
+              milestones: {
+                orderBy: (milestones, { asc }) => [asc(milestones.order)],
+              },
+              tasks: {
+                with: {
+                  assignee: {
+                    columns: { id: true, firstName: true, lastName: true, email: true },
+                  },
+                  creator: {
+                    columns: { id: true, firstName: true, lastName: true },
+                  },
+                },
+                orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
+              },
+              documents: {
+                with: {
+                  uploader: {
+                    columns: { id: true, firstName: true, lastName: true },
+                  },
+                },
+              },
+              budgetAllocations: {
+                orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
+              },
+              members: {
+                with: {
+                  user: {
+                    columns: { id: true, firstName: true, lastName: true, email: true },
+                  },
+                },
+              },
+            },
+          });
+    } catch (error) {
+      if (!isMissingReportingTableError(error)) throw error;
+      project = await db.query.projects.findFirst({
+        where: eq(projects.id, id),
+        with: {
+          manager: {
+            columns: { id: true, firstName: true, lastName: true, email: true },
+          },
+          donor: {
+            columns: { id: true, name: true, type: true },
+          },
+          projectDonors: {
+            with: {
+              donor: {
+                columns: { id: true, name: true, type: true, email: true, contactPerson: true, isActive: true },
+              },
+            },
+          },
+          milestones: {
+            orderBy: (milestones, { asc }) => [asc(milestones.order)],
+          },
+          tasks: {
+            with: {
+              assignee: {
+                columns: { id: true, firstName: true, lastName: true, email: true },
+              },
+              creator: {
+                columns: { id: true, firstName: true, lastName: true },
+              },
+            },
+            orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
+          },
+          documents: {
+            with: {
+              uploader: {
+                columns: { id: true, firstName: true, lastName: true },
+              },
+            },
+          },
+          budgetAllocations: {
+            orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
+          },
+          members: {
+            with: {
+              user: {
+                columns: { id: true, firstName: true, lastName: true, email: true },
+              },
             },
           },
         },
-        milestones: {
-          orderBy: (milestones, { asc }) => [asc(milestones.order)],
-        },
-        tasks: {
-          with: {
-            assignee: {
-              columns: { id: true, firstName: true, lastName: true, email: true },
-            },
-            creator: {
-              columns: { id: true, firstName: true, lastName: true },
-            },
-          },
-          orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
-        },
-        documents: {
-          with: {
-            uploader: {
-              columns: { id: true, firstName: true, lastName: true },
-            },
-          },
-        },
-        budgetAllocations: {
-          orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
-        },
-        members: {
-          with: {
-            user: {
-              columns: { id: true, firstName: true, lastName: true, email: true },
-            },
-          },
-        },
-      },
-    });
+      });
+    }
 
     if (!project) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ project });
+    return NextResponse.json({
+      project: "reportingProfile" in project ? project : { ...project, reportingProfile: null },
+    });
   } catch (error) {
     console.error("Error fetching project:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -92,6 +206,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProject(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const payload =
       body && typeof body === "object" && !Array.isArray(body)
@@ -227,6 +346,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProject(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
 
     const [deletedProject] = await db.delete(projects).where(eq(projects.id, id)).returning();
 

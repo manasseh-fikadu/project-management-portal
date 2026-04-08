@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, projects, milestones, projectMembers, projectDonors } from "@/db";
-import { desc } from "drizzle-orm";
+import { desc, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
 export async function GET() {
@@ -12,7 +12,13 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const accessibleProjectIds = await getAccessibleProjectIds(session.user);
+    if (accessibleProjectIds?.length === 0) {
+      return NextResponse.json({ projects: [] });
+    }
+
     const allProjects = await db.query.projects.findMany({
+      where: accessibleProjectIds ? inArray(projects.id, accessibleProjectIds) : undefined,
       with: {
         manager: {
           columns: { id: true, firstName: true, lastName: true, email: true },

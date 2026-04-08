@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, proposalDocuments } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProposal, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { r2Client, R2_BUCKET } from "@/lib/storage";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
@@ -25,6 +25,11 @@ export async function DELETE(
     });
 
     if (!document) {
+      return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessProposal(session.user, document.proposalId);
+    if (!hasAccess) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 

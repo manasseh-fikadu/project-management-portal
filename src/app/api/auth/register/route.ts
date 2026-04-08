@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerUser } from "@/lib/auth";
 
+const DEFAULT_SELF_REGISTERED_ROLE = "team_member" as const;
+
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, firstName, lastName, role, department } = await request.json();
+    const { email, password, firstName, lastName, department } = await request.json();
 
     if (!email || !password || !firstName || !lastName) {
       return NextResponse.json(
@@ -19,7 +21,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await registerUser(email, password, firstName, lastName, role ?? "beneficiary", department);
+    const user = await registerUser(
+      email,
+      password,
+      firstName,
+      lastName,
+      DEFAULT_SELF_REGISTERED_ROLE,
+      department
+    );
 
     return NextResponse.json({
       success: true,
@@ -28,7 +37,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: role ?? "beneficiary",
+        role: DEFAULT_SELF_REGISTERED_ROLE,
         department: user.department,
       },
     });
