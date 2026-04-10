@@ -4,6 +4,7 @@ export type TorDocumentSection = {
   key: string;
   label: string;
   placeholder?: string;
+  required?: boolean;
 };
 
 export function buildTorDocumentHtml(
@@ -15,7 +16,7 @@ export function buildTorDocumentHtml(
       const body = normalizeRichTextValue(values[section.key]) || "<p></p>";
 
       return [
-        `<section data-tor-section="true" data-section-key="${escapeHtml(section.key)}" data-section-label="${escapeHtml(section.label)}" data-section-placeholder="${escapeHtml(section.placeholder || "")}">`,
+        `<section data-tor-section="true" data-section-key="${escapeHtml(section.key)}" data-section-label="${escapeHtml(section.label)}" data-section-placeholder="${escapeHtml(section.placeholder || "")}" data-section-required="${section.required ? "true" : "false"}">`,
         `<div data-tor-section-body="true">${body}</div>`,
         "</section>",
       ].join("");
@@ -33,7 +34,7 @@ export function buildTorDocumentPreviewHtml(
 
       return [
         `<section class="tor-section-node">`,
-        `<div class="tor-section-node__label">${escapeHtml(section.label)}</div>`,
+        `<div class="tor-section-node__label">${escapeHtml(section.label)}${section.required ? " *" : ""}</div>`,
         `<div class="tor-section-node__body">${body}</div>`,
         "</section>",
       ].join("");

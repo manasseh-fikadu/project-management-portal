@@ -52,7 +52,7 @@ export type ReportingTemplateScope =
   | "working-doc"
   | "cost-build-up";
 type ReportingFundingFacilityValue = "ff1" | "ff2" | "eif" | "other" | "unspecified";
-type ReportingTemplateValue = "agra_budget_breakdown" | "eif_cpd_annex" | "ppg_boost";
+export type ReportingTemplateValue = "agra_budget_breakdown" | "eif_cpd_annex" | "ppg_boost";
 
 type CanonicalNodeType = "outcome" | "output" | "activity" | "sub_activity";
 
@@ -704,6 +704,8 @@ function mergeNodes(
   const seenBudgetAllocationIds = new Set(explicitNodes.map((node) => node.sourceBudgetAllocationId).filter(Boolean));
   const seenTaskIds = new Set(explicitNodes.map((node) => node.taskId).filter(Boolean));
   const extras = derivedNodes.filter((node) => {
+    const isSyntheticAncestor = !node.sourceBudgetAllocationId && !node.taskId;
+    if (isSyntheticAncestor) return false;
     if (node.sourceBudgetAllocationId && seenBudgetAllocationIds.has(node.sourceBudgetAllocationId)) return false;
     if (node.taskId && seenTaskIds.has(node.taskId)) return false;
     return true;
@@ -807,11 +809,16 @@ function buildDerivedTransactions(
   budgetLines: CanonicalBudgetLine[],
   nodes: CanonicalReportingNode[]
 ): CanonicalTransaction[] {
-  const budgetLineBySource = new Map(
-    budgetLines
-      .filter((line) => line.sourceBudgetAllocationId)
-      .map((line) => [line.sourceBudgetAllocationId!, line])
-  );
+  const budgetLineBySource = budgetLines.reduce((acc, line) => {
+    if (!line.sourceBudgetAllocationId) {
+      return acc;
+    }
+
+    const existing = acc.get(line.sourceBudgetAllocationId) ?? [];
+    existing.push(line);
+    acc.set(line.sourceBudgetAllocationId, existing);
+    return acc;
+  }, new Map<string, CanonicalBudgetLine[]>());
 
   const resultBySourceAllocationId = new Map(
     nodes
@@ -819,31 +826,51 @@ function buildDerivedTransactions(
       .map((node) => [node.sourceBudgetAllocationId!, node.id])
   );
 
-  const expenditureTransactions = projectRecord.expenditures.map((expenditure) => ({
-    id: `derived-expenditure-${expenditure.id}`,
-    resultId: resultBySourceAllocationId.get(expenditure.budgetAllocationId ?? "") ?? null,
-    budgetLineId: budgetLineBySource.get(expenditure.budgetAllocationId ?? "")?.id ?? null,
-    donorId: expenditure.donorId,
-    transactionType: "expenditure" as const,
-    amount: expenditure.amount,
-    currency: stripEmpty(projectRecord.reportingProfile?.currency) ?? "ETB",
-    occurredAt: expenditure.expenditureDate,
-    notes: expenditure.description,
-    source: "derived" as const,
-  }));
+  function getBudgetLineForTransaction(sourceBudgetAllocationId: string | null | undefined, occurredAt: Date) {
+    if (!sourceBudgetAllocationId) {
+      return null;
+    }
 
-  const disbursementTransactions = projectRecord.disbursementLogs.map((disbursement) => ({
-    id: `derived-disbursement-${disbursement.id}`,
-    resultId: resultBySourceAllocationId.get(disbursement.budgetAllocationId ?? "") ?? null,
-    budgetLineId: budgetLineBySource.get(disbursement.budgetAllocationId ?? "")?.id ?? null,
-    donorId: disbursement.donorId,
-    transactionType: "disbursement" as const,
-    amount: disbursement.amount,
-    currency: stripEmpty(projectRecord.reportingProfile?.currency) ?? "ETB",
-    occurredAt: disbursement.disbursedAt,
-    notes: disbursement.notes,
-    source: "derived" as const,
-  }));
+    const matchingLines = budgetLineBySource.get(sourceBudgetAllocationId);
+    if (!matchingLines || matchingLines.length === 0) {
+      return null;
+    }
+
+    const transactionYear = occurredAt.getUTCFullYear();
+    return matchingLines.find((line) => line.year === transactionYear) ?? matchingLines[0] ?? null;
+  }
+
+  const expenditureTransactions = projectRecord.expenditures.map((expenditure) => {
+    const budgetLine = getBudgetLineForTransaction(expenditure.budgetAllocationId, expenditure.expenditureDate);
+    return {
+      id: `derived-expenditure-${expenditure.id}`,
+      resultId: budgetLine?.resultId ?? resultBySourceAllocationId.get(expenditure.budgetAllocationId ?? "") ?? null,
+      budgetLineId: budgetLine?.id ?? null,
+      donorId: expenditure.donorId,
+      transactionType: "expenditure" as const,
+      amount: expenditure.amount,
+      currency: stripEmpty(projectRecord.reportingProfile?.currency) ?? "ETB",
+      occurredAt: expenditure.expenditureDate,
+      notes: expenditure.description,
+      source: "derived" as const,
+    };
+  });
+
+  const disbursementTransactions = projectRecord.disbursementLogs.map((disbursement) => {
+    const budgetLine = getBudgetLineForTransaction(disbursement.budgetAllocationId, disbursement.disbursedAt);
+    return {
+      id: `derived-disbursement-${disbursement.id}`,
+      resultId: budgetLine?.resultId ?? resultBySourceAllocationId.get(disbursement.budgetAllocationId ?? "") ?? null,
+      budgetLineId: budgetLine?.id ?? null,
+      donorId: disbursement.donorId,
+      transactionType: "disbursement" as const,
+      amount: disbursement.amount,
+      currency: stripEmpty(projectRecord.reportingProfile?.currency) ?? "ETB",
+      occurredAt: disbursement.disbursedAt,
+      notes: disbursement.notes,
+      source: "derived" as const,
+    };
+  });
 
   return [...expenditureTransactions, ...disbursementTransactions];
 }
@@ -854,13 +881,23 @@ function mergeTransactions(
 ): CanonicalTransaction[] {
   if (explicitTransactions.length === 0) return derivedTransactions;
 
+  const buildTransactionMergeKey = (transaction: CanonicalTransaction) =>
+    [
+      transaction.transactionType,
+      transaction.amount,
+      transaction.occurredAt.toISOString(),
+      transaction.donorId ?? "",
+      transaction.budgetLineId ?? "",
+      transaction.resultId ?? "",
+    ].join(":");
+
   const seenKeys = new Set(
-    explicitTransactions.map((transaction) => `${transaction.transactionType}:${transaction.amount}:${transaction.occurredAt.toISOString()}:${transaction.donorId ?? ""}`)
+    explicitTransactions.map(buildTransactionMergeKey)
   );
 
   return [
     ...explicitTransactions,
-    ...derivedTransactions.filter((transaction) => !seenKeys.has(`${transaction.transactionType}:${transaction.amount}:${transaction.occurredAt.toISOString()}:${transaction.donorId ?? ""}`)),
+    ...derivedTransactions.filter((transaction) => !seenKeys.has(buildTransactionMergeKey(transaction))),
   ];
 }
 

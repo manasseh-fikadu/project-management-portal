@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getReportingTemplateData, type ReportingTemplateId, type ReportingTemplateScope } from "@/lib/reports/template-data";
+import { canAccessProject } from "@/lib/rbac";
 
 const TEMPLATE_IDS = new Set<ReportingTemplateId>(["agra-budget-breakdown", "eif-cpd-annex", "ppg-boost"]);
 const SCOPES = new Set<ReportingTemplateScope>(["full-package", "workplan-only", "budget-only", "working-doc", "cost-build-up"]);
@@ -20,6 +21,11 @@ export async function GET(request: NextRequest) {
 
     if (!projectId) {
       return NextResponse.json({ error: "projectId is required" }, { status: 400 });
+    }
+
+    const hasAccess = await canAccessProject(session.user, projectId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (!template || !TEMPLATE_IDS.has(template as ReportingTemplateId)) {

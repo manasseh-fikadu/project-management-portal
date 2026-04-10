@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, proposals } from "@/db";
+import { db, proposalTemplates, proposals } from "@/db";
 import { and, desc, ilike, or, eq, sql, type SQL, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canAccessDonor, canAccessProject, ensureEditAccess, getAccessibleProposalIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification, getAdminUserIds } from "@/lib/notifications";
+import { isRichTextEmpty } from "@/lib/rich-text";
 
 type ProposalStatus = "draft" | "submitted" | "under_review" | "approved" | "rejected" | "withdrawn";
 type ProposalType = "grant" | "tor";
+type ProposalTemplateSection = {
+  key?: string;
+  name?: string;
+  label?: string;
+  required?: boolean;
+};
+
 const proposalStatuses = new Set<ProposalStatus>(["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]);
 const proposalTypes = new Set<ProposalType>(["grant", "tor"]);
 
@@ -31,6 +39,39 @@ function buildLookupText(payload: {
     .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
     .join(" ")
     .trim();
+}
+
+function getMissingRequiredTorSections(
+  sections: unknown,
+  templateData: unknown
+): string[] {
+  if (!Array.isArray(sections)) return [];
+
+  const values =
+    templateData && typeof templateData === "object"
+      ? (templateData as Record<string, unknown>)
+      : {};
+
+  return sections.flatMap((rawSection, index) => {
+    if (!rawSection || typeof rawSection !== "object") {
+      return [];
+    }
+
+    const section = rawSection as ProposalTemplateSection;
+    if (!section.required) {
+      return [];
+    }
+
+    const key = section.key || section.name || `section_${index + 1}`;
+    const label = section.label || section.name || `Section ${index + 1}`;
+    const value = values[key];
+
+    if (typeof value !== "string" || isRichTextEmpty(value)) {
+      return [label];
+    }
+
+    return [];
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -161,6 +202,29 @@ export async function POST(request: NextRequest) {
     const parsedAmountApproved = parseNumber(amountApproved);
     if (!title || parsedAmountRequested === null) {
       return NextResponse.json({ error: "Title and amount requested are required" }, { status: 400 });
+    }
+
+    if (proposalType === "tor") {
+      if (typeof templateId !== "string" || templateId.trim().length === 0) {
+        return NextResponse.json({ error: "Template is required for TOR submissions" }, { status: 400 });
+      }
+
+      const template = await db.query.proposalTemplates.findFirst({
+        where: eq(proposalTemplates.id, templateId),
+        columns: { id: true, sections: true },
+      });
+
+      if (!template) {
+        return NextResponse.json({ error: "Template not found" }, { status: 404 });
+      }
+
+      const missingRequiredSections = getMissingRequiredTorSections(template.sections, templateData);
+      if (missingRequiredSections.length > 0) {
+        return NextResponse.json(
+          { error: `Required sections: ${missingRequiredSections.join(", ")}` },
+          { status: 400 }
+        );
+      }
     }
 
     if (typeof projectId === "string" && projectId) {

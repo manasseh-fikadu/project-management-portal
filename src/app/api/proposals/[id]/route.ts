@@ -94,6 +94,12 @@ export async function PUT(
     }
 
     const body = await request.json();
+    if (body.projectId === "") {
+      body.projectId = null;
+    }
+    if (body.donorId === "") {
+      body.donorId = null;
+    }
     const existingProposal = await db.query.proposals.findFirst({
       where: eq(proposals.id, id),
     });
@@ -102,14 +108,14 @@ export async function PUT(
       return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
     }
 
-    if (typeof body.projectId === "string" && body.projectId) {
+    if (typeof body.projectId === "string" && body.projectId !== null) {
       const canUseProject = await canAccessProject(session.user, body.projectId);
       if (!canUseProject) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 });
       }
     }
 
-    if (typeof body.donorId === "string" && body.donorId) {
+    if (typeof body.donorId === "string" && body.donorId !== null) {
       const canUseDonor = await canAccessDonor(session.user, body.donorId);
       if (!canUseDonor) {
         return NextResponse.json({ error: "Donor not found" }, { status: 404 });

@@ -93,23 +93,36 @@ export default function DonorsPage() {
 
   useEffect(() => {
     fetchDonors();
+    fetchCurrentUserRole();
   }, []);
 
   async function fetchDonors() {
     try {
-      const [donorsRes, authRes] = await Promise.all([
-        fetch("/api/donors"),
-        fetch("/api/auth/me", { cache: "no-store" }),
-      ]);
-      const [donorsData, authData] = await Promise.all([donorsRes.json(), authRes.json()]);
+      const donorsRes = await fetch("/api/donors");
+      if (!donorsRes.ok) {
+        throw new Error("Failed to fetch donors");
+      }
+      const donorsData = await donorsRes.json();
       if (donorsData.donors) {
         setDonors(donorsData.donors);
       }
-      if (authData.user?.role) {
-        setCurrentUserRole(authData.user.role);
-      }
+    } catch (error) {
+      console.error("Error fetching donors:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchCurrentUserRole() {
+    try {
+      const authRes = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!authRes.ok) {
+        return;
+      }
+      const authData = await authRes.json();
+      setCurrentUserRole(authData.user?.role ?? null);
+    } catch (error) {
+      console.error("Error fetching current user role:", error);
     }
   }
 

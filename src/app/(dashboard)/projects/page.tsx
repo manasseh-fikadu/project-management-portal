@@ -60,20 +60,41 @@ export default function ProjectsPage() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/projects").then((res) => res.json()),
-      fetch("/api/auth/me", { cache: "no-store" }).then((res) => res.json()),
-    ])
-      .then(([projectsData, authData]) => {
-        if (projectsData.projects) {
-          setProjects(projectsData.projects);
-        }
+    async function loadProjectsPageData() {
+      await Promise.allSettled([
+        (async () => {
+          try {
+            const projectsRes = await fetch("/api/projects");
+            if (!projectsRes.ok) {
+              throw new Error("Failed to fetch projects");
+            }
+            const projectsData = await projectsRes.json();
+            if (projectsData.projects) {
+              setProjects(projectsData.projects);
+            }
+          } catch (error) {
+            console.error("Failed to fetch projects:", error);
+          }
+        })(),
+        (async () => {
+          try {
+            const authRes = await fetch("/api/auth/me", { cache: "no-store" });
+            if (!authRes.ok) {
+              return;
+            }
+            const authData = await authRes.json();
+            if (authData.user?.role) {
+              setCurrentUserRole(authData.user.role);
+            }
+          } catch (error) {
+            console.error("Failed to fetch current user role:", error);
+          }
+        })(),
+      ]);
+      setLoading(false);
+    }
 
-        if (authData.user?.role) {
-          setCurrentUserRole(authData.user.role);
-        }
-      })
-      .finally(() => setLoading(false));
+    void loadProjectsPageData();
   }, []);
 
   function formatDate(date: string | null) {

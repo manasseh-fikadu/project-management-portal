@@ -1,4 +1,5 @@
 import "server-only";
+import type { ReportingTemplateValue } from "@/lib/reports/template-data";
 
 // `exceljs` is already used elsewhere in the app at runtime, but this project
 // does not currently have full module typings available for it.
@@ -39,9 +40,6 @@ type ParsedBudgetAllocation = {
   notes: string | null;
 };
 
-type ReportingTemplateValue = "agra_budget_breakdown" | "eif_cpd_annex" | "ppg_boost";
-type ImportTemplateId = "agra-wrf-budget-detail" | "eif-cpd-annex" | "ppg-boost-workbook";
-
 type ParsedReportingDefaults = {
   primaryTemplate: ReportingTemplateValue;
   country: string | null;
@@ -63,7 +61,7 @@ export type ParsedProjectImport = {
   totalBudget: number;
   budgetYear: number | null;
   sourceSheet: string;
-  templateId: ImportTemplateId;
+  templateId: ReportingTemplateValue;
   templateLabel: string;
   reportingDefaults: ParsedReportingDefaults;
   allocations: ParsedBudgetAllocation[];
@@ -261,7 +259,7 @@ function parseAccountCell(rawValue: string | null): ParsedAccountCell {
   const raw = (rawValue ?? "").trim();
   if (!raw) return { accountCode: null, accountTitle: null };
 
-  const match = raw.match(/^([A-Za-z0-9.]+)\s*[-–]?\s*(.*)$/);
+  const match = raw.match(/^([A-Za-z0-9.]+)\s*[-–]\s*(.*)$/);
   if (!match) return { accountCode: null, accountTitle: raw };
 
   const [, accountCode, title] = match;
@@ -421,7 +419,7 @@ function parseAgraBudgetWorkbook(workbook: ExcelWorkbookLike, fallbackName: stri
     totalBudget,
     budgetYear: roundedBudgetYear,
     sourceSheet: sheet.name,
-    templateId: "agra-wrf-budget-detail",
+    templateId: "agra_budget_breakdown",
     templateLabel: "AGRA Budget Breakdown",
     reportingDefaults: {
       primaryTemplate: "agra_budget_breakdown",
@@ -579,7 +577,7 @@ function parsePpgBoostWorkbook(workbook: ExcelWorkbookLike, fallbackName: string
     totalBudget,
     budgetYear: roundedYear,
     sourceSheet: ethiopiaSheet.name,
-    templateId: "ppg-boost-workbook",
+    templateId: "ppg_boost",
     templateLabel: "PPG BOOST Workbook",
     reportingDefaults: {
       primaryTemplate: "ppg_boost",
@@ -733,7 +731,7 @@ function parseEifAnnexWorkbook(workbook: ExcelWorkbookLike, fallbackName: string
     totalBudget,
     budgetYear,
     sourceSheet: sheet.name,
-    templateId: "eif-cpd-annex",
+    templateId: "eif_cpd_annex",
     templateLabel: "EIF CPD Annex",
     reportingDefaults: {
       primaryTemplate: "eif_cpd_annex",

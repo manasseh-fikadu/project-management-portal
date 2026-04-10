@@ -29,16 +29,36 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true);
 
   const refreshCurrentUser = useCallback(async () => {
-    const response = await fetch("/api/auth/me", { cache: "no-store" });
-    const data = await response.json();
+    try {
+      const response = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!response.ok) {
+        setUser(null);
+        router.replace("/login");
+        return null;
+      }
 
-    if (data.user) {
-      setUser(data.user);
-      return;
+      let data: { user?: User | null };
+      try {
+        data = await response.json();
+      } catch {
+        setUser(null);
+        router.replace("/login");
+        return null;
+      }
+
+      if (data.user) {
+        setUser(data.user);
+        return data.user;
+      }
+
+      setUser(null);
+      router.replace("/login");
+      return null;
+    } catch {
+      setUser(null);
+      router.replace("/login");
+      return null;
     }
-
-    setUser(null);
-    router.replace("/login");
   }, [router]);
 
   useEffect(() => {

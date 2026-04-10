@@ -124,7 +124,14 @@ export default function ReportsPage() {
       return;
     }
 
-    const annualYearNumber = Number(annualYear);
+    const trimmedAnnualYear = annualYear.trim();
+    if (!trimmedAnnualYear) {
+      setPreview(null);
+      setPreviewError(null);
+      return;
+    }
+
+    const annualYearNumber = Number(trimmedAnnualYear);
     if (!Number.isFinite(annualYearNumber)) {
       setPreview(null);
       return;
@@ -134,7 +141,16 @@ export default function ReportsPage() {
     setPreviewLoading(true);
     setPreviewError(null);
 
-    fetch(`/api/reports/template/preview?projectId=${projectId}&template=${reportType}&scope=${scope}&annualYear=${annualYearNumber}`)
+    const previewParams = new URLSearchParams({
+      projectId,
+      template: reportType,
+      scope,
+    });
+    if (trimmedAnnualYear) {
+      previewParams.set("annualYear", String(annualYearNumber));
+    }
+
+    fetch(`/api/reports/template/preview?${previewParams.toString()}`)
       .then(async (res) => {
         if (!res.ok) {
           const payload = await res.json().catch(() => null);

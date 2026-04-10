@@ -329,6 +329,7 @@ export default function ProjectProfilePage() {
   const [showAllBudgetLines, setShowAllBudgetLines] = useState(false);
   const [isReportingSettingsOpen, setIsReportingSettingsOpen] = useState(false);
   const [savingReportingSettings, setSavingReportingSettings] = useState(false);
+  const [reportingSettingsError, setReportingSettingsError] = useState("");
   const [reportingForm, setReportingForm] = useState({
     primaryTemplate: "eif_cpd_annex",
     country: "",
@@ -467,6 +468,7 @@ export default function ProjectProfilePage() {
   async function handleSaveReportingSettings() {
     try {
       setSavingReportingSettings(true);
+      setReportingSettingsError("");
       const payload = {
         primaryTemplate: reportingForm.primaryTemplate,
         country: reportingForm.country || null,
@@ -492,6 +494,8 @@ export default function ProjectProfilePage() {
       await fetchProject();
       setIsReportingSettingsOpen(false);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t("site.failed_to_save_reporting_settings");
+      setReportingSettingsError(`${t("site.failed_to_save_reporting_settings")}: ${errorMessage}`);
       console.error("Failed to save reporting settings:", error);
     } finally {
       setSavingReportingSettings(false);
@@ -1016,7 +1020,15 @@ export default function ProjectProfilePage() {
                     <FileText className="mr-2 h-4 w-4" />
                     {t("reports.ppg_boost")}
                   </Button>
-                  <Dialog open={isReportingSettingsOpen} onOpenChange={setIsReportingSettingsOpen}>
+                  <Dialog
+                    open={isReportingSettingsOpen}
+                    onOpenChange={(open) => {
+                      setIsReportingSettingsOpen(open);
+                      if (!open) {
+                        setReportingSettingsError("");
+                      }
+                    }}
+                  >
                     <DialogTrigger asChild>
                       <Button type="button" className="rounded-xl">
                         {t("site.reporting_settings")}
@@ -1136,6 +1148,12 @@ export default function ProjectProfilePage() {
                             onChange={(event) => setReportingForm((current) => ({ ...current, procurementNotes: event.target.value }))}
                           />
                         </div>
+
+                        {reportingSettingsError && (
+                          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                            {reportingSettingsError}
+                          </div>
+                        )}
 
                         <div className="flex justify-end gap-2">
                           <Button type="button" variant="ghost" onClick={() => setIsReportingSettingsOpen(false)}>

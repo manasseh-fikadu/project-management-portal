@@ -70,11 +70,12 @@ function ToolbarButton({ label, active = false, disabled = false, onClick, child
   );
 }
 
-function TorSectionView(props: { node: { attrs: { label?: string } } }) {
+function TorSectionView(props: { node: { attrs: { label?: string; required?: boolean } } }) {
   return (
     <NodeViewWrapper className="tor-section-node">
       <div className="tor-section-node__label" contentEditable={false}>
         {props.node.attrs.label}
+        {props.node.attrs.required ? " *" : ""}
       </div>
       <NodeViewContent className="tor-section-node__body" />
     </NodeViewWrapper>
@@ -104,6 +105,11 @@ const TorSection = Node.create({
         default: "",
         parseHTML: (element) => element.getAttribute("data-section-placeholder") || "",
         renderHTML: (attributes) => ({ "data-section-placeholder": attributes.placeholder }),
+      },
+      required: {
+        default: false,
+        parseHTML: (element) => element.getAttribute("data-section-required") === "true",
+        renderHTML: (attributes) => ({ "data-section-required": attributes.required ? "true" : "false" }),
       },
     };
   },

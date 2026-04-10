@@ -94,6 +94,8 @@ type Proposal = {
   };
 };
 
+const PROPOSAL_EDIT_ROLES = new Set(["admin", "project_manager"]);
+
 const statusConfig: Record<string, { label: string; tone: string; panel: string }> = {
   draft: {
     label: "site.draft",
@@ -178,6 +180,7 @@ export default function ProposalDetailsPage() {
   const proposalId = params.id as string;
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [isEditingSections, setIsEditingSections] = useState(false);
   const [isSavingSections, setIsSavingSections] = useState(false);
   const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
@@ -199,9 +202,26 @@ export default function ProposalDetailsPage() {
     }
   }, [proposalId, router]);
 
+  const fetchCurrentUserRole = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!res.ok) {
+        return;
+      }
+
+      const data = await res.json();
+      if (data.user?.role) {
+        setCurrentUserRole(data.user.role);
+      }
+    } catch (error) {
+      console.error("Error fetching current user role:", error);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchProposal();
-  }, [fetchProposal]);
+    void fetchCurrentUserRole();
+  }, [fetchCurrentUserRole, fetchProposal]);
 
   const allTemplateSections = useMemo(() => {
     if (!proposal) return [];
@@ -307,6 +327,7 @@ export default function ProposalDetailsPage() {
 
   const status = statusConfig[proposal.status] || statusConfig.draft;
   const type = typeConfig[proposal.proposalType] || typeConfig.grant;
+  const canEditProposal = currentUserRole !== null && PROPOSAL_EDIT_ROLES.has(currentUserRole);
   const documents = proposal.documents ?? [];
   const torDocumentSections = allTemplateSections.map((section) => ({
     key: section.key,
@@ -494,7 +515,7 @@ export default function ProposalDetailsPage() {
                   <Target className="h-4 w-4 text-primary" />
                   <h2 className="font-serif text-2xl text-foreground">{t("site.proposal_details")}</h2>
                 </div>
-                {proposal.proposalType === "tor" ? (
+                {proposal.proposalType === "tor" && canEditProposal ? (
                   <div className="flex items-center gap-2">
                     {isEditingSections ? (
                       <>

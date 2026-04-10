@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
           disbursedAmount: 0,
           totalTasks: 0,
           completedTasks: 0,
+          weightedProgress: 0,
           physicalPerformance: 0,
           financialPerformance: 0,
         },

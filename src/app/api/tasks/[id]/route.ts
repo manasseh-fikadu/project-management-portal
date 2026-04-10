@@ -7,6 +7,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
 
 const ASSIGNEE_MUTABLE_FIELDS = new Set(["status", "progress", "completedAt"]);
+const TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
 
 function isAssigneeStatusUpdate(payload: unknown): payload is Record<string, unknown> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -15,6 +16,36 @@ function isAssigneeStatusUpdate(payload: unknown): payload is Record<string, unk
 
   const keys = Object.keys(payload);
   return keys.length > 0 && keys.every((key) => ASSIGNEE_MUTABLE_FIELDS.has(key));
+}
+
+function buildAssigneeUpdate(payload: unknown): Record<string, unknown> | null {
+  if (!isAssigneeStatusUpdate(payload)) {
+    return null;
+  }
+
+  const assigneeUpdate: Record<string, unknown> = {};
+
+  if (typeof payload.status === "string" && TASK_STATUSES.has(payload.status)) {
+    assigneeUpdate.status = payload.status;
+  }
+
+  if (typeof payload.progress === "number" && Number.isFinite(payload.progress)) {
+    const normalizedProgress = Math.round(payload.progress);
+    assigneeUpdate.progress = Math.min(100, Math.max(0, normalizedProgress));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "completedAt")) {
+    if (payload.completedAt === null || payload.completedAt === "") {
+      assigneeUpdate.completedAt = null;
+    } else if (typeof payload.completedAt === "string") {
+      const parsedCompletedAt = new Date(payload.completedAt);
+      if (!Number.isNaN(parsedCompletedAt.getTime())) {
+        assigneeUpdate.completedAt = parsedCompletedAt;
+      }
+    }
+  }
+
+  return Object.keys(assigneeUpdate).length > 0 ? assigneeUpdate : null;
 }
 
 export async function GET(
@@ -83,6 +114,7 @@ export async function PUT(
     }
 
     const body = await request.json();
+    const assigneeUpdate = buildAssigneeUpdate(body);
     const existingTask = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
     });
@@ -93,7 +125,7 @@ export async function PUT(
 
     const accessError = ensureEditAccess(session.user);
     const isAssigneeManagingOwnTask =
-      existingTask.assignedTo === session.user.id && isAssigneeStatusUpdate(body);
+      existingTask.assignedTo === session.user.id && assigneeUpdate !== null;
 
     if (accessError && !isAssigneeManagingOwnTask) {
       return accessError;
@@ -107,7 +139,7 @@ export async function PUT(
     }
 
     const updateData: Record<string, unknown> = {
-      ...body,
+      ...(isAssigneeManagingOwnTask ? assigneeUpdate : body),
       updatedAt: new Date(),
     };
 
@@ -115,14 +147,9 @@ export async function PUT(
       updateData.dueDate = new Date(body.dueDate);
     }
 
-    if (typeof body.progress === "number" && Number.isFinite(body.progress)) {
-      const normalizedProgress = Math.round(body.progress);
-      updateData.progress = Math.min(100, Math.max(0, normalizedProgress));
-    }
-
-    if (body.status === "completed") {
+    if (updateData.status === "completed") {
       updateData.progress = 100;
-      if (!body.completedAt) {
+      if (updateData.completedAt === undefined) {
         updateData.completedAt = new Date();
       }
     }

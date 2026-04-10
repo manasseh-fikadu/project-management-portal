@@ -36,6 +36,7 @@ import {
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
 import { SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
+import { isRichTextEmpty } from "@/lib/rich-text";
 
 type Donor = {
   id: string;
@@ -266,6 +267,7 @@ export default function ProposalsPage() {
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ProposalTemplate | null>(null);
   const [templateSearch, setTemplateSearch] = useState("");
+  const [proposalFormError, setProposalFormError] = useState("");
   const [templateFormError, setTemplateFormError] = useState("");
   const [isTemplateSaving, setIsTemplateSaving] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
@@ -574,6 +576,7 @@ export default function ProposalsPage() {
   }
 
   function resetForm() {
+    setProposalFormError("");
     setFormData({
       title: "",
       proposalType: "grant",
@@ -599,6 +602,23 @@ export default function ProposalsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setProposalFormError("");
+
+    if (formData.proposalType === "tor") {
+      if (!selectedTemplate) {
+        setProposalFormError(`${t("site.template")}: ${t("site.required_label")}`);
+        return;
+      }
+
+      const missingRequiredSections = selectedTemplateSections
+        .filter((section) => section.required && isRichTextEmpty(formData.templateData[section.key]))
+        .map((section) => section.label);
+
+      if (missingRequiredSections.length > 0) {
+        setProposalFormError(`${t("site.required")}: ${missingRequiredSections.join(", ")}`);
+        return;
+      }
+    }
 
     const payload = {
       ...formData,
@@ -622,9 +642,10 @@ export default function ProposalsPage() {
           body: JSON.stringify(payload),
         });
         const data = await res.json();
-        if (data.proposal) {
-          await refreshProposalData();
+        if (!res.ok || !data.proposal) {
+          throw new Error(data.error || "Could not save proposal.");
         }
+        await refreshProposalData();
       } else {
         const res = await fetch("/api/proposals", {
           method: "POST",
@@ -632,13 +653,15 @@ export default function ProposalsPage() {
           body: JSON.stringify(payload),
         });
         const data = await res.json();
-        if (data.proposal) {
-          await refreshProposalData();
+        if (!res.ok || !data.proposal) {
+          throw new Error(data.error || "Could not save proposal.");
         }
+        await refreshProposalData();
       }
       resetForm();
       setIsAddDialogOpen(false);
     } catch (error) {
+      setProposalFormError(error instanceof Error ? error.message : "Could not save proposal.");
       console.error(t("site.error_saving_proposal"), error);
     }
   }
@@ -671,6 +694,7 @@ export default function ProposalsPage() {
   }
 
   function openEditDialog(proposal: Proposal) {
+    setProposalFormError("");
     setEditingProposal(proposal);
     setFormData({
       title: proposal.title,
@@ -762,6 +786,12 @@ export default function ProposalsPage() {
     );
   });
   const selectedTemplate = templates.find((template) => template.id === formData.templateId);
+  const selectedTemplateSections = selectedTemplate?.sections.map((section, index) => ({
+    key: section.key || section.name || `section_${index + 1}`,
+    label: section.label || section.name || t("site.section_number", { number: index + 1 }),
+    placeholder: section.placeholder || "",
+    required: Boolean(section.required),
+  })) || [];
   const standardTorTemplate = getStandardTorTemplate(t);
 
   const summaryProposals = viewMode === "pipeline" ? pipelineProposals : proposals;
@@ -1141,7 +1171,8 @@ export default function ProposalsPage() {
                       <Label htmlFor="proposalType">{t("site.entry_type")}</Label>
                       <Select
                         value={formData.proposalType}
-                        onValueChange={(value) =>
+                        onValueChange={(value) => {
+                          setProposalFormError("");
                           setFormData((prev) => ({
                             ...prev,
                             proposalType: value,
@@ -1149,8 +1180,8 @@ export default function ProposalsPage() {
                             templateData: value === "tor" ? prev.templateData : {},
                             torCode: value === "tor" ? prev.torCode : "",
                             torSubmissionRef: value === "tor" ? prev.torSubmissionRef : "",
-                          }))
-                        }
+                          }));
+                        }}
                       >
                         <SelectTrigger className="rounded-xl">
                           <SelectValue />
@@ -1166,13 +1197,14 @@ export default function ProposalsPage() {
                         <Label htmlFor="templateId">{t("site.template")}</Label>
                         <Select
                           value={formData.templateId}
-                          onValueChange={(value) =>
+                          onValueChange={(value) => {
+                            setProposalFormError("");
                             setFormData((prev) => ({
                               ...prev,
                               templateId: value,
                               templateData: {},
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <SelectTrigger className="rounded-xl">
                             <SelectValue placeholder={t("site.select_template")} />
@@ -1220,18 +1252,15 @@ export default function ProposalsPage() {
                         <p className="text-xs text-muted-foreground">{t("site.write_your_tor_in_one_flow")}</p>
                       </div>
                       <TorDocumentEditor
-                        sections={selectedTemplate.sections.map((section, index) => ({
-                          key: section.key || section.name || `section_${index}`,
-                          label: `${section.label || section.name || t("site.section_number", { number: index + 1 })}${section.required ? " *" : ""}`,
-                          placeholder: section.placeholder || "",
-                        }))}
+                        sections={selectedTemplateSections}
                         values={formData.templateData}
-                        onChange={(nextValue) =>
+                        onChange={(nextValue) => {
+                          setProposalFormError("");
                           setFormData((prev) => ({
                             ...prev,
                             templateData: nextValue,
-                          }))
-                        }
+                          }));
+                        }}
                       />
                     </div>
                   ) : null}
@@ -1388,6 +1417,10 @@ export default function ProposalsPage() {
                       className="rounded-xl"
                     />
                   </div>
+
+                  {proposalFormError ? (
+                    <p className="text-sm text-destructive">{proposalFormError}</p>
+                  ) : null}
 
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>
