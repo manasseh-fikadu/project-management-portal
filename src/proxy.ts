@@ -59,7 +59,7 @@ export async function proxy(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const secret = process.env.SESSION_SECRET;
 
-  const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/register");
+  const isAuthPage = pathname.startsWith("/login");
   const isDashboardPage = pathname.startsWith("/dashboard");
   const isApiAuth = pathname === "/api/auth" || pathname.startsWith("/api/auth/");
   const isApiRoute = pathname === "/api" || pathname.startsWith("/api/");

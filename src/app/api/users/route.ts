@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { getSession, registerUser, resolveUserRole, type ProfileRole } from "@/lib/auth";
+import { createUser, getSession, resolveUserRole, type ProfileRole } from "@/lib/auth";
 
 const VALID_ROLES: ProfileRole[] = ["admin", "project_manager", "team_member", "donor"];
 
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
     }
 
-    const newUser = await registerUser(email, password, firstName, lastName, role, department, {
+    const newUser = await createUser(email, password, firstName, lastName, role, department, {
       mustChangePassword: true,
     });
 

@@ -120,7 +120,7 @@ export async function clearSessionCookie(): Promise<void> {
   cookieStore.delete(COOKIE_NAME);
 }
 
-export async function registerUser(
+export async function createUser(
   email: string,
   password: string,
   firstName: string,
