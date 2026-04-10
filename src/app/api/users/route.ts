@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { getSession, registerUser, resolveUserRole, type ProfileRole } from "@/lib/auth";
 
-const VALID_ROLES: ProfileRole[] = ["admin", "project_manager", "beneficiary", "donor"];
+const VALID_ROLES: ProfileRole[] = ["admin", "project_manager", "team_member", "donor"];
 
 export async function GET() {
   try {

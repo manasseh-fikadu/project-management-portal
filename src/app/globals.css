@@ -8,7 +8,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-dm-sans);
-  --font-serif: var(--font-dm-serif);
+  --font-serif: var(--font-dm-sans);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -57,85 +57,85 @@
 
 :root {
   --radius: 0.75rem;
-  --background: #F5F7F0;
-  --foreground: #2A3328;
-  --card: #FEFEFE;
-  --card-foreground: #2A3328;
-  --popover: #FEFEFE;
-  --popover-foreground: #2A3328;
-  --primary: #7A9B6D;
-  --primary-foreground: #FEFEFE;
-  --secondary: #E8F0E3;
-  --secondary-foreground: #5C7A50;
-  --muted: #EDF2E8;
-  --muted-foreground: #6E7A6B;
-  --accent: #E8F0E3;
-  --accent-foreground: #5C7A50;
+  --background: #F2F7F0;
+  --foreground: #1C2E22;
+  --card: #FEFFFE;
+  --card-foreground: #1C2E22;
+  --popover: #FEFFFE;
+  --popover-foreground: #1C2E22;
+  --primary: #2B7A4B;
+  --primary-foreground: #FFFFFF;
+  --secondary: #D4E8DC;
+  --secondary-foreground: #236B3D;
+  --muted: #E0ECE3;
+  --muted-foreground: #5A7462;
+  --accent: #D4E8DC;
+  --accent-foreground: #236B3D;
   --destructive: #B85C5C;
-  --border: #D8E0D2;
-  --input: #D8E0D2;
-  --ring: #7A9B6D;
-  --chart-1: #7A9B6D;
+  --border: #C0D4C6;
+  --input: #C0D4C6;
+  --ring: #2B7A4B;
+  --chart-1: #2B7A4B;
   --chart-2: #8B7EB8;
   --chart-3: #C4908F;
   --chart-4: #C4A63A;
-  --chart-5: #5C7A50;
-  --sage-pale: #E8F0E3;
+  --chart-5: #1E5C36;
+  --sage-pale: #D4E8DC;
   --lavender: #8B7EB8;
   --lavender-pale: #E8E4F2;
   --rose-muted: #C4908F;
   --rose-pale: #F2E4E4;
   --amber-warm: #C4A63A;
   --amber-pale: #F5EDD4;
-  --sidebar: #FEFEFE;
-  --sidebar-foreground: #2A3328;
-  --sidebar-primary: #7A9B6D;
-  --sidebar-primary-foreground: #FEFEFE;
-  --sidebar-accent: #E8F0E3;
-  --sidebar-accent-foreground: #5C7A50;
-  --sidebar-border: #D8E0D2;
-  --sidebar-ring: #7A9B6D;
+  --sidebar: #163D28;
+  --sidebar-foreground: #E0F0E5;
+  --sidebar-primary: #48B96E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1E5038;
+  --sidebar-accent-foreground: #D0E8D8;
+  --sidebar-border: #245A3C;
+  --sidebar-ring: #48B96E;
 }
 
 .dark {
-  --background: #1A211A;
-  --foreground: #E0E8DC;
-  --card: #222C22;
-  --card-foreground: #E0E8DC;
-  --popover: #222C22;
-  --popover-foreground: #E0E8DC;
-  --primary: #8FB883;
-  --primary-foreground: #1A211A;
-  --secondary: #2A352A;
-  --secondary-foreground: #B5CCAA;
-  --muted: #2A352A;
-  --muted-foreground: #8A9A82;
-  --accent: #2A352A;
-  --accent-foreground: #B5CCAA;
+  --background: #0F1A14;
+  --foreground: #D8E8DC;
+  --card: #152218;
+  --card-foreground: #D8E8DC;
+  --popover: #152218;
+  --popover-foreground: #D8E8DC;
+  --primary: #4CAF6E;
+  --primary-foreground: #0F1A14;
+  --secondary: #1A3022;
+  --secondary-foreground: #90C8A0;
+  --muted: #1A3022;
+  --muted-foreground: #6E9A78;
+  --accent: #1A3022;
+  --accent-foreground: #90C8A0;
   --destructive: #D46B6B;
-  --border: #354035;
-  --input: #3A453A;
-  --ring: #8FB883;
-  --chart-1: #8FB883;
+  --border: #1E3828;
+  --input: #1E3C2A;
+  --ring: #4CAF6E;
+  --chart-1: #4CAF6E;
   --chart-2: #A899D0;
   --chart-3: #D4A0A0;
   --chart-4: #D4B65A;
-  --chart-5: #6E9B5E;
-  --sage-pale: #2A352A;
+  --chart-5: #38895A;
+  --sage-pale: #1A3022;
   --lavender: #A899D0;
   --lavender-pale: #342F44;
   --rose-muted: #D4A0A0;
   --rose-pale: #3A2E2E;
   --amber-warm: #D4B65A;
   --amber-pale: #3A3420;
-  --sidebar: #1E271E;
-  --sidebar-foreground: #E0E8DC;
-  --sidebar-primary: #8FB883;
-  --sidebar-primary-foreground: #1A211A;
-  --sidebar-accent: #2A352A;
-  --sidebar-accent-foreground: #B5CCAA;
-  --sidebar-border: #354035;
-  --sidebar-ring: #8FB883;
+  --sidebar: #0E2218;
+  --sidebar-foreground: #C8DCD0;
+  --sidebar-primary: #4CAF6E;
+  --sidebar-primary-foreground: #0E2218;
+  --sidebar-accent: #162E1E;
+  --sidebar-accent-foreground: #A0C8AC;
+  --sidebar-border: #1E3C2A;
+  --sidebar-ring: #4CAF6E;
 }
 
 @layer base {
@@ -144,5 +144,177 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+  }
+  .font-serif {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  .rich-text-editor__surface {
+    @apply rounded-b-[1.25rem];
+  }
+
+  .rich-text-editor__content {
+    @apply text-sm leading-7 text-foreground outline-none;
+  }
+
+  .rich-text-editor__content p.is-editor-empty:first-child::before {
+    color: color-mix(in srgb, var(--muted-foreground) 75%, transparent);
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .rich-text-editor__content h2 {
+    @apply mt-4 text-lg font-semibold text-foreground;
+  }
+
+  .rich-text-editor__content h3 {
+    @apply mt-4 text-base font-semibold text-foreground;
+  }
+
+  .rich-text-editor__content p + p,
+  .rich-text-editor__content p + ul,
+  .rich-text-editor__content p + ol,
+  .rich-text-editor__content ul + p,
+  .rich-text-editor__content ol + p,
+  .rich-text-editor__content h2 + p,
+  .rich-text-editor__content h3 + p {
+    @apply mt-3;
+  }
+
+  .rich-text-editor__content ul {
+    @apply ml-5 list-disc space-y-1;
+  }
+
+  .rich-text-editor__content ol {
+    @apply ml-5 list-decimal space-y-1;
+  }
+
+  .rich-text-render {
+    @apply text-sm leading-7 text-foreground/90;
+  }
+
+  .rich-text-render h2 {
+    @apply mt-4 text-lg font-semibold text-foreground;
+  }
+
+  .rich-text-render h3 {
+    @apply mt-4 text-base font-semibold text-foreground;
+  }
+
+  .rich-text-render p + p,
+  .rich-text-render p + ul,
+  .rich-text-render p + ol,
+  .rich-text-render ul + p,
+  .rich-text-render ol + p,
+  .rich-text-render h2 + p,
+  .rich-text-render h3 + p {
+    @apply mt-3;
+  }
+
+  .rich-text-render ul {
+    @apply ml-5 list-disc space-y-1;
+  }
+
+  .rich-text-render ol {
+    @apply ml-5 list-decimal space-y-1;
+  }
+
+  .tor-document__content {
+    @apply outline-none;
+  }
+
+  .tor-document__surface {
+    @apply bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(242,247,240,0.58))];
+  }
+
+  .tor-document__content .tor-section-node + .tor-section-node,
+  .tor-document-render .tor-section-node + .tor-section-node {
+    @apply mt-5;
+  }
+
+  .tor-section-node {
+    @apply rounded-[1.35rem] border border-border/60 bg-card/90 shadow-[0_10px_28px_rgba(34,48,24,0.05)];
+  }
+
+  .tor-section-node__label {
+    @apply rounded-t-[1.35rem] border-b border-border/60 bg-[linear-gradient(180deg,rgba(212,232,220,0.5),rgba(255,255,255,0.86))] px-5 py-3 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground;
+  }
+
+  .tor-section-node__body {
+    @apply min-h-[10rem] px-5 py-5 text-sm leading-7 text-foreground outline-none;
+  }
+
+  .tor-section-node__body p.is-editor-empty:first-child::before {
+    color: color-mix(in srgb, var(--muted-foreground) 75%, transparent);
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .tor-section-node__body p + p,
+  .tor-section-node__body p + ul,
+  .tor-section-node__body p + ol,
+  .tor-section-node__body ul + p,
+  .tor-section-node__body ol + p,
+  .tor-document-render .tor-section-node__body p + p,
+  .tor-document-render .tor-section-node__body p + ul,
+  .tor-document-render .tor-section-node__body p + ol,
+  .tor-document-render .tor-section-node__body ul + p,
+  .tor-document-render .tor-section-node__body ol + p {
+    @apply mt-3;
+  }
+
+  .tor-section-node__body ul,
+  .tor-document-render .tor-section-node__body ul {
+    @apply ml-5 list-disc space-y-1;
+  }
+
+  .tor-section-node__body ol,
+  .tor-document-render .tor-section-node__body ol {
+    @apply ml-5 list-decimal space-y-1;
+  }
+
+  .tor-section-node__body blockquote,
+  .tor-document-render .tor-section-node__body blockquote {
+    @apply border-l-4 border-primary/30 pl-4 italic text-foreground/80;
+  }
+
+  .tor-section-node__body a,
+  .tor-document-render .tor-section-node__body a {
+    @apply text-primary underline decoration-primary/35 underline-offset-4;
+  }
+
+  .tor-section-node__body pre,
+  .tor-document-render .tor-section-node__body pre {
+    @apply overflow-x-auto rounded-xl bg-[#173625] px-4 py-3 text-sm text-[#EAF6EE];
+  }
+
+  .tor-section-node__body code,
+  .tor-document-render .tor-section-node__body code {
+    @apply rounded bg-muted px-1.5 py-0.5 text-[0.92em];
+  }
+
+  .tor-section-node__body pre code,
+  .tor-document-render .tor-section-node__body pre code {
+    @apply bg-transparent p-0 text-inherit;
+  }
+
+  .tor-section-node__body hr,
+  .tor-document-render .tor-section-node__body hr {
+    @apply my-5 border-border;
+  }
+
+  .tor-section-node__body mark,
+  .tor-document-render .tor-section-node__body mark {
+    background: color-mix(in srgb, var(--amber-pale) 88%, white);
+    color: inherit;
+    padding: 0.05rem 0.2rem;
+    border-radius: 0.3rem;
   }
 }

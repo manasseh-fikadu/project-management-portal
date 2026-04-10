@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TorDocumentEditor } from "@/components/ui/tor-document-editor";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -35,6 +36,7 @@ import {
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
 import { SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
+import { isRichTextEmpty } from "@/lib/rich-text";
 
 type Donor = {
   id: string;
@@ -265,6 +267,7 @@ export default function ProposalsPage() {
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ProposalTemplate | null>(null);
   const [templateSearch, setTemplateSearch] = useState("");
+  const [proposalFormError, setProposalFormError] = useState("");
   const [templateFormError, setTemplateFormError] = useState("");
   const [isTemplateSaving, setIsTemplateSaving] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
@@ -573,6 +576,7 @@ export default function ProposalsPage() {
   }
 
   function resetForm() {
+    setProposalFormError("");
     setFormData({
       title: "",
       proposalType: "grant",
@@ -598,6 +602,23 @@ export default function ProposalsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setProposalFormError("");
+
+    if (formData.proposalType === "tor") {
+      if (!selectedTemplate) {
+        setProposalFormError(`${t("site.template")}: ${t("site.required_label")}`);
+        return;
+      }
+
+      const missingRequiredSections = selectedTemplateSections
+        .filter((section) => section.required && isRichTextEmpty(formData.templateData[section.key]))
+        .map((section) => section.label);
+
+      if (missingRequiredSections.length > 0) {
+        setProposalFormError(`${t("site.required")}: ${missingRequiredSections.join(", ")}`);
+        return;
+      }
+    }
 
     const payload = {
       ...formData,
@@ -621,9 +642,10 @@ export default function ProposalsPage() {
           body: JSON.stringify(payload),
         });
         const data = await res.json();
-        if (data.proposal) {
-          await refreshProposalData();
+        if (!res.ok || !data.proposal) {
+          throw new Error(data.error || "Could not save proposal.");
         }
+        await refreshProposalData();
       } else {
         const res = await fetch("/api/proposals", {
           method: "POST",
@@ -631,13 +653,15 @@ export default function ProposalsPage() {
           body: JSON.stringify(payload),
         });
         const data = await res.json();
-        if (data.proposal) {
-          await refreshProposalData();
+        if (!res.ok || !data.proposal) {
+          throw new Error(data.error || "Could not save proposal.");
         }
+        await refreshProposalData();
       }
       resetForm();
       setIsAddDialogOpen(false);
     } catch (error) {
+      setProposalFormError(error instanceof Error ? error.message : "Could not save proposal.");
       console.error(t("site.error_saving_proposal"), error);
     }
   }
@@ -670,6 +694,7 @@ export default function ProposalsPage() {
   }
 
   function openEditDialog(proposal: Proposal) {
+    setProposalFormError("");
     setEditingProposal(proposal);
     setFormData({
       title: proposal.title,
@@ -761,6 +786,12 @@ export default function ProposalsPage() {
     );
   });
   const selectedTemplate = templates.find((template) => template.id === formData.templateId);
+  const selectedTemplateSections = selectedTemplate?.sections.map((section, index) => ({
+    key: section.key || section.name || `section_${index + 1}`,
+    label: section.label || section.name || t("site.section_number", { number: index + 1 }),
+    placeholder: section.placeholder || "",
+    required: Boolean(section.required),
+  })) || [];
   const standardTorTemplate = getStandardTorTemplate(t);
 
   const summaryProposals = viewMode === "pipeline" ? pipelineProposals : proposals;
@@ -1117,13 +1148,13 @@ export default function ProposalsPage() {
                   <Plus className="h-4 w-4 mr-2" /> {t("site.new_entry")}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0">
                 <DialogHeader>
-                  <DialogTitle className="font-serif text-xl">
+                  <DialogTitle className="border-b border-border/70 px-6 py-4 font-serif text-xl">
                     {editingProposal ? t("site.edit_entry") : t("site.create_new_entry")}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+                <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
                   <div className="space-y-2">
                     <Label htmlFor="title">{t("site.proposal_title")}</Label>
                     <Input
@@ -1140,7 +1171,8 @@ export default function ProposalsPage() {
                       <Label htmlFor="proposalType">{t("site.entry_type")}</Label>
                       <Select
                         value={formData.proposalType}
-                        onValueChange={(value) =>
+                        onValueChange={(value) => {
+                          setProposalFormError("");
                           setFormData((prev) => ({
                             ...prev,
                             proposalType: value,
@@ -1148,8 +1180,8 @@ export default function ProposalsPage() {
                             templateData: value === "tor" ? prev.templateData : {},
                             torCode: value === "tor" ? prev.torCode : "",
                             torSubmissionRef: value === "tor" ? prev.torSubmissionRef : "",
-                          }))
-                        }
+                          }));
+                        }}
                       >
                         <SelectTrigger className="rounded-xl">
                           <SelectValue />
@@ -1165,13 +1197,14 @@ export default function ProposalsPage() {
                         <Label htmlFor="templateId">{t("site.template")}</Label>
                         <Select
                           value={formData.templateId}
-                          onValueChange={(value) =>
+                          onValueChange={(value) => {
+                            setProposalFormError("");
                             setFormData((prev) => ({
                               ...prev,
                               templateId: value,
                               templateData: {},
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <SelectTrigger className="rounded-xl">
                             <SelectValue placeholder={t("site.select_template")} />
@@ -1213,49 +1246,22 @@ export default function ProposalsPage() {
                   )}
 
                   {formData.proposalType === "tor" && selectedTemplate?.sections?.length ? (
-                    <div className="space-y-3 rounded-xl border border-border p-4">
-                      <p className="text-sm font-medium text-foreground">{t("site.template_sections")}</p>
-                      {selectedTemplate.sections.map((section, index) => {
-                        const fieldKey = section.key || section.name || `section_${index}`;
-                        const fieldLabel = section.label || section.name || t("site.section_number", { number: index + 1 });
-                        const isLongText = section.type === "textarea" || section.type === "long_text";
-                        return (
-                          <div key={fieldKey} className="space-y-2">
-                            <Label htmlFor={`template-${fieldKey}`}>
-                              {fieldLabel}
-                              {section.required ? " *" : ""}
-                            </Label>
-                            {isLongText ? (
-                              <Textarea
-                                id={`template-${fieldKey}`}
-                                value={formData.templateData[fieldKey] || ""}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    templateData: { ...prev.templateData, [fieldKey]: e.target.value },
-                                  }))
-                                }
-                                placeholder={section.placeholder || ""}
-                                rows={3}
-                                className="rounded-xl"
-                              />
-                            ) : (
-                              <Input
-                                id={`template-${fieldKey}`}
-                                value={formData.templateData[fieldKey] || ""}
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    templateData: { ...prev.templateData, [fieldKey]: e.target.value },
-                                  }))
-                                }
-                                placeholder={section.placeholder || ""}
-                                className="rounded-xl"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="space-y-3 rounded-[1.5rem] border border-border/70 bg-[linear-gradient(180deg,rgba(254,255,254,0.96),rgba(242,247,240,0.76))] p-5 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-foreground">{t("site.template_sections")}</p>
+                        <p className="text-xs text-muted-foreground">{t("site.write_your_tor_in_one_flow")}</p>
+                      </div>
+                      <TorDocumentEditor
+                        sections={selectedTemplateSections}
+                        values={formData.templateData}
+                        onChange={(nextValue) => {
+                          setProposalFormError("");
+                          setFormData((prev) => ({
+                            ...prev,
+                            templateData: nextValue,
+                          }));
+                        }}
+                      />
                     </div>
                   ) : null}
 
@@ -1411,6 +1417,10 @@ export default function ProposalsPage() {
                       className="rounded-xl"
                     />
                   </div>
+
+                  {proposalFormError ? (
+                    <p className="text-sm text-destructive">{proposalFormError}</p>
+                  ) : null}
 
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="ghost" onClick={() => { setIsAddDialogOpen(false); resetForm(); }}>

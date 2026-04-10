@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlus, Shield, Users, Briefcase, Heart, Search, Leaf } from "lucide-react";
+import { UserPlus, Shield, Users, Briefcase, Search, Leaf } from "lucide-react";
 
 type User = {
   id: string;
@@ -43,8 +43,8 @@ type CurrentUser = {
 const ROLE_CONFIG: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
   admin: { label: "roles.admin", bg: "bg-rose-pale", text: "text-rose-muted", icon: Shield },
   project_manager: { label: "roles.project_manager", bg: "bg-sage-pale", text: "text-primary", icon: Briefcase },
-  beneficiary: { label: "roles.beneficiary", bg: "bg-lavender-pale", text: "text-lavender", icon: Heart },
-  donor: { label: "site.donor", bg: "bg-amber-pale", text: "text-amber-warm", icon: Users },
+  team_member: { label: "roles.team_member", bg: "bg-lavender-pale", text: "text-lavender", icon: Users },
+  donor: { label: "roles.donor", bg: "bg-amber-pale", text: "text-amber-warm", icon: Users },
 };
 
 export default function UsersPage() {
@@ -63,7 +63,7 @@ export default function UsersPage() {
     lastName: "",
     email: "",
     password: "",
-    role: "beneficiary",
+    role: "team_member",
     department: "",
   });
 
@@ -93,7 +93,7 @@ export default function UsersPage() {
   }, [fetchUsers, router]);
 
   function resetForm() {
-    setForm({ firstName: "", lastName: "", email: "", password: "", role: "beneficiary", department: "" });
+    setForm({ firstName: "", lastName: "", email: "", password: "", role: "team_member", department: "" });
     setError("");
   }
 
@@ -245,8 +245,8 @@ export default function UsersPage() {
                     <SelectContent>
                       <SelectItem value="admin">{t("roles.admin")}</SelectItem>
                       <SelectItem value="project_manager">{t("roles.project_manager")}</SelectItem>
-                      <SelectItem value="beneficiary">{t("roles.beneficiary")}</SelectItem>
-                      <SelectItem value="donor">{t("site.donor")}</SelectItem>
+                      <SelectItem value="team_member">{t("roles.team_member")}</SelectItem>
+                      <SelectItem value="donor">{t("roles.donor")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -317,7 +317,7 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredUsers.map((user) => {
-                  const roleConfig = ROLE_CONFIG[user.role] || ROLE_CONFIG.beneficiary;
+                  const roleConfig = ROLE_CONFIG[user.role] || ROLE_CONFIG.team_member;
                   const RoleIcon = roleConfig.icon;
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">

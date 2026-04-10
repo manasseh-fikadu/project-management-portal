@@ -152,6 +152,22 @@ type BudgetAllocation = {
   notes: string | null;
 };
 
+type ReportingProfile = {
+  id: string;
+  primaryTemplate: string;
+  country: string | null;
+  currency: string;
+  reportingStartDate: string | null;
+  reportingEndDate: string | null;
+  annualYear: number | null;
+  fundingFacility1Label: string | null;
+  fundingFacility2Label: string | null;
+  otherFundingLabel: string | null;
+  leadAgency: string | null;
+  implementingPartner: string | null;
+  procurementNotes: string | null;
+};
+
 type Project = {
   id: string;
   name: string;
@@ -175,6 +191,7 @@ type Project = {
   tasks: Task[];
   documents: Document[];
   budgetAllocations: BudgetAllocation[];
+  reportingProfile: ReportingProfile | null;
   members: Array<{
     role: string;
     user: {
@@ -310,6 +327,23 @@ export default function ProjectProfilePage() {
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
   const [showAllBudgetLines, setShowAllBudgetLines] = useState(false);
+  const [isReportingSettingsOpen, setIsReportingSettingsOpen] = useState(false);
+  const [savingReportingSettings, setSavingReportingSettings] = useState(false);
+  const [reportingSettingsError, setReportingSettingsError] = useState("");
+  const [reportingForm, setReportingForm] = useState({
+    primaryTemplate: "eif_cpd_annex",
+    country: "",
+    currency: "ETB",
+    reportingStartDate: "",
+    reportingEndDate: "",
+    annualYear: "",
+    fundingFacility1Label: "",
+    fundingFacility2Label: "",
+    otherFundingLabel: "",
+    leadAgency: "",
+    implementingPartner: "",
+    procurementNotes: "",
+  });
   const [sendingInvites, setSendingInvites] = useState<Set<string>>(new Set());
   const [portalInviteFeedback, setPortalInviteFeedback] = useState<{
     open: boolean;
@@ -349,6 +383,21 @@ export default function ProjectProfilePage() {
       const data = await res.json();
       if (data.project) {
         setProject(data.project);
+        const profile = data.project.reportingProfile;
+        setReportingForm({
+          primaryTemplate: profile?.primaryTemplate ?? "eif_cpd_annex",
+          country: profile?.country ?? "",
+          currency: profile?.currency ?? "ETB",
+          reportingStartDate: (profile?.reportingStartDate ?? data.project.startDate ?? "")?.slice(0, 10) ?? "",
+          reportingEndDate: (profile?.reportingEndDate ?? data.project.endDate ?? "")?.slice(0, 10) ?? "",
+          annualYear: profile?.annualYear ? String(profile.annualYear) : ((data.project.startDate ?? "").slice(0, 4) || ""),
+          fundingFacility1Label: profile?.fundingFacility1Label ?? "",
+          fundingFacility2Label: profile?.fundingFacility2Label ?? "",
+          otherFundingLabel: profile?.otherFundingLabel ?? "",
+          leadAgency: profile?.leadAgency ?? "",
+          implementingPartner: profile?.implementingPartner ?? "",
+          procurementNotes: profile?.procurementNotes ?? "",
+        });
       } else {
         router.push("/projects");
       }
@@ -395,7 +444,11 @@ export default function ProjectProfilePage() {
   }
 
   function getRoleLabel(role: string) {
-    if (role === "admin" || role === "project_manager" || role === "beneficiary" || role === "user") {
+    if (role === "user") {
+      return t("roles.team_member");
+    }
+
+    if (role === "admin" || role === "project_manager" || role === "team_member" || role === "donor") {
       return t(`roles.${role}`);
     }
 
@@ -406,6 +459,47 @@ export default function ProjectProfilePage() {
     if (!project || project.milestones.length === 0) return 0;
     const completed = project.milestones.filter((m) => m.status === "completed").length;
     return Math.round((completed / project.milestones.length) * 100);
+  }
+
+  function openReportGenerator(template: "agra-budget-breakdown" | "eif-cpd-annex" | "ppg-boost") {
+    router.push(`/reports?projectId=${projectId}&template=${template}`);
+  }
+
+  async function handleSaveReportingSettings() {
+    try {
+      setSavingReportingSettings(true);
+      setReportingSettingsError("");
+      const payload = {
+        primaryTemplate: reportingForm.primaryTemplate,
+        country: reportingForm.country || null,
+        currency: reportingForm.currency,
+        reportingStartDate: reportingForm.reportingStartDate || null,
+        reportingEndDate: reportingForm.reportingEndDate || null,
+        annualYear: reportingForm.annualYear ? Number(reportingForm.annualYear) : null,
+        fundingFacility1Label: reportingForm.fundingFacility1Label || null,
+        fundingFacility2Label: reportingForm.fundingFacility2Label || null,
+        otherFundingLabel: reportingForm.otherFundingLabel || null,
+        leadAgency: reportingForm.leadAgency || null,
+        implementingPartner: reportingForm.implementingPartner || null,
+        procurementNotes: reportingForm.procurementNotes || null,
+      };
+      const res = await fetch(`/api/projects/${projectId}/reporting-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to save reporting settings");
+      }
+      await fetchProject();
+      setIsReportingSettingsOpen(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t("site.failed_to_save_reporting_settings");
+      setReportingSettingsError(`${t("site.failed_to_save_reporting_settings")}: ${errorMessage}`);
+      console.error("Failed to save reporting settings:", error);
+    } finally {
+      setSavingReportingSettings(false);
+    }
   }
 
   async function handleManagerChange(newManagerId: string) {
@@ -747,7 +841,7 @@ export default function ProjectProfilePage() {
   const hiddenBudgetLineCount = Math.max(budgetLines.length - visibleBudgetLines.length, 0);
   const importedBudgetLines = budgetLines
     .map((line) => ({ line, metadata: parseBudgetImportNotes(line.notes) }))
-    .filter((entry) => entry.metadata?.template === "AGRA_WRF_BUDGET_DETAIL");
+    .filter((entry) => Boolean(entry.metadata?.template));
   const importedTotal = importedBudgetLines.reduce((sum, entry) => sum + entry.line.plannedAmount, 0);
 
   return (
@@ -890,6 +984,189 @@ export default function ProjectProfilePage() {
                   className="h-full rounded-full bg-primary transition-all duration-700"
                   style={{ width: `${progress}%`, transitionTimingFunction: "cubic-bezier(0.25, 1, 0.5, 1)" }}
                 />
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-border/60 bg-muted/20 p-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-3">
+                  <div>
+                    <h2 className="font-serif text-lg text-foreground">{t("site.reporting_workspace")}</h2>
+                    <p className="text-sm text-muted-foreground">{t("site.reporting_workspace_desc")}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary" className="rounded-full px-3 py-1">
+                      {t("site.reporting_country")}: {project.reportingProfile?.country || t("site.not_set")}
+                    </Badge>
+                    <Badge variant="secondary" className="rounded-full px-3 py-1">
+                      {t("site.reporting_currency")}: {project.reportingProfile?.currency || "ETB"}
+                    </Badge>
+                    <Badge variant="secondary" className="rounded-full px-3 py-1">
+                      {t("site.reporting_year")}: {project.reportingProfile?.annualYear || reportingForm.annualYear || t("site.not_set")}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" className="rounded-xl" onClick={() => openReportGenerator("agra-budget-breakdown")}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    {t("reports.agra_budget_breakdown")}
+                  </Button>
+                  <Button type="button" variant="outline" className="rounded-xl" onClick={() => openReportGenerator("eif-cpd-annex")}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    {t("reports.eif_annex")}
+                  </Button>
+                  <Button type="button" variant="outline" className="rounded-xl" onClick={() => openReportGenerator("ppg-boost")}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    {t("reports.ppg_boost")}
+                  </Button>
+                  <Dialog
+                    open={isReportingSettingsOpen}
+                    onOpenChange={(open) => {
+                      setIsReportingSettingsOpen(open);
+                      if (!open) {
+                        setReportingSettingsError("");
+                      }
+                    }}
+                  >
+                    <DialogTrigger asChild>
+                      <Button type="button" className="rounded-xl">
+                        {t("site.reporting_settings")}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="font-serif">{t("site.reporting_settings")}</DialogTitle>
+                      </DialogHeader>
+
+                      <div className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_country")}</Label>
+                            <Input
+                              value={reportingForm.country}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, country: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_currency")}</Label>
+                            <Select
+                              value={reportingForm.currency}
+                              onValueChange={(value) => setReportingForm((current) => ({ ...current, currency: value }))}
+                            >
+                              <SelectTrigger className="rounded-xl">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ETB">ETB</SelectItem>
+                                <SelectItem value="USD">USD</SelectItem>
+                                <SelectItem value="EUR">EUR</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.start_date")}</Label>
+                            <Input
+                              type="date"
+                              value={reportingForm.reportingStartDate}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, reportingStartDate: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.end_date")}</Label>
+                            <Input
+                              type="date"
+                              value={reportingForm.reportingEndDate}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, reportingEndDate: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_year")}</Label>
+                            <Input
+                              inputMode="numeric"
+                              value={reportingForm.annualYear}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, annualYear: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_template")}</Label>
+                            <Select
+                              value={reportingForm.primaryTemplate}
+                              onValueChange={(value) => setReportingForm((current) => ({ ...current, primaryTemplate: value }))}
+                            >
+                              <SelectTrigger className="rounded-xl">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="agra_budget_breakdown">{t("reports.agra_budget_breakdown")}</SelectItem>
+                                <SelectItem value="eif_cpd_annex">{t("reports.eif_annex")}</SelectItem>
+                                <SelectItem value="ppg_boost">{t("reports.ppg_boost")}</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_lead_agency")}</Label>
+                            <Input
+                              value={reportingForm.leadAgency}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, leadAgency: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_funding_facility_1")}</Label>
+                            <Input
+                              value={reportingForm.fundingFacility1Label}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, fundingFacility1Label: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_funding_facility_2")}</Label>
+                            <Input
+                              value={reportingForm.fundingFacility2Label}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, fundingFacility2Label: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_other_funding")}</Label>
+                            <Input
+                              value={reportingForm.otherFundingLabel}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, otherFundingLabel: event.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>{t("site.reporting_partner")}</Label>
+                            <Input
+                              value={reportingForm.implementingPartner}
+                              onChange={(event) => setReportingForm((current) => ({ ...current, implementingPartner: event.target.value }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>{t("site.reporting_procurement_notes")}</Label>
+                          <Textarea
+                            value={reportingForm.procurementNotes}
+                            onChange={(event) => setReportingForm((current) => ({ ...current, procurementNotes: event.target.value }))}
+                          />
+                        </div>
+
+                        {reportingSettingsError && (
+                          <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                            {reportingSettingsError}
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="ghost" onClick={() => setIsReportingSettingsOpen(false)}>
+                            {t("site.cancel")}
+                          </Button>
+                          <Button type="button" className="rounded-xl" onClick={handleSaveReportingSettings} disabled={savingReportingSettings}>
+                            {savingReportingSettings ? t("site.saving_reporting_settings") : t("site.save_reporting_settings")}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
             </div>
           </div>

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Plus, Calendar, User, DollarSign, Search, Leaf, FolderKanban } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
+const PROJECT_CREATION_ROLES = new Set(["admin", "project_manager"]);
+
 type Milestone = {
   id: string;
   title: string;
@@ -55,16 +57,44 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/projects")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.projects) {
-          setProjects(data.projects);
-        }
-      })
-      .finally(() => setLoading(false));
+    async function loadProjectsPageData() {
+      await Promise.allSettled([
+        (async () => {
+          try {
+            const projectsRes = await fetch("/api/projects");
+            if (!projectsRes.ok) {
+              throw new Error("Failed to fetch projects");
+            }
+            const projectsData = await projectsRes.json();
+            if (projectsData.projects) {
+              setProjects(projectsData.projects);
+            }
+          } catch (error) {
+            console.error("Failed to fetch projects:", error);
+          }
+        })(),
+        (async () => {
+          try {
+            const authRes = await fetch("/api/auth/me", { cache: "no-store" });
+            if (!authRes.ok) {
+              return;
+            }
+            const authData = await authRes.json();
+            if (authData.user?.role) {
+              setCurrentUserRole(authData.user.role);
+            }
+          } catch (error) {
+            console.error("Failed to fetch current user role:", error);
+          }
+        })(),
+      ]);
+      setLoading(false);
+    }
+
+    void loadProjectsPageData();
   }, []);
 
   function formatDate(date: string | null) {
@@ -93,6 +123,8 @@ export default function ProjectsPage() {
       primaryDonor.includes(q)
     );
   });
+  const canCreateProjects =
+    currentUserRole !== null && PROJECT_CREATION_ROLES.has(currentUserRole);
 
   if (loading) {
     return (
@@ -117,9 +149,11 @@ export default function ProjectsPage() {
               {t("site.manage_your_projects_and_track_progress")}
             </p>
           </div>
-          <Button onClick={() => router.push("/projects/new")} className="rounded-xl shrink-0">
-            <Plus className="h-4 w-4 mr-2" /> {t("site.new_project")}
-          </Button>
+          {canCreateProjects && (
+            <Button onClick={() => router.push("/projects/new")} className="rounded-xl shrink-0">
+              <Plus className="h-4 w-4 mr-2" /> {t("site.new_project")}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -158,11 +192,11 @@ export default function ProjectsPage() {
             <Button variant="outline" onClick={() => setSearchQuery("")} className="rounded-xl">
               {t("site.clear_search")}
             </Button>
-          ) : (
+          ) : canCreateProjects ? (
             <Button onClick={() => router.push("/projects/new")} className="rounded-xl">
               <Plus className="h-4 w-4 mr-2" /> {t("site.create_your_first_project")}
             </Button>
-          )}
+          ) : null}
         </div>
       ) : (
         <div className="grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">

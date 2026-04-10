@@ -145,7 +145,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                 "rounded-full border border-sidebar-border/70 bg-sidebar-accent/35 p-2 shadow-sm"
             )}
           >
-            <div className="h-8 w-8 rounded-full bg-sage-pale flex items-center justify-center shrink-0">
+            <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center shrink-0">
               <Image
                 src="/motri.png"
                 alt="MoTRI Logo"
@@ -163,7 +163,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className={cn(
-              "flex items-center justify-center rounded-full border text-muted-foreground transition-all duration-200 hover:text-sidebar-foreground",
+              "flex items-center justify-center rounded-full border text-sidebar-foreground/50 transition-all duration-200 hover:text-sidebar-foreground",
               isCollapsed
                 ? "h-8 w-8 border-sidebar-border/80 bg-transparent hover:border-sidebar-border hover:bg-sidebar-accent/55"
                 : "h-9 w-9 border-transparent hover:border-sidebar-border hover:bg-sidebar-accent/50"
@@ -197,7 +197,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                         "flex flex-1 items-center gap-3 rounded-[20px] px-3.5 py-2.5 text-[13px] font-medium transition-all duration-200",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/55 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                       )}
                     >
                       <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -206,7 +206,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                     {recentProjects.length > 0 && (
                       <button
                         onClick={() => setProjectsExpanded(!projectsExpanded)}
-                        className="p-1.5 rounded-full text-muted-foreground hover:bg-sidebar-accent transition-colors"
+                        className="p-1.5 rounded-full text-sidebar-foreground/50 hover:bg-sidebar-accent transition-colors"
                       >
                         <ChevronDown
                           className={cn(
@@ -229,14 +229,14 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                               "flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs transition-all duration-200",
                               isProjectActive
                                 ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                                : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground/50 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                             )}
                             title={project.name}
                           >
                             <Circle
                               className={cn(
                                 "h-2 w-2 shrink-0 fill-current",
-                                projectStatusDot[project.status] || "text-muted-foreground"
+                                projectStatusDot[project.status] || "text-sidebar-foreground/40"
                               )}
                             />
                             <span className="truncate">{project.name}</span>
@@ -257,7 +257,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
                   "flex items-center gap-3 rounded-[20px] px-3.5 py-2.5 text-[13px] font-medium transition-all duration-200",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/55 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 )}
               >
                 <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -273,17 +273,17 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
               <p className="text-sm font-medium text-sidebar-foreground truncate">
                 {userName}
               </p>
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="text-xs text-sidebar-foreground/55 truncate">
                 {userEmail}
               </p>
-              <p className="text-xs text-muted-foreground capitalize">
+              <p className="text-xs text-sidebar-foreground/55 capitalize">
                 {userRole ? t(`roles.${userRole}`, { defaultValue: userRole }) : userRole}
               </p>
             </div>
           )}
           {!isCollapsed && (
             <div className="mb-3">
-              <LanguageSwitcher />
+              <LanguageSwitcher variant="sidebar" />
             </div>
           )}
           <Button
@@ -291,7 +291,7 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
             size={isCollapsed ? "icon" : "default"}
             onClick={onLogout}
             className={cn(
-              "w-full justify-start rounded-[20px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "w-full justify-start rounded-[20px] text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground",
               isCollapsed && "justify-center"
             )}
           >
@@ -303,9 +303,9 @@ export function Sidebar({ onLogout, userEmail, userName, userRole }: SidebarProp
               href="https://africonnect.africa.com"
               target="_blank"
               rel="noreferrer"
-              className="mt-4 flex items-center gap-2 px-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-sidebar-foreground"
+              className="mt-4 flex items-center gap-2 px-1 text-[11px] text-sidebar-foreground/35 transition-colors hover:text-sidebar-foreground"
             >
-              <Leaf className="h-3.5 w-3.5 text-primary/40" />
+              <Leaf className="h-3.5 w-3.5 text-sidebar-foreground/30" />
               <span>{t("sidebar.growWithPurpose")}</span>
             </a>
           )}

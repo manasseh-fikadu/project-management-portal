@@ -2,9 +2,51 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, tasks } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProject, canAccessTask, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+
+const ASSIGNEE_MUTABLE_FIELDS = new Set(["status", "progress", "completedAt"]);
+const TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
+
+function isAssigneeStatusUpdate(payload: unknown): payload is Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+
+  const keys = Object.keys(payload);
+  return keys.length > 0 && keys.every((key) => ASSIGNEE_MUTABLE_FIELDS.has(key));
+}
+
+function buildAssigneeUpdate(payload: unknown): Record<string, unknown> | null {
+  if (!isAssigneeStatusUpdate(payload)) {
+    return null;
+  }
+
+  const assigneeUpdate: Record<string, unknown> = {};
+
+  if (typeof payload.status === "string" && TASK_STATUSES.has(payload.status)) {
+    assigneeUpdate.status = payload.status;
+  }
+
+  if (typeof payload.progress === "number" && Number.isFinite(payload.progress)) {
+    const normalizedProgress = Math.round(payload.progress);
+    assigneeUpdate.progress = Math.min(100, Math.max(0, normalizedProgress));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "completedAt")) {
+    if (payload.completedAt === null || payload.completedAt === "") {
+      assigneeUpdate.completedAt = null;
+    } else if (typeof payload.completedAt === "string") {
+      const parsedCompletedAt = new Date(payload.completedAt);
+      if (!Number.isNaN(parsedCompletedAt.getTime())) {
+        assigneeUpdate.completedAt = parsedCompletedAt;
+      }
+    }
+  }
+
+  return Object.keys(assigneeUpdate).length > 0 ? assigneeUpdate : null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,6 +59,11 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const task = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
       with: {
@@ -56,14 +103,18 @@ export async function PUT(
 ) {
   try {
     const session = await getSession();
-    const accessError = ensureEditAccess(session?.user);
-    if (accessError) return accessError;
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const body = await request.json();
+    const assigneeUpdate = buildAssigneeUpdate(body);
     const existingTask = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
     });
@@ -72,8 +123,23 @@ export async function PUT(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    const accessError = ensureEditAccess(session.user);
+    const isAssigneeManagingOwnTask =
+      existingTask.assignedTo === session.user.id && assigneeUpdate !== null;
+
+    if (accessError && !isAssigneeManagingOwnTask) {
+      return accessError;
+    }
+
+    if (typeof body.projectId === "string" && body.projectId) {
+      const canUseProject = await canAccessProject(session.user, body.projectId);
+      if (!canUseProject) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
     const updateData: Record<string, unknown> = {
-      ...body,
+      ...(isAssigneeManagingOwnTask ? assigneeUpdate : body),
       updatedAt: new Date(),
     };
 
@@ -81,14 +147,9 @@ export async function PUT(
       updateData.dueDate = new Date(body.dueDate);
     }
 
-    if (typeof body.progress === "number" && Number.isFinite(body.progress)) {
-      const normalizedProgress = Math.round(body.progress);
-      updateData.progress = Math.min(100, Math.max(0, normalizedProgress));
-    }
-
-    if (body.status === "completed") {
+    if (updateData.status === "completed") {
       updateData.progress = 100;
-      if (!body.completedAt) {
+      if (updateData.completedAt === undefined) {
         updateData.completedAt = new Date();
       }
     }
@@ -175,6 +236,11 @@ export async function DELETE(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const [deletedTask] = await db.delete(tasks).where(eq(tasks.id, id)).returning();
 
     if (!deletedTask) {

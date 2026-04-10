@@ -21,22 +21,38 @@ function pdfToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
+function resetCursor(doc: PDFKit.PDFDocument, y = doc.y) {
+  doc.x = doc.page.margins.left;
+  doc.y = y;
+}
+
+function ensurePageSpace(doc: PDFKit.PDFDocument, minHeight = 72) {
+  if (doc.y + minHeight > doc.page.height - doc.page.margins.bottom) {
+    doc.addPage();
+    resetCursor(doc, doc.page.margins.top);
+  }
+}
+
 function addHeader(doc: PDFKit.PDFDocument, title: string, subtitle?: string) {
+  resetCursor(doc, doc.page.margins.top);
   doc.fontSize(20).font("Helvetica-Bold").text(title, { align: "center" });
   if (subtitle) {
     doc.moveDown(0.3).fontSize(10).font("Helvetica").fillColor("#666666").text(subtitle, { align: "center" });
   }
   doc.fillColor("#000000").moveDown(0.5);
-  doc.moveTo(doc.x, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke("#cccccc");
+  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke("#cccccc");
   doc.moveDown(0.8);
+  resetCursor(doc);
 }
 
 function addSectionTitle(doc: PDFKit.PDFDocument, title: string) {
+  resetCursor(doc);
   doc.fontSize(14).font("Helvetica-Bold").text(title);
   doc.moveDown(0.4);
 }
 
 function addKeyValue(doc: PDFKit.PDFDocument, key: string, value: string) {
+  resetCursor(doc);
   doc.fontSize(10).font("Helvetica-Bold").text(`${key}: `, { continued: true }).font("Helvetica").text(value);
 }
 
@@ -114,6 +130,36 @@ export async function renderProjectSummaryPdf(data: ProjectSummaryData): Promise
 
 export async function renderFinancialReportPdf(data: FinancialReportData): Promise<Buffer> {
   const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 40 });
+  const tableHeaders = ["Project", "Planned", "Spent", "Disbursed", "Physical%", "Financial%", "Variance%", "Status"];
+  const colWidths = [180, 90, 90, 90, 70, 70, 70, 60];
+  const cellPaddingX = 6;
+  const cellPaddingY = 6;
+  const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
+
+  const drawFinancialTableHeader = () => {
+    ensurePageSpace(doc, 28);
+    const startX = doc.page.margins.left;
+    const startY = doc.y;
+    let x = startX;
+
+    doc.font("Helvetica-Bold").fontSize(8).fillColor("#000000");
+    for (let i = 0; i < tableHeaders.length; i++) {
+      doc.text(tableHeaders[i], x + cellPaddingX, startY + cellPaddingY, {
+        width: colWidths[i] - cellPaddingX * 2,
+        align: "left",
+      });
+      x += colWidths[i];
+    }
+
+    const headerHeight = 22;
+    doc
+      .rect(startX, startY, tableWidth, headerHeight)
+      .lineWidth(0.6)
+      .strokeColor("#cccccc")
+      .stroke();
+
+    resetCursor(doc, startY + headerHeight + 6);
+  };
 
   addHeader(doc, "Financial Performance Report", `Generated ${formatDate(data.generatedAt)}`);
 
@@ -130,28 +176,11 @@ export async function renderFinancialReportPdf(data: FinancialReportData): Promi
 
   // Per-project table
   addSectionTitle(doc, "Project Breakdown");
-  const colWidths = [180, 90, 90, 90, 70, 70, 70, 60];
-  const headers = ["Project", "Planned", "Spent", "Disbursed", "Physical%", "Financial%", "Variance%", "Status"];
-  let x = doc.x;
-  const startY = doc.y;
+  drawFinancialTableHeader();
 
-  doc.fontSize(8).font("Helvetica-Bold");
-  for (let i = 0; i < headers.length; i++) {
-    doc.text(headers[i], x, startY, { width: colWidths[i], align: "left" });
-    x += colWidths[i];
-  }
-  doc.moveDown(0.5);
-  doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).stroke("#cccccc");
-  doc.moveDown(0.3);
-
-  doc.font("Helvetica").fontSize(8);
+  doc.font("Helvetica").fontSize(8).fillColor("#000000");
   for (const row of data.rows) {
-    if (doc.y > doc.page.height - 80) {
-      doc.addPage();
-    }
-    x = doc.page.margins.left;
-    const rowY = doc.y;
-    const name = row.projectName.length > 28 ? row.projectName.slice(0, 28) + "..." : row.projectName;
+    const name = row.projectName.length > 28 ? `${row.projectName.slice(0, 28)}...` : row.projectName;
     const cells = [
       name,
       formatCurrency(row.plannedBudget),
@@ -162,18 +191,51 @@ export async function renderFinancialReportPdf(data: FinancialReportData): Promi
       `${row.variance > 0 ? "+" : ""}${row.variance}%`,
       row.status.replace(/_/g, " "),
     ];
+
+    const textHeight = cells.reduce((maxHeight, cell, index) => {
+      const cellHeight = doc.heightOfString(cell, {
+        width: colWidths[index] - cellPaddingX * 2,
+        align: "left",
+      });
+      return Math.max(maxHeight, cellHeight);
+    }, 0);
+    const rowHeight = Math.max(20, textHeight + cellPaddingY * 2);
+
+    if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+      doc.addPage();
+      resetCursor(doc, doc.page.margins.top);
+      addSectionTitle(doc, "Project Breakdown (continued)");
+      drawFinancialTableHeader();
+    }
+
+    let x = doc.page.margins.left;
+    const rowY = doc.y;
+
     for (let i = 0; i < cells.length; i++) {
-      doc.text(cells[i], x, rowY, { width: colWidths[i], align: "left" });
+      doc.text(cells[i], x + cellPaddingX, rowY + cellPaddingY, {
+        width: colWidths[i] - cellPaddingX * 2,
+        align: "left",
+      });
       x += colWidths[i];
     }
-    doc.moveDown(0.5);
+
+    doc
+      .rect(doc.page.margins.left, rowY, tableWidth, rowHeight)
+      .lineWidth(0.4)
+      .strokeColor("#dddddd")
+      .stroke();
+
+    resetCursor(doc, rowY + rowHeight + 4);
   }
-  doc.moveDown(0.8);
+  doc.moveDown(0.6);
+  resetCursor(doc);
 
   // Budget Lines
   if (data.budgetLines.length > 0) {
+    ensurePageSpace(doc, 120);
     addSectionTitle(doc, "Budget Allocations");
     for (const b of data.budgetLines.slice(0, 30)) {
+      ensurePageSpace(doc, 24);
       doc.fontSize(9).font("Helvetica")
         .text(`• ${b.activityName} — ${formatCurrency(b.plannedAmount)} (${b.projectName})`);
     }

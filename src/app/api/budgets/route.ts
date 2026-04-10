@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, budgetAllocations } from "@/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
 export async function GET(request: NextRequest) {
@@ -14,9 +14,26 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");
+    const accessibleProjectIds = await getAccessibleProjectIds(session.user);
+
+    if (projectId) {
+      const hasAccess = await canAccessProject(session.user, projectId);
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
+    if (accessibleProjectIds?.length === 0) {
+      return NextResponse.json({ budgetAllocations: [] });
+    }
+
+    const filters = [
+      projectId ? eq(budgetAllocations.projectId, projectId) : undefined,
+      !projectId && accessibleProjectIds ? inArray(budgetAllocations.projectId, accessibleProjectIds) : undefined,
+    ].filter(Boolean);
 
     const allBudgetAllocations = await db.query.budgetAllocations.findMany({
-      where: projectId ? eq(budgetAllocations.projectId, projectId) : undefined,
+      where: filters.length > 0 ? and(...filters) : undefined,
       with: {
         project: {
           columns: { id: true, name: true },
@@ -57,6 +74,11 @@ export async function POST(request: NextRequest) {
     const amount = Number(plannedAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: "plannedAmount must be a positive number" }, { status: 400 });
+    }
+
+    const hasAccess = await canAccessProject(session.user, projectId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
     const q1 = q1Amount === undefined ? 0 : Number(q1Amount);

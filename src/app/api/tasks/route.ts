@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, tasks } from "@/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
 
@@ -15,8 +15,27 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");
+    const accessibleProjectIds = await getAccessibleProjectIds(session.user);
+
+    if (projectId) {
+      const hasAccess = await canAccessProject(session.user, projectId);
+      if (!hasAccess) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+    }
+
+    if (accessibleProjectIds?.length === 0) {
+      return NextResponse.json({ tasks: [] });
+    }
+
+    const whereClause = projectId
+      ? eq(tasks.projectId, projectId)
+      : accessibleProjectIds
+        ? inArray(tasks.projectId, accessibleProjectIds)
+        : undefined;
 
     const query = db.query.tasks.findMany({
+      where: whereClause,
       with: {
         assignee: {
           columns: { id: true, firstName: true, lastName: true, email: true },
@@ -37,32 +56,6 @@ export async function GET(request: NextRequest) {
       },
       orderBy: [desc(tasks.createdAt)],
     });
-
-    if (projectId) {
-      const filteredTasks = await db.query.tasks.findMany({
-        where: eq(tasks.projectId, projectId),
-        with: {
-          assignee: {
-            columns: { id: true, firstName: true, lastName: true, email: true },
-          },
-          creator: {
-            columns: { id: true, firstName: true, lastName: true },
-          },
-          project: {
-            columns: { id: true, name: true },
-          },
-          documents: {
-            with: {
-              uploader: {
-                columns: { id: true, firstName: true, lastName: true },
-              },
-            },
-          },
-        },
-        orderBy: [desc(tasks.createdAt)],
-      });
-      return NextResponse.json({ tasks: filteredTasks });
-    }
 
     const allTasks = await query;
     return NextResponse.json({ tasks: allTasks });
@@ -95,6 +88,11 @@ export async function POST(request: NextRequest) {
 
     if (!projectId || !title) {
       return NextResponse.json({ error: "Project ID and title are required" }, { status: 400 });
+    }
+
+    const hasAccess = await canAccessProject(session.user, projectId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
     const [newTask] = await db

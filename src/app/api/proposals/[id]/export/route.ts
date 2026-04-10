@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { canAccessProposal } from "@/lib/rbac";
 import { getTorExportData, renderTorDocx, renderTorPdf } from "@/lib/proposal-export";
 
 export async function GET(
@@ -13,6 +14,11 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProposal(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "ToR proposal not found" }, { status: 404 });
+    }
+
     const { searchParams } = new URL(request.url);
     const format = (searchParams.get("format") ?? "pdf").toLowerCase();
 

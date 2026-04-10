@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
+import DOMPurify from "dompurify";
 import {
   ArrowLeft,
   Calendar,
@@ -11,6 +12,7 @@ import {
   Clock3,
   DollarSign,
   Download,
+  Edit,
   FileText,
   FolderKanban,
   Leaf,
@@ -18,7 +20,9 @@ import {
   User2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TorDocumentEditor } from "@/components/ui/tor-document-editor";
 import { formatCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
+import { buildTorDocumentPreviewHtml } from "@/lib/tor-document";
 
 type Donor = {
   id: string;
@@ -89,6 +93,8 @@ type Proposal = {
     email: string;
   };
 };
+
+const PROPOSAL_EDIT_ROLES = new Set(["admin", "project_manager"]);
 
 const statusConfig: Record<string, { label: string; tone: string; panel: string }> = {
   draft: {
@@ -174,6 +180,11 @@ export default function ProposalDetailsPage() {
   const proposalId = params.id as string;
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [isEditingSections, setIsEditingSections] = useState(false);
+  const [isSavingSections, setIsSavingSections] = useState(false);
+  const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
+  const [sectionsError, setSectionsError] = useState("");
 
   const fetchProposal = useCallback(async () => {
     try {
@@ -191,14 +202,30 @@ export default function ProposalDetailsPage() {
     }
   }, [proposalId, router]);
 
+  const fetchCurrentUserRole = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!res.ok) {
+        return;
+      }
+
+      const data = await res.json();
+      if (data.user?.role) {
+        setCurrentUserRole(data.user.role);
+      }
+    } catch (error) {
+      console.error("Error fetching current user role:", error);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchProposal();
-  }, [fetchProposal]);
+    void fetchCurrentUserRole();
+  }, [fetchCurrentUserRole, fetchProposal]);
 
-  const templateSections = useMemo(() => {
+  const allTemplateSections = useMemo(() => {
     if (!proposal) return [];
     const entries = Object.entries(proposal.templateData || {});
-    if (!entries.length) return [];
 
     const labels = new Map<string, string>();
     const sections: Array<{ key: string; label: string; value: string }> = [];
@@ -211,19 +238,16 @@ export default function ProposalDetailsPage() {
 
       if (key && label) labels.set(key, label);
 
-      const value = proposal.templateData?.[key];
-      if (typeof value !== "string" || value.trim().length === 0) continue;
-
       sections.push({
         key,
         label: label ?? prettyKey(key),
-        value,
+        value: typeof proposal.templateData?.[key] === "string" ? proposal.templateData[key] : "",
       });
       seenKeys.add(key);
     }
 
     const remainingSections = entries
-      .filter(([key, value]) => !seenKeys.has(key) && typeof value === "string" && value.trim().length > 0)
+      .filter(([key, value]) => !seenKeys.has(key) && typeof value === "string")
       .map(([key, value]) => ({
         key,
         label: labels.get(key) || prettyKey(key),
@@ -232,6 +256,64 @@ export default function ProposalDetailsPage() {
 
     return [...sections, ...remainingSections];
   }, [proposal]);
+
+  const templateSections = useMemo(
+    () => allTemplateSections.filter((section) => section.value.trim().length > 0),
+    [allTemplateSections]
+  );
+
+  useEffect(() => {
+    if (!allTemplateSections.length) {
+      setSectionDrafts({});
+      return;
+    }
+
+    setSectionDrafts(
+      allTemplateSections.reduce<Record<string, string>>((acc, section) => {
+        acc[section.key] = section.value;
+        return acc;
+      }, {})
+    );
+  }, [allTemplateSections]);
+
+  async function handleSaveSections() {
+    if (!proposal) return;
+
+    try {
+      setIsSavingSections(true);
+      setSectionsError("");
+
+      const res = await fetch(`/api/proposals/${proposal.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateData: sectionDrafts }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.proposal) {
+        throw new Error(data.error || "Unable to update proposal details");
+      }
+
+      setProposal(data.proposal);
+      setIsEditingSections(false);
+    } catch (error) {
+      console.error(t("site.error_saving_proposal"), error);
+      setSectionsError(t("site.could_not_update_proposal_details_please_try_again"));
+    } finally {
+      setIsSavingSections(false);
+    }
+  }
+
+  function resetSectionDrafts() {
+    setSectionDrafts(
+      allTemplateSections.reduce<Record<string, string>>((acc, section) => {
+        acc[section.key] = section.value;
+        return acc;
+      }, {})
+    );
+    setSectionsError("");
+    setIsEditingSections(false);
+  }
 
   if (loading) {
     return (
@@ -245,6 +327,19 @@ export default function ProposalDetailsPage() {
 
   const status = statusConfig[proposal.status] || statusConfig.draft;
   const type = typeConfig[proposal.proposalType] || typeConfig.grant;
+  const canEditProposal = currentUserRole !== null && PROPOSAL_EDIT_ROLES.has(currentUserRole);
+  const documents = proposal.documents ?? [];
+  const torDocumentSections = allTemplateSections.map((section) => ({
+    key: section.key,
+    label: section.label,
+  }));
+  const torDocumentPreviewHtml = buildTorDocumentPreviewHtml(
+    templateSections.map((section) => ({
+      key: section.key,
+      label: section.label,
+    })),
+    proposal.templateData || {}
+  );
 
   return (
     <div className="space-y-6 pb-10">
@@ -321,7 +416,7 @@ export default function ProposalDetailsPage() {
                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                       {t("site.documents")}
                     </p>
-                    <p className="mt-2 text-2xl font-semibold text-foreground">{proposal.documents.length}</p>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{documents.length}</p>
                   </div>
                 </div>
               </div>
@@ -413,21 +508,65 @@ export default function ProposalDetailsPage() {
             </div>
           </div>
 
-          {templateSections.length > 0 && (
+          {allTemplateSections.length > 0 && (
             <div className="rounded-[1.75rem] border border-border/70 bg-card p-6">
-              <div className="flex items-center gap-3">
-                <Target className="h-4 w-4 text-primary" />
-                <h2 className="font-serif text-2xl text-foreground">{t("site.proposal_details")}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Target className="h-4 w-4 text-primary" />
+                  <h2 className="font-serif text-2xl text-foreground">{t("site.proposal_details")}</h2>
+                </div>
+                {proposal.proposalType === "tor" && canEditProposal ? (
+                  <div className="flex items-center gap-2">
+                    {isEditingSections ? (
+                      <>
+                        <Button type="button" variant="ghost" onClick={resetSectionDrafts}>
+                          {t("site.cancel")}
+                        </Button>
+                        <Button type="button" className="rounded-xl" onClick={handleSaveSections} disabled={isSavingSections}>
+                          {isSavingSections ? t("site.updating") : t("site.update")}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => {
+                          setSectionsError("");
+                          setIsEditingSections(true);
+                        }}
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        {t("site.edit")}
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <div className="mt-5 space-y-4">
-                {templateSections.map((section) => (
-                  <article key={section.key} className="rounded-[1.5rem] border border-border/60 bg-muted/25 p-5">
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                      {section.label}
-                    </p>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-foreground/90">{section.value}</p>
-                  </article>
-                ))}
+                {isEditingSections ? (
+                  <>
+                    <TorDocumentEditor
+                      sections={torDocumentSections}
+                      values={sectionDrafts}
+                      onChange={setSectionDrafts}
+                    />
+                    {sectionsError ? <p className="text-sm text-destructive">{sectionsError}</p> : null}
+                  </>
+                ) : templateSections.length > 0 ? (
+                  <div
+                    className="tor-document-render"
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(torDocumentPreviewHtml, {
+                        USE_PROFILES: { html: true },
+                      }),
+                    }}
+                  />
+                ) : (
+                  <div className="rounded-[1.5rem] border border-dashed border-border/70 bg-muted/15 px-5 py-6 text-sm text-muted-foreground">
+                    {t("site.no_tor_details_added_yet")}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -467,12 +606,12 @@ export default function ProposalDetailsPage() {
               <h2 className="font-serif text-2xl text-foreground">{t("site.documents")}</h2>
             </div>
             <div className="mt-5 space-y-3">
-              {proposal.documents.length === 0 ? (
+              {documents.length === 0 ? (
                 <div className="rounded-2xl bg-muted/35 px-4 py-5 text-sm text-muted-foreground">
                   {t("site.no_documents_uploaded_for_this_proposal_yet")}
                 </div>
               ) : (
-                proposal.documents.map((document) => {
+                documents.map((document) => {
                   const isSafeUrl = isValidExternalUrl(document.url);
                   const content = (
                     <>

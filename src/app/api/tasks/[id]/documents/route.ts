@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, taskDocuments } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessTask, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
@@ -19,6 +19,10 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
 
     const documents = await db.query.taskDocuments.findMany({
       where: eq(taskDocuments.taskId, id),
@@ -64,6 +68,11 @@ export async function POST(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessTask(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const name = formData.get("name") as string | null;

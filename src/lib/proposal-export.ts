@@ -7,8 +7,10 @@ import {
   Paragraph,
   TextRun,
 } from "docx";
+import { convert } from "html-to-text";
 import { db, proposals } from "@/db";
 import { eq } from "drizzle-orm";
+import { hasRichTextMarkup } from "@/lib/rich-text";
 
 type ProposalSection = {
   key?: string;
@@ -83,6 +85,14 @@ function prettyKey(value: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function toPlainExportText(value: string): string {
+  if (!hasRichTextMarkup(value)) return value;
+
+  return convert(value, { wordwrap: false })
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function pdfToBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -137,7 +147,7 @@ export async function getTorExportData(proposalId: string): Promise<TorExportDat
       return {
         key,
         label: templateLabels.get(key) || prettyKey(key),
-        value,
+        value: toPlainExportText(value),
       };
     })
     .filter((section): section is { key: string; label: string; value: string } => section !== null)
@@ -148,7 +158,7 @@ export async function getTorExportData(proposalId: string): Promise<TorExportDat
     .map(([key, value]) => ({
       key,
       label: templateLabels.get(key) || prettyKey(key),
-      value,
+      value: toPlainExportText(value),
     }))
     );
 

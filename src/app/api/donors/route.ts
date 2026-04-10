@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, donors } from "@/db";
-import { desc } from "drizzle-orm";
+import { desc, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { ensureEditAccess, getAccessibleDonorIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 
 export async function GET() {
@@ -12,7 +12,13 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const accessibleDonorIds = await getAccessibleDonorIds(session.user);
+    if (accessibleDonorIds?.length === 0) {
+      return NextResponse.json({ donors: [] });
+    }
+
     const allDonors = await db.query.donors.findMany({
+      where: accessibleDonorIds ? inArray(donors.id, accessibleDonorIds) : undefined,
       orderBy: [desc(donors.createdAt)],
     });
 

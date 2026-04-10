@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, proposalDocuments } from "@/db";
 import { eq } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
-import { ensureEditAccess } from "@/lib/rbac";
+import { canAccessProposal, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -19,6 +19,11 @@ export async function GET(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProposal(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
     const documents = await db.query.proposalDocuments.findMany({
       where: eq(proposalDocuments.proposalId, id),
       with: {
@@ -63,6 +68,11 @@ export async function POST(
     }
 
     const { id } = await params;
+    const hasAccess = await canAccessProposal(session.user, id);
+    if (!hasAccess) {
+      return NextResponse.json({ error: "Proposal not found" }, { status: 404 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const name = formData.get("name") as string | null;

@@ -58,6 +58,7 @@ export default function DonorsPage() {
   const { t } = useTranslation();
   const [donors, setDonors] = useState<Donor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -92,17 +93,36 @@ export default function DonorsPage() {
 
   useEffect(() => {
     fetchDonors();
+    fetchCurrentUserRole();
   }, []);
 
   async function fetchDonors() {
     try {
-      const res = await fetch("/api/donors");
-      const data = await res.json();
-      if (data.donors) {
-        setDonors(data.donors);
+      const donorsRes = await fetch("/api/donors");
+      if (!donorsRes.ok) {
+        throw new Error("Failed to fetch donors");
       }
+      const donorsData = await donorsRes.json();
+      if (donorsData.donors) {
+        setDonors(donorsData.donors);
+      }
+    } catch (error) {
+      console.error("Error fetching donors:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchCurrentUserRole() {
+    try {
+      const authRes = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!authRes.ok) {
+        return;
+      }
+      const authData = await authRes.json();
+      setCurrentUserRole(authData.user?.role ?? null);
+    } catch (error) {
+      console.error("Error fetching current user role:", error);
     }
   }
 
@@ -269,6 +289,8 @@ export default function DonorsPage() {
 
   const activeDonorCount = donors.filter((d) => d.isActive).length;
   const inactiveDonorCount = donors.filter((d) => !d.isActive).length;
+  const canManageDonors =
+    currentUserRole === "admin" || currentUserRole === "project_manager";
 
   if (loading) {
     return (
@@ -301,11 +323,13 @@ export default function DonorsPage() {
             </p>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={(open) => { setIsAddDialogOpen(open); if (!open) resetForm(); }}>
-            <DialogTrigger asChild>
-              <Button className="rounded-xl shrink-0">
-                <Plus className="h-4 w-4 mr-2" /> {t("site.add_donor")}
-              </Button>
-            </DialogTrigger>
+            {canManageDonors && (
+              <DialogTrigger asChild>
+                <Button className="rounded-xl shrink-0">
+                  <Plus className="h-4 w-4 mr-2" /> {t("site.add_donor")}
+                </Button>
+              </DialogTrigger>
+            )}
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="font-serif text-xl">
@@ -542,7 +566,7 @@ export default function DonorsPage() {
               ? t("site.no_donors_match_your_filters")
               : t("site.no_donors_yet_add_your_first_one")}
           </p>
-          {!searchQuery && filterType === "all" && filterStatus === "all" && (
+          {canManageDonors && !searchQuery && filterType === "all" && filterStatus === "all" && (
             <Button onClick={() => setIsAddDialogOpen(true)} className="rounded-xl">
               <Plus className="h-4 w-4 mr-2" /> {t("site.add_your_first_donor")}
             </Button>
@@ -580,37 +604,39 @@ export default function DonorsPage() {
                       </div>
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openEditDialog(donor)}>
-                        <Edit className="h-4 w-4 mr-2" /> {t("site.edit")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleToggleActive(donor)}>
-                        {donor.isActive ? (
-                          <><PowerOff className="h-4 w-4 mr-2" /> {t("site.set_non_active")}</>
-                        ) : (
-                          <><Power className="h-4 w-4 mr-2" /> {t("site.set_active")}</>
-                        )}
-                      </DropdownMenuItem>
-                      {donor.email && (
-                        <DropdownMenuItem
-                          onClick={() => handleSendPortalInvite(donor.id)}
-                          disabled={sendingInvites.has(donor.id)}
-                        >
-                          <Send className="h-4 w-4 mr-2" />
-                          {sendingInvites.has(donor.id) ? t("site.sending") : t("site.send_portal_invite")}
+                  {canManageDonors && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground shrink-0">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditDialog(donor)}>
+                          <Edit className="h-4 w-4 mr-2" /> {t("site.edit")}
                         </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-destructive">
-                        <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <DropdownMenuItem onClick={() => handleToggleActive(donor)}>
+                          {donor.isActive ? (
+                            <><PowerOff className="h-4 w-4 mr-2" /> {t("site.set_non_active")}</>
+                          ) : (
+                            <><Power className="h-4 w-4 mr-2" /> {t("site.set_active")}</>
+                          )}
+                        </DropdownMenuItem>
+                        {donor.email && (
+                          <DropdownMenuItem
+                            onClick={() => handleSendPortalInvite(donor.id)}
+                            disabled={sendingInvites.has(donor.id)}
+                          >
+                            <Send className="h-4 w-4 mr-2" />
+                            {sendingInvites.has(donor.id) ? t("site.sending") : t("site.send_portal_invite")}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => handleDelete(donor.id)} className="text-destructive">
+                          <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
 
                 {/* Details */}
