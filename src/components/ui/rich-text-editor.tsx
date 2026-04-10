@@ -78,7 +78,7 @@ export function RichTextEditor({
     content: normalizeRichTextValue(value),
     editorProps: {
       attributes: {
-        id,
+        ...(id ? { id } : {}),
         class: cn("rich-text-editor__content", minHeightClassName),
       },
     },
