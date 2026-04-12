@@ -51,6 +51,7 @@ type UploadLocationState = {
 const PROJECT_CREATION_ROLES = new Set(["admin", "project_manager"]);
 
 type MilestoneInput = {
+  id: string;
   title: string;
   description: string;
   dueDate: string;
@@ -62,6 +63,7 @@ type TaskInput = {
   priority: string;
   dueDate: string;
   assignedTo: string;
+  milestoneIds: string[];
 };
 
 type Donor = {
@@ -151,6 +153,21 @@ function buildUploadLocationPayload(location: UploadLocationState): string | nul
     capturedAt: location.capturedAt ?? new Date().toISOString(),
     source: hasCoordinates ? "browser_geolocation" : "manual",
   });
+}
+
+function createMilestoneInput(): MilestoneInput {
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    description: "",
+    dueDate: "",
+  };
+}
+
+function toggleSelection(currentIds: string[], id: string) {
+  return currentIds.includes(id)
+    ? currentIds.filter((currentId) => currentId !== id)
+    : [...currentIds, id];
 }
 
 export default function NewProjectPage() {
@@ -381,15 +398,24 @@ export default function NewProjectPage() {
   function addMilestone() {
     setMilestones((prev) => [
       ...prev,
-      { title: "", description: "", dueDate: "" },
+      createMilestoneInput(),
     ]);
   }
   function removeMilestone(index: number) {
+    const removedMilestoneId = milestones[index]?.id;
     setMilestones((prev) => prev.filter((_, i) => i !== index));
+    if (removedMilestoneId) {
+      setTaskInputs((prev) =>
+        prev.map((task) => ({
+          ...task,
+          milestoneIds: task.milestoneIds.filter((milestoneId) => milestoneId !== removedMilestoneId),
+        })),
+      );
+    }
   }
   function updateMilestone(
     index: number,
-    field: keyof MilestoneInput,
+    field: "title" | "description" | "dueDate",
     value: string
   ) {
     setMilestones((prev) =>
@@ -406,21 +432,39 @@ export default function NewProjectPage() {
         priority: "medium",
         dueDate: "",
         assignedTo: "",
+        milestoneIds: [],
       },
     ]);
   }
   function removeTask(index: number) {
     setTaskInputs((prev) => prev.filter((_, i) => i !== index));
   }
-  function updateTask(index: number, field: keyof TaskInput, value: string) {
+  function updateTask(index: number, field: "title" | "description" | "priority" | "dueDate" | "assignedTo", value: string) {
     setTaskInputs((prev) =>
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+    );
+  }
+
+  function toggleTaskMilestone(taskIndex: number, milestoneId: string) {
+    setTaskInputs((prev) =>
+      prev.map((task, index) => (
+        index === taskIndex
+          ? { ...task, milestoneIds: toggleSelection(task.milestoneIds, milestoneId) }
+          : task
+      ))
     );
   }
 
   function canProceed(): boolean {
     if (currentStep === 0) {
       return formData.name.trim().length > 0;
+    }
+    if (currentStep === 1) {
+      const validMilestoneIds = new Set(
+        milestones.filter((milestone) => milestone.title.trim()).map((milestone) => milestone.id),
+      );
+      const validTasks = taskInputs.filter((task) => task.title.trim());
+      return validTasks.every((task) => task.milestoneIds.some((milestoneId) => validMilestoneIds.has(milestoneId)));
     }
     return true;
   }
@@ -444,6 +488,16 @@ export default function NewProjectPage() {
     setLoading(true);
 
     try {
+      const validMilestones = milestones.filter((milestone) => milestone.title.trim());
+      const validMilestoneIds = new Set(validMilestones.map((milestone) => milestone.id));
+      const hasTaskWithoutMilestones = taskInputs
+        .filter((task) => task.title.trim())
+        .some((task) => !task.milestoneIds.some((milestoneId) => validMilestoneIds.has(milestoneId)));
+
+      if (hasTaskWithoutMilestones) {
+        throw new Error(t("site.link_at_least_one_milestone"));
+      }
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -452,7 +506,7 @@ export default function NewProjectPage() {
           donorIds: selectedDonorIds,
           managerId: formData.managerId || null,
           totalBudget: formData.totalBudget ? parseInt(formData.totalBudget) : 0,
-          milestones: milestones.filter((m) => m.title.trim()),
+          milestones: validMilestones.map(({ id, ...milestone }) => milestone),
         }),
       });
 
@@ -460,11 +514,19 @@ export default function NewProjectPage() {
       if (!res.ok) throw new Error(data.error || t("site.failed_to_create_project"));
 
       const projectId = data.project.id;
+      const createdMilestones: Array<{ id: string }> = Array.isArray(data.milestones) ? data.milestones : [];
+      const milestoneIdMap = new Map(
+        validMilestones.map((milestone, index) => [milestone.id, createdMilestones[index]?.id ?? ""])
+      );
       const locationPayload = buildUploadLocationPayload(uploadLocation);
 
       const validTasks = taskInputs.filter((t) => t.title.trim());
       for (const task of validTasks) {
-        await fetch("/api/tasks", {
+        const milestoneIds = task.milestoneIds
+          .map((milestoneId) => milestoneIdMap.get(milestoneId) ?? "")
+          .filter((milestoneId): milestoneId is string => Boolean(milestoneId));
+
+        const taskRes = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -474,8 +536,13 @@ export default function NewProjectPage() {
             priority: task.priority,
             dueDate: task.dueDate || null,
             assignedTo: task.assignedTo || null,
+            milestoneIds,
           }),
         });
+        if (!taskRes.ok) {
+          const taskData = await taskRes.json();
+          throw new Error(taskData.error || t("site.failed_to_add_task"));
+        }
       }
 
       if (files.length > 0) {
@@ -499,6 +566,8 @@ export default function NewProjectPage() {
       setLoading(false);
     }
   }
+
+  const availableTaskMilestones = milestones.filter((milestone) => milestone.title.trim());
 
   function getSelectedDonors(): Donor[] {
     return donors.filter((d) => selectedDonorIds.includes(d.id));
@@ -926,7 +995,7 @@ export default function NewProjectPage() {
                 <div className="space-y-3">
                   {milestones.map((milestone, index) => (
                     <div
-                      key={index}
+                      key={milestone.id}
                       className="p-4 bg-muted/40 rounded-xl space-y-3"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1116,6 +1185,43 @@ export default function NewProjectPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>{t("site.linked_milestones")}</Label>
+                      <span className="text-xs text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</span>
+                    </div>
+                    {availableTaskMilestones.length > 0 ? (
+                      <div className="rounded-xl border border-border/70 bg-background p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {availableTaskMilestones.map((milestone) => {
+                            const selected = task.milestoneIds.includes(milestone.id);
+                            return (
+                              <button
+                                key={milestone.id}
+                                type="button"
+                                onClick={() => toggleTaskMilestone(index, milestone.id)}
+                                disabled={loading}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                  selected
+                                    ? "border-primary bg-sage-pale text-primary"
+                                    : "border-border bg-card text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {milestone.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                        {t("site.no_milestones_available_create_one_first")}
+                      </p>
+                    )}
+                    {task.title.trim() && !task.milestoneIds.some((milestoneId) => availableTaskMilestones.some((milestone) => milestone.id === milestoneId)) ? (
+                      <p className="text-xs text-destructive">{t("site.link_at_least_one_milestone")}</p>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -1444,6 +1550,18 @@ export default function NewProjectPage() {
                               </span>
                             )}
                           </div>
+                          {task.milestoneIds.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {task.milestoneIds
+                                .map((milestoneId) => availableTaskMilestones.find((milestone) => milestone.id === milestoneId))
+                                .filter((milestone): milestone is MilestoneInput => Boolean(milestone))
+                                .map((milestone) => (
+                                  <Badge key={milestone.id} variant="secondary" className="rounded-full text-[11px]">
+                                    {milestone.title}
+                                  </Badge>
+                                ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ))}

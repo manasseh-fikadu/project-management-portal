@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, milestones } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, milestones, taskMilestones, tasks } from "@/db";
+import { eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { buildDerivedTaskFields } from "@/lib/task-automation";
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ milestoneId: string }> }) {
   try {
@@ -37,11 +38,54 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       updateData.completedAt = new Date();
     }
 
-    const [updatedMilestone] = await db
-      .update(milestones)
-      .set(updateData)
-      .where(eq(milestones.id, milestoneId))
-      .returning();
+    const updatedMilestone = await db.transaction(async (tx) => {
+      const [milestone] = await tx
+        .update(milestones)
+        .set(updateData)
+        .where(eq(milestones.id, milestoneId))
+        .returning();
+
+      if (!milestone) {
+        return null;
+      }
+
+      const linkedTaskRows = await tx.query.taskMilestones.findMany({
+        where: eq(taskMilestones.milestoneId, milestoneId),
+        columns: { taskId: true },
+      });
+      const linkedTaskIds = [...new Set(linkedTaskRows.map((row) => row.taskId))];
+
+      if (linkedTaskIds.length > 0) {
+        const linkedTasks = await tx.query.tasks.findMany({
+          where: inArray(tasks.id, linkedTaskIds),
+          columns: { id: true, progress: true, completedAt: true },
+          with: {
+            taskMilestones: {
+              with: {
+                milestone: {
+                  columns: { status: true },
+                },
+              },
+            },
+          },
+        });
+
+        for (const task of linkedTasks) {
+          await tx
+            .update(tasks)
+            .set({
+              ...buildDerivedTaskFields(
+                task,
+                task.taskMilestones.map((link) => link.milestone.status),
+              ),
+              updatedAt: new Date(),
+            })
+            .where(eq(tasks.id, task.id));
+        }
+      }
+
+      return milestone;
+    });
 
     if (!updatedMilestone) {
       return NextResponse.json({ error: "Milestone not found" }, { status: 404 });
@@ -74,7 +118,50 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const { milestoneId } = await params;
 
-    const [deletedMilestone] = await db.delete(milestones).where(eq(milestones.id, milestoneId)).returning();
+    const deletedMilestone = await db.transaction(async (tx) => {
+      const linkedTaskRows = await tx.query.taskMilestones.findMany({
+        where: eq(taskMilestones.milestoneId, milestoneId),
+        columns: { taskId: true },
+      });
+      const linkedTaskIds = [...new Set(linkedTaskRows.map((row) => row.taskId))];
+
+      const [milestone] = await tx.delete(milestones).where(eq(milestones.id, milestoneId)).returning();
+
+      if (!milestone) {
+        return null;
+      }
+
+      if (linkedTaskIds.length > 0) {
+        const linkedTasks = await tx.query.tasks.findMany({
+          where: inArray(tasks.id, linkedTaskIds),
+          columns: { id: true, progress: true, completedAt: true },
+          with: {
+            taskMilestones: {
+              with: {
+                milestone: {
+                  columns: { status: true },
+                },
+              },
+            },
+          },
+        });
+
+        for (const task of linkedTasks) {
+          await tx
+            .update(tasks)
+            .set({
+              ...buildDerivedTaskFields(
+                task,
+                task.taskMilestones.map((link) => link.milestone.status),
+              ),
+              updatedAt: new Date(),
+            })
+            .where(eq(tasks.id, task.id));
+        }
+      }
+
+      return milestone;
+    });
 
     if (!deletedMilestone) {
       return NextResponse.json({ error: "Milestone not found" }, { status: 404 });

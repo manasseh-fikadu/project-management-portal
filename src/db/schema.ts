@@ -258,6 +258,17 @@ export const tasks = pgTable("tasks", {
   budgetAllocationIdIdx: uniqueIndex("tasks_budget_allocation_id_idx").on(table.budgetAllocationId),
 }));
 
+export const taskMilestones = pgTable("task_milestones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+  milestoneId: uuid("milestone_id").references(() => milestones.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  taskMilestoneUnique: uniqueIndex("task_milestones_task_id_milestone_id_key").on(table.taskId, table.milestoneId),
+  taskIdIdx: index("task_milestones_task_id_idx").on(table.taskId),
+  milestoneIdIdx: index("task_milestones_milestone_id_idx").on(table.milestoneId),
+}));
+
 export const taskDocuments = pgTable("task_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
@@ -529,11 +540,12 @@ export const projectDocumentsRelations = relations(projectDocuments, ({ one }) =
   }),
 }));
 
-export const milestonesRelations = relations(milestones, ({ one }) => ({
+export const milestonesRelations = relations(milestones, ({ one, many }) => ({
   project: one(projects, {
     fields: [milestones.projectId],
     references: [projects.id],
   }),
+  taskMilestones: many(taskMilestones),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
@@ -638,6 +650,18 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   }),
   documents: many(taskDocuments),
   expenditures: many(expenditures),
+  taskMilestones: many(taskMilestones),
+}));
+
+export const taskMilestonesRelations = relations(taskMilestones, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskMilestones.taskId],
+    references: [tasks.id],
+  }),
+  milestone: one(milestones, {
+    fields: [taskMilestones.milestoneId],
+    references: [milestones.id],
+  }),
 }));
 
 export const taskDocumentsRelations = relations(taskDocuments, ({ one }) => ({
@@ -823,6 +847,8 @@ export type ProposalDocument = typeof proposalDocuments.$inferSelect;
 export type NewProposalDocument = typeof proposalDocuments.$inferInsert;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+export type TaskMilestone = typeof taskMilestones.$inferSelect;
+export type NewTaskMilestone = typeof taskMilestones.$inferInsert;
 export type TaskDocument = typeof taskDocuments.$inferSelect;
 export type NewTaskDocument = typeof taskDocuments.$inferInsert;
 export type BudgetAllocation = typeof budgetAllocations.$inferSelect;

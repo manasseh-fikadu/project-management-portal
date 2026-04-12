@@ -8,6 +8,21 @@ import { hasReportingTables, isMissingReportingTableError } from "@/lib/reports/
 
 const PROJECT_STATUSES = new Set(["planning", "active", "on_hold", "completed", "cancelled"]);
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PROJECT_TASK_WITH = {
+  assignee: {
+    columns: { id: true, firstName: true, lastName: true, email: true },
+  },
+  creator: {
+    columns: { id: true, firstName: true, lastName: true },
+  },
+  taskMilestones: {
+    with: {
+      milestone: {
+        columns: { id: true, title: true, status: true },
+      },
+    },
+  },
+};
 
 function isValidUuid(value: string): boolean {
   return UUID_REGEX.test(value);
@@ -51,14 +66,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 orderBy: (milestones, { asc }) => [asc(milestones.order)],
               },
               tasks: {
-                with: {
-                  assignee: {
-                    columns: { id: true, firstName: true, lastName: true, email: true },
-                  },
-                  creator: {
-                    columns: { id: true, firstName: true, lastName: true },
-                  },
-                },
+                with: PROJECT_TASK_WITH,
                 orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
               },
               documents: {
@@ -109,14 +117,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 orderBy: (milestones, { asc }) => [asc(milestones.order)],
               },
               tasks: {
-                with: {
-                  assignee: {
-                    columns: { id: true, firstName: true, lastName: true, email: true },
-                  },
-                  creator: {
-                    columns: { id: true, firstName: true, lastName: true },
-                  },
-                },
+                with: PROJECT_TASK_WITH,
                 orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
               },
               documents: {
@@ -168,14 +169,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             orderBy: (milestones, { asc }) => [asc(milestones.order)],
           },
           tasks: {
-            with: {
-              assignee: {
-                columns: { id: true, firstName: true, lastName: true, email: true },
-              },
-              creator: {
-                columns: { id: true, firstName: true, lastName: true },
-              },
-            },
+            with: PROJECT_TASK_WITH,
             orderBy: (tasks, { desc }) => [desc(tasks.createdAt)],
           },
           documents: {

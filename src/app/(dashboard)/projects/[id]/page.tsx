@@ -95,6 +95,10 @@ type TaskUser = {
   email?: string;
 };
 
+type TaskMilestoneLink = {
+  milestone: Pick<Milestone, "id" | "title" | "status">;
+};
+
 type Task = {
   id: string;
   title: string;
@@ -107,16 +111,17 @@ type Task = {
   createdAt: string;
   assignee: TaskUser | null;
   creator: { id: string; firstName: string; lastName: string };
+  taskMilestones: TaskMilestoneLink[];
 };
 
 type TaskFormState = {
   title: string;
   description: string;
-  status: string;
   priority: string;
   progress: number;
   dueDate: string;
   assignedTo: string;
+  milestoneIds: string[];
 };
 
 type Donor = {
@@ -367,6 +372,16 @@ const taskPriorityLabels: Record<string, string> = {
   high: "site.high",
 };
 
+function getLinkedMilestones(task: Task) {
+  return task.taskMilestones.map((link) => link.milestone);
+}
+
+function toggleSelection(currentIds: string[], id: string) {
+  return currentIds.includes(id)
+    ? currentIds.filter((currentId) => currentId !== id)
+    : [...currentIds, id];
+}
+
 const donorStatusLabels: Record<string, string> = {
   active: "site.active",
   pending: "site.pending",
@@ -398,7 +413,9 @@ export default function ProjectProfilePage() {
     priority: "medium",
     dueDate: "",
     assignedTo: "",
+    milestoneIds: [] as string[],
   });
+  const [newTaskMilestoneError, setNewTaskMilestoneError] = useState("");
   const [editingBudgetLine, setEditingBudgetLine] = useState<BudgetAllocation | null>(null);
   const [budgetLineForm, setBudgetLineForm] = useState<BudgetLineFormState>({
     activityName: "",
@@ -413,12 +430,13 @@ export default function ProjectProfilePage() {
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     title: "",
     description: "",
-    status: "pending",
     priority: "medium",
     progress: 0,
     dueDate: "",
     assignedTo: "",
+    milestoneIds: [],
   });
+  const [taskFormMilestoneError, setTaskFormMilestoneError] = useState("");
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
@@ -631,17 +649,14 @@ export default function ProjectProfilePage() {
   async function handleMilestoneStatusChange(milestoneId: string, newStatus: string) {
     if (!project) return;
     try {
-      await fetch(`/api/milestones/${milestoneId}`, {
+      const res = await fetch(`/api/milestones/${milestoneId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      setProject({
-        ...project,
-        milestones: project.milestones.map((m) =>
-          m.id === milestoneId ? { ...m, status: newStatus } : m
-        ),
-      });
+      if (res.ok) {
+        await fetchProject();
+      }
     } catch (error) {
       console.error(t("site.failed_to_update_milestone"), error);
     }
@@ -675,11 +690,10 @@ export default function ProjectProfilePage() {
     if (!project || !confirm(t("site.are_you_sure_you_want_to_delete_this_milestone"))) return;
 
     try {
-      await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
-      setProject({
-        ...project,
-        milestones: project.milestones.filter((m) => m.id !== milestoneId),
-      });
+      const res = await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchProject();
+      }
     } catch (error) {
       console.error(t("site.failed_to_delete_milestone"), error);
     }
@@ -688,6 +702,10 @@ export default function ProjectProfilePage() {
   async function handleAddTask(e: React.FormEvent) {
     e.preventDefault();
     if (!project) return;
+    if (newTask.milestoneIds.length === 0) {
+      setNewTaskMilestoneError(t("site.link_at_least_one_milestone"));
+      return;
+    }
 
     try {
       const res = await fetch("/api/tasks", {
@@ -700,6 +718,7 @@ export default function ProjectProfilePage() {
           priority: newTask.priority,
           dueDate: newTask.dueDate || null,
           assignedTo: newTask.assignedTo || null,
+          milestoneIds: newTask.milestoneIds,
         }),
       });
       const data = await res.json();
@@ -708,7 +727,15 @@ export default function ProjectProfilePage() {
           ...project,
           tasks: [data.task, ...project.tasks],
         });
-        setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "" });
+        setNewTask({
+          title: "",
+          description: "",
+          priority: "medium",
+          dueDate: "",
+          assignedTo: "",
+          milestoneIds: [],
+        });
+        setNewTaskMilestoneError("");
         setIsAddTaskOpen(false);
       }
     } catch (error) {
@@ -799,12 +826,13 @@ export default function ProjectProfilePage() {
     setTaskForm({
       title: task.title,
       description: task.description || "",
-      status: task.status,
       priority: task.priority,
       progress: task.progress ?? 0,
       dueDate: task.dueDate ? task.dueDate.split("T")[0] : "",
       assignedTo: task.assignee?.id || "",
+      milestoneIds: getLinkedMilestones(task).map((milestone) => milestone.id),
     });
+    setTaskFormMilestoneError("");
   }
 
   function closeTaskEditor() {
@@ -812,17 +840,22 @@ export default function ProjectProfilePage() {
     setTaskForm({
       title: "",
       description: "",
-      status: "pending",
       priority: "medium",
       progress: 0,
       dueDate: "",
       assignedTo: "",
+      milestoneIds: [],
     });
+    setTaskFormMilestoneError("");
   }
 
   async function handleEditTask(e: React.FormEvent) {
     e.preventDefault();
     if (!project || !editingTask) return;
+    if (taskForm.milestoneIds.length === 0) {
+      setTaskFormMilestoneError(t("site.link_at_least_one_milestone"));
+      return;
+    }
 
     try {
       const res = await fetch(`/api/tasks/${editingTask.id}`, {
@@ -831,11 +864,11 @@ export default function ProjectProfilePage() {
         body: JSON.stringify({
           title: taskForm.title,
           description: taskForm.description || null,
-          status: taskForm.status,
           priority: taskForm.priority,
           progress: taskForm.progress,
           dueDate: taskForm.dueDate || null,
           assignedTo: taskForm.assignedTo || null,
+          milestoneIds: taskForm.milestoneIds,
         }),
       });
       const data = await res.json();
@@ -845,26 +878,6 @@ export default function ProjectProfilePage() {
           tasks: project.tasks.map((task) => (task.id === data.task.id ? data.task : task)),
         });
         closeTaskEditor();
-      }
-    } catch (error) {
-      console.error(t("site.failed_to_update_task"), error);
-    }
-  }
-
-  async function handleTaskStatusChange(taskId: string, newStatus: string) {
-    if (!project) return;
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      const data = await res.json();
-      if (data.task) {
-        setProject({
-          ...project,
-          tasks: project.tasks.map((task) => (task.id === data.task.id ? data.task : task)),
-        });
       }
     } catch (error) {
       console.error(t("site.failed_to_update_task"), error);
@@ -1852,8 +1865,19 @@ export default function ProjectProfilePage() {
           {/* Tasks */}
           <div className="bg-card rounded-2xl p-6 lg:p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-serif text-xl text-foreground">{t("site.tasks_and_activities")}</h2>
-              <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+              <div>
+                <h2 className="font-serif text-xl text-foreground">{t("site.tasks_and_activities")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</p>
+              </div>
+              <Dialog
+                open={isAddTaskOpen}
+                onOpenChange={(open) => {
+                  setIsAddTaskOpen(open);
+                  if (!open) {
+                    setNewTaskMilestoneError("");
+                  }
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button size="sm" className="rounded-xl">
                     <Plus className="h-4 w-4 mr-1" /> {t("site.add")}
@@ -1933,11 +1957,62 @@ export default function ProjectProfilePage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>{t("site.linked_milestones")}</Label>
+                        <span className="text-xs text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</span>
+                      </div>
+                      {project.milestones.length > 0 ? (
+                        <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                          <div className="flex flex-wrap gap-2">
+                            {project.milestones.map((milestone) => {
+                              const selected = newTask.milestoneIds.includes(milestone.id);
+                              return (
+                                <button
+                                  key={milestone.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setNewTask((current) => ({
+                                      ...current,
+                                      milestoneIds: toggleSelection(current.milestoneIds, milestone.id),
+                                    }));
+                                    setNewTaskMilestoneError("");
+                                  }}
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    selected
+                                      ? "border-primary bg-sage-pale text-primary"
+                                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {milestone.title}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                          {t("site.no_milestones_available_create_one_first")}
+                        </p>
+                      )}
+                      {newTaskMilestoneError ? (
+                        <p className="text-xs text-destructive">{newTaskMilestoneError}</p>
+                      ) : null}
+                    </div>
                     <div className="flex gap-2 justify-end">
-                      <Button type="button" variant="ghost" onClick={() => setIsAddTaskOpen(false)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsAddTaskOpen(false);
+                          setNewTaskMilestoneError("");
+                        }}
+                      >
                         {t("site.cancel")}
                       </Button>
-                      <Button type="submit" className="rounded-xl">{t("site.add_task")}</Button>
+                      <Button type="submit" className="rounded-xl" disabled={project.milestones.length === 0}>
+                        {t("site.add_task")}
+                      </Button>
                     </div>
                   </form>
                 </DialogContent>
@@ -1954,6 +2029,7 @@ export default function ProjectProfilePage() {
                 {project.tasks.map((task) => {
                   const ts = taskStatusConfig[task.status] || taskStatusConfig.pending;
                   const tp = taskPriorityConfig[task.priority] || taskPriorityConfig.medium;
+                  const linkedMilestones = getLinkedMilestones(task);
                   return (
                     <div key={task.id} className="flex items-start gap-3 p-4 rounded-xl hover:bg-muted/30 transition-colors">
                       <div className="mt-0.5">
@@ -1979,6 +2055,17 @@ export default function ProjectProfilePage() {
                         </div>
                         {task.description && (
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+                        )}
+                        {linkedMilestones.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {linkedMilestones.map((milestone) => (
+                              <Badge key={milestone.id} variant="secondary" className="rounded-full text-[11px]">
+                                {milestone.title}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-amber-warm">{t("site.link_milestones_to_enable_status_automation")}</p>
                         )}
                         <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                           {task.assignee && (
@@ -2012,15 +2099,6 @@ export default function ProjectProfilePage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openTaskEditor(task)}>
                             <Pencil className="h-4 w-4 mr-2" /> {t("site.edit")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "pending")}>
-                            {t("site.set_pending")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "in_progress")}>
-                            {t("site.set_in_progress")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "completed")}>
-                            {t("site.set_completed")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDeleteTask(task.id)} className="text-destructive">
                             <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
@@ -2061,39 +2139,21 @@ export default function ProjectProfilePage() {
                       className="rounded-xl"
                     />
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-task-status">{t("site.status")}</Label>
-                      <Select
-                        value={taskForm.status}
-                        onValueChange={(value) => setTaskForm({ ...taskForm, status: value })}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">{t("site.pending")}</SelectItem>
-                          <SelectItem value="in_progress">{t("site.in_progress")}</SelectItem>
-                          <SelectItem value="completed">{t("site.completed")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-task-priority">{t("site.priority")}</Label>
-                      <Select
-                        value={taskForm.priority}
-                        onValueChange={(value) => setTaskForm({ ...taskForm, priority: value })}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">{t("site.low")}</SelectItem>
-                          <SelectItem value="medium">{t("site.medium")}</SelectItem>
-                          <SelectItem value="high">{t("site.high")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-priority">{t("site.priority")}</Label>
+                    <Select
+                      value={taskForm.priority}
+                      onValueChange={(value) => setTaskForm({ ...taskForm, priority: value })}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">{t("site.low")}</SelectItem>
+                        <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                        <SelectItem value="high">{t("site.high")}</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-task-progress">{t("site.progress")} ({taskForm.progress}%)</Label>
@@ -2142,11 +2202,55 @@ export default function ProjectProfilePage() {
                       </Select>
                     </div>
                   </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>{t("site.linked_milestones")}</Label>
+                      <span className="text-xs text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</span>
+                    </div>
+                    {project.milestones.length > 0 ? (
+                      <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {project.milestones.map((milestone) => {
+                            const selected = taskForm.milestoneIds.includes(milestone.id);
+                            return (
+                              <button
+                                key={milestone.id}
+                                type="button"
+                                onClick={() => {
+                                  setTaskForm((current) => ({
+                                    ...current,
+                                    milestoneIds: toggleSelection(current.milestoneIds, milestone.id),
+                                  }));
+                                  setTaskFormMilestoneError("");
+                                }}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                  selected
+                                    ? "border-primary bg-sage-pale text-primary"
+                                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {milestone.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                        {t("site.no_milestones_available_create_one_first")}
+                      </p>
+                    )}
+                    {taskFormMilestoneError ? (
+                      <p className="text-xs text-destructive">{taskFormMilestoneError}</p>
+                    ) : null}
+                  </div>
                   <div className="flex gap-2 justify-end">
                     <Button type="button" variant="ghost" onClick={closeTaskEditor}>
                       {t("site.cancel")}
                     </Button>
-                    <Button type="submit" className="rounded-xl">{t("site.save_changes")}</Button>
+                    <Button type="submit" className="rounded-xl" disabled={project.milestones.length === 0}>
+                      {t("site.save_changes")}
+                    </Button>
                   </div>
                 </form>
               </DialogContent>

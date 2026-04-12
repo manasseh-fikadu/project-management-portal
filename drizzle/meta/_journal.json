@@ -78,6 +78,13 @@
       "when": 1775955600000,
       "tag": "0010_tasks_budget_allocation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776042000000,
+      "tag": "0011_task_milestones",
+      "breakpoints": true
     }
   ]
 }

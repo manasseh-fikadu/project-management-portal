@@ -1,13 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, tasks } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, milestones, taskMilestones, tasks } from "@/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canAccessProject, canAccessTask, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+import { buildDerivedTaskFields, normalizeMilestoneIds } from "@/lib/task-automation";
 
-const ASSIGNEE_MUTABLE_FIELDS = new Set(["status", "progress", "completedAt"]);
-const TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
+const ASSIGNEE_MUTABLE_FIELDS = new Set(["progress"]);
+const TASK_WITH_RELATIONS = {
+  assignee: {
+    columns: { id: true, firstName: true, lastName: true, email: true },
+  },
+  creator: {
+    columns: { id: true, firstName: true, lastName: true },
+  },
+  project: {
+    columns: { id: true, name: true },
+  },
+  documents: {
+    with: {
+      uploader: {
+        columns: { id: true, firstName: true, lastName: true },
+      },
+    },
+  },
+  taskMilestones: {
+    with: {
+      milestone: {
+        columns: { id: true, title: true, status: true },
+      },
+    },
+  },
+};
 
 function isAssigneeStatusUpdate(payload: unknown): payload is Record<string, unknown> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -25,24 +50,9 @@ function buildAssigneeUpdate(payload: unknown): Record<string, unknown> | null {
 
   const assigneeUpdate: Record<string, unknown> = {};
 
-  if (typeof payload.status === "string" && TASK_STATUSES.has(payload.status)) {
-    assigneeUpdate.status = payload.status;
-  }
-
   if (typeof payload.progress === "number" && Number.isFinite(payload.progress)) {
     const normalizedProgress = Math.round(payload.progress);
     assigneeUpdate.progress = Math.min(100, Math.max(0, normalizedProgress));
-  }
-
-  if (Object.prototype.hasOwnProperty.call(payload, "completedAt")) {
-    if (payload.completedAt === null || payload.completedAt === "") {
-      assigneeUpdate.completedAt = null;
-    } else if (typeof payload.completedAt === "string") {
-      const parsedCompletedAt = new Date(payload.completedAt);
-      if (!Number.isNaN(parsedCompletedAt.getTime())) {
-        assigneeUpdate.completedAt = parsedCompletedAt;
-      }
-    }
   }
 
   return Object.keys(assigneeUpdate).length > 0 ? assigneeUpdate : null;
@@ -66,24 +76,7 @@ export async function GET(
 
     const task = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
-      with: {
-        assignee: {
-          columns: { id: true, firstName: true, lastName: true, email: true },
-        },
-        creator: {
-          columns: { id: true, firstName: true, lastName: true },
-        },
-        project: {
-          columns: { id: true, name: true },
-        },
-        documents: {
-          with: {
-            uploader: {
-              columns: { id: true, firstName: true, lastName: true },
-            },
-          },
-        },
-      },
+      with: TASK_WITH_RELATIONS,
     });
 
     if (!task) {
@@ -114,9 +107,22 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const assigneeUpdate = buildAssigneeUpdate(body);
+    const payload =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
+    const assigneeUpdate = buildAssigneeUpdate(payload);
     const existingTask = await db.query.tasks.findFirst({
       where: eq(tasks.id, id),
+      with: {
+        taskMilestones: {
+          with: {
+            milestone: {
+              columns: { id: true, status: true },
+            },
+          },
+        },
+      },
     });
 
     if (!existingTask) {
@@ -131,57 +137,163 @@ export async function PUT(
       return accessError;
     }
 
-    if (typeof body.projectId === "string" && body.projectId) {
-      const canUseProject = await canAccessProject(session.user, body.projectId);
+    if (
+      Object.prototype.hasOwnProperty.call(payload, "status")
+      || Object.prototype.hasOwnProperty.call(payload, "completedAt")
+    ) {
+      return NextResponse.json({ error: "Task status is derived from linked milestones" }, { status: 400 });
+    }
+
+    if (typeof payload.projectId === "string" && payload.projectId) {
+      const canUseProject = await canAccessProject(session.user, payload.projectId);
       if (!canUseProject) {
         return NextResponse.json({ error: "Project not found" }, { status: 404 });
       }
     }
 
-    const updateData: Record<string, unknown> = {
-      ...(isAssigneeManagingOwnTask ? assigneeUpdate : body),
-      updatedAt: new Date(),
-    };
+    const milestoneIdsProvided = Object.prototype.hasOwnProperty.call(payload, "milestoneIds");
+    const milestoneIds = milestoneIdsProvided ? normalizeMilestoneIds(payload.milestoneIds) : null;
 
-    if (body.dueDate) {
-      updateData.dueDate = new Date(body.dueDate);
+    if (milestoneIdsProvided && (milestoneIds === null || milestoneIds.length === 0)) {
+      return NextResponse.json({ error: "At least one milestone must be linked" }, { status: 400 });
     }
 
-    if (updateData.status === "completed") {
-      updateData.progress = 100;
-      if (updateData.completedAt === undefined) {
-        updateData.completedAt = new Date();
+    const nextProjectId =
+      typeof payload.projectId === "string" && payload.projectId
+        ? payload.projectId
+        : existingTask.projectId;
+
+    if (nextProjectId !== existingTask.projectId && !milestoneIdsProvided) {
+      return NextResponse.json(
+        { error: "Select milestones from the new project before moving this task" },
+        { status: 400 },
+      );
+    }
+
+    let linkedMilestones = existingTask.taskMilestones.map((link) => link.milestone);
+
+    if (milestoneIdsProvided && milestoneIds) {
+      linkedMilestones = await db.query.milestones.findMany({
+        where: and(
+          eq(milestones.projectId, nextProjectId),
+          inArray(milestones.id, milestoneIds),
+        ),
+        columns: { id: true, status: true },
+      });
+
+      if (linkedMilestones.length !== milestoneIds.length) {
+        return NextResponse.json({ error: "Milestones must belong to the selected project" }, { status: 400 });
       }
     }
 
-    const [updatedTask] = await db
-      .update(tasks)
-      .set(updateData)
-      .where(eq(tasks.id, id))
-      .returning();
+    const updateData: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+
+    if (isAssigneeManagingOwnTask) {
+      Object.assign(updateData, assigneeUpdate);
+    } else {
+      if (typeof payload.title === "string") {
+        updateData.title = payload.title;
+      }
+      if (typeof payload.description === "string" || payload.description === null) {
+        updateData.description = payload.description;
+      }
+      if (typeof payload.projectId === "string" && payload.projectId) {
+        updateData.projectId = payload.projectId;
+      }
+      if (typeof payload.priority === "string") {
+        updateData.priority = payload.priority;
+      }
+      if (typeof payload.progress === "number" && Number.isFinite(payload.progress)) {
+        updateData.progress = Math.min(100, Math.max(0, Math.round(payload.progress)));
+      }
+      if (payload.dueDate === null || payload.dueDate === "") {
+        updateData.dueDate = null;
+      } else if (typeof payload.dueDate === "string") {
+        updateData.dueDate = new Date(payload.dueDate);
+      }
+      if (payload.assignedTo === null || payload.assignedTo === "") {
+        updateData.assignedTo = null;
+      } else if (typeof payload.assignedTo === "string") {
+        updateData.assignedTo = payload.assignedTo;
+      }
+    }
+
+    const shouldDeriveStatus = milestoneIdsProvided || existingTask.taskMilestones.length > 0;
+    const progressSnapshot = {
+      progress:
+        typeof updateData.progress === "number"
+          ? updateData.progress
+          : existingTask.progress,
+      completedAt: existingTask.completedAt,
+    };
+
+    if (shouldDeriveStatus) {
+      Object.assign(
+        updateData,
+        buildDerivedTaskFields(
+          progressSnapshot,
+          linkedMilestones.map((milestone) => milestone.status),
+        ),
+      );
+    }
+
+    const updatedTask = await db.transaction(async (tx) => {
+      if (milestoneIdsProvided) {
+        await tx.delete(taskMilestones).where(eq(taskMilestones.taskId, id));
+      }
+
+      const [task] = await tx
+        .update(tasks)
+        .set(updateData)
+        .where(eq(tasks.id, id))
+        .returning();
+
+      if (!task) {
+        return null;
+      }
+
+      if (milestoneIdsProvided && milestoneIds) {
+        await tx.insert(taskMilestones).values(
+          milestoneIds.map((milestoneId) => ({
+            taskId: id,
+            milestoneId,
+          })),
+        );
+      }
+
+      return task;
+    });
 
     if (!updatedTask) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
+
+    const taskWithRelations = await db.query.tasks.findFirst({
+      where: eq(tasks.id, updatedTask.id),
+      with: TASK_WITH_RELATIONS,
+    });
 
     await logAuditEvent({
       actorUserId: session.userId,
       action: "update",
       entityType: "task",
       entityId: id,
-      changes: { before: existingTask, after: updatedTask },
+      changes: { before: existingTask, after: taskWithRelations ?? updatedTask },
       request,
     });
 
     // Notify new assignee if assignment changed (best-effort)
     if (
-      body.assignedTo &&
-      body.assignedTo !== existingTask.assignedTo &&
-      body.assignedTo !== session.userId
+      typeof updateData.assignedTo === "string"
+      && updateData.assignedTo
+      && updateData.assignedTo !== existingTask.assignedTo
+      && updateData.assignedTo !== session.userId
     ) {
       try {
         await createNotification({
-          userId: body.assignedTo,
+          userId: updateData.assignedTo,
           type: "task_assigned",
           title: "Task reassigned to you",
           message: `You have been assigned "${updatedTask.title}".`,
@@ -190,31 +302,12 @@ export async function PUT(
           sendEmail: true,
         });
       } catch (notifError) {
-        console.error(`Failed to notify assignee ${body.assignedTo} for task ${updatedTask.id} ("${updatedTask.title}"):`, notifError);
+        console.error(
+          `Failed to notify assignee ${updateData.assignedTo} for task ${updatedTask.id} ("${updatedTask.title}"):`,
+          notifError,
+        );
       }
     }
-
-    const taskWithRelations = await db.query.tasks.findFirst({
-      where: eq(tasks.id, updatedTask.id),
-      with: {
-        assignee: {
-          columns: { id: true, firstName: true, lastName: true, email: true },
-        },
-        creator: {
-          columns: { id: true, firstName: true, lastName: true },
-        },
-        project: {
-          columns: { id: true, name: true },
-        },
-        documents: {
-          with: {
-            uploader: {
-              columns: { id: true, firstName: true, lastName: true },
-            },
-          },
-        },
-      },
-    });
 
     return NextResponse.json({ task: taskWithRelations });
   } catch (error) {

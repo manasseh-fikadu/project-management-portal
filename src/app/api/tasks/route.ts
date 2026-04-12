@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, tasks } from "@/db";
+import { db, milestones, taskMilestones, tasks } from "@/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+import { buildDerivedTaskFields, normalizeMilestoneIds } from "@/lib/task-automation";
+
+const TASK_WITH_RELATIONS = {
+  assignee: {
+    columns: { id: true, firstName: true, lastName: true, email: true },
+  },
+  creator: {
+    columns: { id: true, firstName: true, lastName: true },
+  },
+  project: {
+    columns: { id: true, name: true },
+  },
+  documents: {
+    with: {
+      uploader: {
+        columns: { id: true, firstName: true, lastName: true },
+      },
+    },
+  },
+  taskMilestones: {
+    with: {
+      milestone: {
+        columns: { id: true, title: true, status: true },
+      },
+    },
+  },
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,24 +63,7 @@ export async function GET(request: NextRequest) {
 
     const query = db.query.tasks.findMany({
       where: whereClause,
-      with: {
-        assignee: {
-          columns: { id: true, firstName: true, lastName: true, email: true },
-        },
-        creator: {
-          columns: { id: true, firstName: true, lastName: true },
-        },
-        project: {
-          columns: { id: true, name: true },
-        },
-        documents: {
-          with: {
-            uploader: {
-              columns: { id: true, firstName: true, lastName: true },
-            },
-          },
-        },
-      },
+      with: TASK_WITH_RELATIONS,
       orderBy: [desc(tasks.createdAt)],
     });
 
@@ -75,19 +85,28 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      projectId,
-      title,
-      description,
-      status,
-      priority,
-      dueDate,
-      assignedTo,
-      progress,
-    } = body;
+    const payload =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
+    const projectId = typeof payload.projectId === "string" ? payload.projectId : "";
+    const title = typeof payload.title === "string" ? payload.title : "";
+    const description = typeof payload.description === "string" ? payload.description : null;
+    const priority = typeof payload.priority === "string" ? payload.priority : null;
+    const dueDate = typeof payload.dueDate === "string" ? payload.dueDate : null;
+    const assignedTo =
+      typeof payload.assignedTo === "string" && payload.assignedTo
+        ? payload.assignedTo
+        : null;
+    const progress = typeof payload.progress === "number" ? payload.progress : 0;
+    const milestoneIds = normalizeMilestoneIds(payload.milestoneIds);
 
     if (!projectId || !title) {
       return NextResponse.json({ error: "Project ID and title are required" }, { status: 400 });
+    }
+
+    if (milestoneIds === null || milestoneIds.length === 0) {
+      return NextResponse.json({ error: "At least one milestone must be linked" }, { status: 400 });
     }
 
     const hasAccess = await canAccessProject(session.user, projectId);
@@ -95,20 +114,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    const [newTask] = await db
-      .insert(tasks)
-      .values({
-        projectId,
-        title,
-        description: description || null,
-        status: status || "pending",
-        priority: priority || "medium",
-        dueDate: dueDate ? new Date(dueDate) : null,
-        assignedTo: assignedTo || null,
-        progress: typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : 0,
-        createdBy: session.userId,
-      })
-      .returning();
+    const linkedMilestones = await db.query.milestones.findMany({
+      where: and(
+        eq(milestones.projectId, projectId),
+        inArray(milestones.id, milestoneIds),
+      ),
+      columns: { id: true, status: true },
+    });
+
+    if (linkedMilestones.length !== milestoneIds.length) {
+      return NextResponse.json({ error: "Milestones must belong to the selected project" }, { status: 400 });
+    }
+
+    const derivedFields = buildDerivedTaskFields(
+      { progress },
+      linkedMilestones.map((milestone) => milestone.status),
+    );
+
+    const newTask = await db.transaction(async (tx) => {
+      const [insertedTask] = await tx
+        .insert(tasks)
+        .values({
+          projectId,
+          title,
+          description,
+          status: derivedFields.status,
+          priority: priority || "medium",
+          dueDate: dueDate ? new Date(dueDate) : null,
+          assignedTo,
+          progress: derivedFields.progress,
+          completedAt: derivedFields.completedAt,
+          createdBy: session.userId,
+        })
+        .returning();
+
+      await tx.insert(taskMilestones).values(
+        milestoneIds.map((milestoneId) => ({
+          taskId: insertedTask.id,
+          milestoneId,
+        })),
+      );
+
+      return insertedTask;
+    });
 
     await logAuditEvent({
       actorUserId: session.userId,
@@ -121,24 +169,7 @@ export async function POST(request: NextRequest) {
 
     const taskWithRelations = await db.query.tasks.findFirst({
       where: eq(tasks.id, newTask.id),
-      with: {
-        assignee: {
-          columns: { id: true, firstName: true, lastName: true, email: true },
-        },
-        creator: {
-          columns: { id: true, firstName: true, lastName: true },
-        },
-        project: {
-          columns: { id: true, name: true },
-        },
-        documents: {
-          with: {
-            uploader: {
-              columns: { id: true, firstName: true, lastName: true },
-            },
-          },
-        },
-      },
+      with: TASK_WITH_RELATIONS,
     });
 
     // Notify assignee when task is assigned to someone other than the creator (best-effort)
