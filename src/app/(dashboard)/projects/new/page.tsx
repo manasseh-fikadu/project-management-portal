@@ -29,9 +29,24 @@ import {
   Eye,
   Loader2,
   ArrowLeft,
+  LocateFixed,
 } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency } from "@/lib/currency";
+import {
+  DOCUMENT_LOCATION_TIMEOUT_MS,
+  getDocumentLocationDisplayName,
+  getGeolocationErrorMessage,
+  resolveLocationLabelFromCoordinates,
+} from "@/lib/document-location";
+
+type UploadLocationState = {
+  label: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  capturedAt: string | null;
+};
 
 const PROJECT_CREATION_ROLES = new Set(["admin", "project_manager"]);
 
@@ -112,6 +127,32 @@ function formatLocalDate(dateStr: string): string {
   return new Date(year, month - 1, day).toLocaleDateString();
 }
 
+function createEmptyUploadLocation(): UploadLocationState {
+  return {
+    label: "",
+    latitude: null,
+    longitude: null,
+    accuracyMeters: null,
+    capturedAt: null,
+  };
+}
+
+function buildUploadLocationPayload(location: UploadLocationState): string | null {
+  const label = location.label.trim();
+  const hasCoordinates = location.latitude !== null && location.longitude !== null;
+
+  if (!label && !hasCoordinates) return null;
+
+  return JSON.stringify({
+    label: label || null,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    capturedAt: location.capturedAt ?? new Date().toISOString(),
+    source: hasCoordinates ? "browser_geolocation" : "manual",
+  });
+}
+
 export default function NewProjectPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -133,6 +174,9 @@ export default function NewProjectPage() {
     return t(`roles.${role}`, { defaultValue: role.replace(/_/g, " ") });
   }
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadLocation, setUploadLocation] = useState<UploadLocationState>(createEmptyUploadLocation());
+  const [capturingUploadLocation, setCapturingUploadLocation] = useState(false);
+  const [uploadLocationError, setUploadLocationError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [milestones, setMilestones] = useState<MilestoneInput[]>([]);
@@ -224,6 +268,47 @@ export default function NewProjectPage() {
     const selectedFiles = Array.from(e.target.files || []);
     setFiles((prev) => [...prev, ...selectedFiles]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function captureUploadLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUploadLocationError(t("site.geolocation_not_supported"));
+      return;
+    }
+
+    setCapturingUploadLocation(true);
+    setUploadLocationError(null);
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: DOCUMENT_LOCATION_TIMEOUT_MS,
+          maximumAge: 60000,
+        });
+      });
+      const resolvedLabel = await resolveLocationLabelFromCoordinates(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      setUploadLocation((current) => ({
+        ...current,
+        label: current.label.trim() || resolvedLabel || "",
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      }));
+    } catch (error) {
+      const geolocationError =
+        error && typeof error === "object" && "code" in error
+          ? (error as GeolocationPositionError)
+          : null;
+      setUploadLocationError(getGeolocationErrorMessage(t, geolocationError));
+    } finally {
+      setCapturingUploadLocation(false);
+    }
   }
 
   async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -375,6 +460,7 @@ export default function NewProjectPage() {
       if (!res.ok) throw new Error(data.error || t("site.failed_to_create_project"));
 
       const projectId = data.project.id;
+      const locationPayload = buildUploadLocationPayload(uploadLocation);
 
       const validTasks = taskInputs.filter((t) => t.title.trim());
       for (const task of validTasks) {
@@ -396,6 +482,9 @@ export default function NewProjectPage() {
         for (const file of files) {
           const uploadFormData = new FormData();
           uploadFormData.append("file", file);
+          if (locationPayload) {
+            uploadFormData.append("locationMetadata", locationPayload);
+          }
           await fetch(`/api/projects/${projectId}/documents`, {
             method: "POST",
             body: uploadFormData,
@@ -1135,6 +1224,45 @@ export default function NewProjectPage() {
 
             <div className="border-t border-border pt-8">
               <h3 className="font-serif text-lg text-foreground mb-4">{t("site.project_documents")}</h3>
+              <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+                <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <div className="space-y-2">
+                    <Label htmlFor="new-project-document-location">{t("site.location_label")}</Label>
+                    <Input
+                      id="new-project-document-location"
+                      value={uploadLocation.label}
+                      onChange={(event) => setUploadLocation((current) => ({ ...current, label: event.target.value }))}
+                      placeholder={t("site.location_label_placeholder")}
+                      className="rounded-xl"
+                      disabled={loading}
+                    />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl sm:self-end"
+                      onClick={captureUploadLocation}
+                      disabled={loading || capturingUploadLocation}
+                    >
+                      <LocateFixed className="h-3.5 w-3.5 mr-1.5" />
+                      {capturingUploadLocation ? t("site.capturing_location") : t("site.use_current_location")}
+                    </Button>
+                  </div>
+                  {uploadLocationError ? (
+                    <p className="text-xs text-destructive">{uploadLocationError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {getDocumentLocationDisplayName({
+                        label: uploadLocation.label.trim() || null,
+                        latitude: uploadLocation.latitude,
+                        longitude: uploadLocation.longitude,
+                      }) ?? t("site.location_auto_fill_hint")}
+                    </p>
+                  )}
+                </div>
+              </div>
               <div className="border border-dashed border-border rounded-2xl p-8 text-center">
                 <input
                   ref={fileInputRef}

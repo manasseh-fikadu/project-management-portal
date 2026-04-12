@@ -23,6 +23,12 @@ import { Button } from "@/components/ui/button";
 import { TorDocumentEditor } from "@/components/ui/tor-document-editor";
 import { formatCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
 import { buildTorDocumentPreviewHtml } from "@/lib/tor-document";
+import {
+  buildDocumentLocationMapUrl,
+  getDocumentLocationDisplayName,
+  parseDocumentMetadata,
+  type DocumentMetadata,
+} from "@/lib/document-location";
 
 type Donor = {
   id: string;
@@ -41,6 +47,7 @@ type ProposalDocument = {
   type: string;
   url: string;
   size: number;
+  metadata?: DocumentMetadata | null;
   createdAt: string;
   uploader: {
     id: string;
@@ -171,6 +178,10 @@ function prettyKey(value: string) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getDocumentLocation(document: ProposalDocument) {
+  return parseDocumentMetadata(document.metadata)?.location ?? null;
 }
 
 export default function ProposalDetailsPage() {
@@ -613,6 +624,9 @@ export default function ProposalDetailsPage() {
               ) : (
                 documents.map((document) => {
                   const isSafeUrl = isValidExternalUrl(document.url);
+                  const location = getDocumentLocation(document);
+                  const locationName = getDocumentLocationDisplayName(location);
+                  const mapUrl = location ? buildDocumentLocationMapUrl(location) : null;
                   const content = (
                     <>
                       <p className="font-medium text-foreground">{document.name}</p>
@@ -625,6 +639,21 @@ export default function ProposalDetailsPage() {
                           lastName: document.uploader.lastName,
                         })}
                       </p>
+                      {locationName && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>{locationName}</span>
+                          {mapUrl ? (
+                            <a
+                              href={mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              {t("site.view_map")}
+                            </a>
+                          ) : null}
+                        </div>
+                      )}
                     </>
                   );
 

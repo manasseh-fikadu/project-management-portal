@@ -106,6 +106,7 @@ export const projectDocuments = pgTable("project_documents", {
   type: varchar("type", { length: 100 }).notNull(),
   url: text("url").notNull(),
   size: integer("size").notNull(),
+  metadata: jsonb("metadata"),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -226,6 +227,7 @@ export const proposalDocuments = pgTable("proposal_documents", {
   type: varchar("type", { length: 100 }).notNull(),
   url: text("url").notNull(),
   size: integer("size").notNull(),
+  metadata: jsonb("metadata"),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -258,6 +260,7 @@ export const taskDocuments = pgTable("task_documents", {
   type: varchar("type", { length: 100 }).notNull(),
   url: text("url").notNull(),
   size: integer("size").notNull(),
+  metadata: jsonb("metadata"),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

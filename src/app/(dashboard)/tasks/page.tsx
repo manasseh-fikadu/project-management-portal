@@ -27,7 +27,18 @@ import {
   Edit,
   Leaf,
   CheckSquare,
+  LocateFixed,
+  MapPin,
 } from "lucide-react";
+import {
+  buildDocumentLocationMapUrl,
+  DOCUMENT_LOCATION_TIMEOUT_MS,
+  getDocumentLocationDisplayName,
+  getGeolocationErrorMessage,
+  parseDocumentMetadata,
+  resolveLocationLabelFromCoordinates,
+  type DocumentMetadata,
+} from "@/lib/document-location";
 
 type User = {
   id: string;
@@ -47,12 +58,51 @@ type Document = {
   type: string;
   url: string;
   size: number;
+  metadata?: DocumentMetadata | null;
   createdAt: string;
   uploader: {
     firstName: string;
     lastName: string;
   };
 };
+
+type UploadLocationState = {
+  label: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  capturedAt: string | null;
+};
+
+function createEmptyUploadLocation(): UploadLocationState {
+  return {
+    label: "",
+    latitude: null,
+    longitude: null,
+    accuracyMeters: null,
+    capturedAt: null,
+  };
+}
+
+function buildUploadLocationPayload(location: UploadLocationState): string | null {
+  const label = location.label.trim();
+  const hasCoordinates = location.latitude !== null && location.longitude !== null;
+
+  if (!label && !hasCoordinates) return null;
+
+  return JSON.stringify({
+    label: label || null,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    capturedAt: location.capturedAt ?? new Date().toISOString(),
+    source: hasCoordinates ? "browser_geolocation" : "manual",
+  });
+}
+
+function getDocumentLocation(document: Document) {
+  return parseDocumentMetadata(document.metadata)?.location ?? null;
+}
 
 type Task = {
   id: string;
@@ -130,6 +180,9 @@ export default function TasksPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFiles, setUploadingFiles] = useState<{ name: string; progress: number }[]>([]);
+  const [uploadLocation, setUploadLocation] = useState<UploadLocationState>(createEmptyUploadLocation());
+  const [capturingUploadLocation, setCapturingUploadLocation] = useState(false);
+  const [uploadLocationError, setUploadLocationError] = useState("");
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -355,6 +408,7 @@ export default function TasksPage() {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !selectedTask) return;
+    const locationPayload = buildUploadLocationPayload(uploadLocation);
 
     const newUploads = files.map((f) => ({ name: f.name, progress: 0 }));
     setUploadingFiles(newUploads);
@@ -362,6 +416,9 @@ export default function TasksPage() {
     for (const file of files) {
       const uploadFormData = new FormData();
       uploadFormData.append("file", file);
+      if (locationPayload) {
+        uploadFormData.append("locationMetadata", locationPayload);
+      }
 
       setUploadingFiles((prev) =>
         prev.map((u) => (u.name === file.name ? { ...u, progress: 50 } : u))
@@ -400,6 +457,47 @@ export default function TasksPage() {
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }
+
+  async function captureUploadLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUploadLocationError(t("site.geolocation_not_supported"));
+      return;
+    }
+
+    setCapturingUploadLocation(true);
+    setUploadLocationError("");
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: DOCUMENT_LOCATION_TIMEOUT_MS,
+          maximumAge: 60000,
+        });
+      });
+      const resolvedLabel = await resolveLocationLabelFromCoordinates(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      setUploadLocation((current) => ({
+        ...current,
+        label: current.label.trim() || resolvedLabel || "",
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      }));
+    } catch (error) {
+      const geolocationError =
+        error && typeof error === "object" && "code" in error
+          ? (error as GeolocationPositionError)
+          : null;
+      setUploadLocationError(getGeolocationErrorMessage(t, geolocationError));
+    } finally {
+      setCapturingUploadLocation(false);
     }
   }
 
@@ -1012,6 +1110,45 @@ export default function TasksPage() {
                       />
                     </div>
 
+                    <div className="mb-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <div className="space-y-3">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                          <div className="space-y-2">
+                          <Label htmlFor="task-document-location">{t("site.location_label")}</Label>
+                          <Input
+                            id="task-document-location"
+                            value={uploadLocation.label}
+                            onChange={(event) => setUploadLocation((current) => ({ ...current, label: event.target.value }))}
+                            placeholder={t("site.location_label_placeholder")}
+                            className="rounded-xl"
+                          />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl sm:self-end"
+                            onClick={captureUploadLocation}
+                            disabled={capturingUploadLocation}
+                          >
+                            <LocateFixed className="h-3 w-3 mr-1.5" />
+                            {capturingUploadLocation ? t("site.capturing_location") : t("site.use_current_location")}
+                          </Button>
+                        </div>
+                        {uploadLocationError ? (
+                          <p className="text-xs text-destructive">{uploadLocationError}</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {getDocumentLocationDisplayName({
+                              label: uploadLocation.label.trim() || null,
+                              latitude: uploadLocation.latitude,
+                              longitude: uploadLocation.longitude,
+                            }) ?? t("site.location_auto_fill_hint")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
                     {uploadingFiles.length > 0 && (
                       <div className="space-y-2 mb-3">
                         {uploadingFiles.map((file, index) => (
@@ -1038,7 +1175,12 @@ export default function TasksPage() {
                       </div>
                     ) : (
                       <div className="space-y-1.5">
-                        {selectedTask.documents?.map((doc) => (
+                        {selectedTask.documents?.map((doc) => {
+                          const location = getDocumentLocation(doc);
+                          const locationName = getDocumentLocationDisplayName(location);
+                          const mapUrl = location ? buildDocumentLocationMapUrl(location) : null;
+
+                          return (
                           <div key={doc.id} className="flex items-center gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
                             <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                             <div className="flex-1 min-w-0">
@@ -1053,6 +1195,24 @@ export default function TasksPage() {
                               <p className="text-[11px] text-muted-foreground">
                                 {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
                               </p>
+                              {locationName && (
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                  <span className="inline-flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" />
+                                    {locationName}
+                                  </span>
+                                  {mapUrl ? (
+                                    <a
+                                      href={mapUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline"
+                                    >
+                                      {t("site.view_map")}
+                                    </a>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
                             <Button
                               variant="ghost"
@@ -1063,7 +1223,7 @@ export default function TasksPage() {
                               <X className="h-3 w-3" />
                             </Button>
                           </div>
-                        ))}
+                        );})}
                       </div>
                     )}
                   </div>

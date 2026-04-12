@@ -36,8 +36,19 @@ import {
   HandCoins,
   Send,
   Leaf,
+  LocateFixed,
+  MapPin,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
+import {
+  buildDocumentLocationMapUrl,
+  DOCUMENT_LOCATION_TIMEOUT_MS,
+  getDocumentLocationDisplayName,
+  getGeolocationErrorMessage,
+  parseDocumentMetadata,
+  resolveLocationLabelFromCoordinates,
+  type DocumentMetadata,
+} from "@/lib/document-location";
 
 type Milestone = {
   id: string;
@@ -55,6 +66,7 @@ type Document = {
   type: string;
   url: string;
   size: number;
+  metadata?: DocumentMetadata | null;
   createdAt: string;
   uploader: {
     firstName: string;
@@ -168,6 +180,14 @@ type ReportingProfile = {
   procurementNotes: string | null;
 };
 
+type UploadLocationState = {
+  label: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  capturedAt: string | null;
+};
+
 type Project = {
   id: string;
   name: string;
@@ -220,6 +240,36 @@ function parseBudgetImportNotes(notes: string | null): BudgetImportNotes | null 
   } catch {
     return null;
   }
+}
+
+function createEmptyUploadLocation(): UploadLocationState {
+  return {
+    label: "",
+    latitude: null,
+    longitude: null,
+    accuracyMeters: null,
+    capturedAt: null,
+  };
+}
+
+function buildUploadLocationPayload(location: UploadLocationState): string | null {
+  const label = location.label.trim();
+  const hasCoordinates = location.latitude !== null && location.longitude !== null;
+
+  if (!label && !hasCoordinates) return null;
+
+  return JSON.stringify({
+    label: label || null,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    capturedAt: location.capturedAt ?? new Date().toISOString(),
+    source: hasCoordinates ? "browser_geolocation" : "manual",
+  });
+}
+
+function getDocumentLocation(document: Document) {
+  return parseDocumentMetadata(document.metadata)?.location ?? null;
 }
 
 function getPortalInviteErrorMessageKey(code: unknown, error: unknown): string | null {
@@ -315,6 +365,9 @@ export default function ProjectProfilePage() {
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ title: "", description: "", dueDate: "" });
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [uploadLocation, setUploadLocation] = useState<UploadLocationState>(createEmptyUploadLocation());
+  const [capturingUploadLocation, setCapturingUploadLocation] = useState(false);
+  const [uploadLocationError, setUploadLocationError] = useState("");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [newTask, setNewTask] = useState({
     title: "",
@@ -654,6 +707,7 @@ export default function ProjectProfilePage() {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !project) return;
+    const locationPayload = buildUploadLocationPayload(uploadLocation);
 
     const newUploads: UploadingFile[] = files.map((f) => ({ name: f.name, progress: 0 }));
     setUploadingFiles((prev) => [...prev, ...newUploads]);
@@ -662,6 +716,9 @@ export default function ProjectProfilePage() {
       const file = files[i];
       const formData = new FormData();
       formData.append("file", file);
+      if (locationPayload) {
+        formData.append("locationMetadata", locationPayload);
+      }
 
       setUploadingFiles((prev) =>
         prev.map((u, idx) => (u.name === file.name && idx === prev.findIndex((p) => p.name === file.name) ? { ...u, progress: 50 } : u))
@@ -693,6 +750,47 @@ export default function ProjectProfilePage() {
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }
+
+  async function captureUploadLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUploadLocationError(t("site.geolocation_not_supported"));
+      return;
+    }
+
+    setCapturingUploadLocation(true);
+    setUploadLocationError("");
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: DOCUMENT_LOCATION_TIMEOUT_MS,
+          maximumAge: 60000,
+        });
+      });
+      const resolvedLabel = await resolveLocationLabelFromCoordinates(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      setUploadLocation((current) => ({
+        ...current,
+        label: current.label.trim() || resolvedLabel || "",
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      }));
+    } catch (error) {
+      const geolocationError =
+        error && typeof error === "object" && "code" in error
+          ? (error as GeolocationPositionError)
+          : null;
+      setUploadLocationError(getGeolocationErrorMessage(t, geolocationError));
+    } finally {
+      setCapturingUploadLocation(false);
     }
   }
 
@@ -1632,6 +1730,45 @@ export default function ProjectProfilePage() {
               />
             </div>
 
+            <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+              <div className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <div className="space-y-2">
+                  <Label htmlFor="project-document-location">{t("site.location_label")}</Label>
+                  <Input
+                    id="project-document-location"
+                    value={uploadLocation.label}
+                    onChange={(event) => setUploadLocation((current) => ({ ...current, label: event.target.value }))}
+                    placeholder={t("site.location_label_placeholder")}
+                    className="rounded-xl"
+                  />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl sm:self-end"
+                    onClick={captureUploadLocation}
+                    disabled={capturingUploadLocation}
+                  >
+                    <LocateFixed className="h-3.5 w-3.5 mr-1.5" />
+                    {capturingUploadLocation ? t("site.capturing_location") : t("site.use_current_location")}
+                  </Button>
+                </div>
+                {uploadLocationError ? (
+                  <p className="text-xs text-destructive">{uploadLocationError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {getDocumentLocationDisplayName({
+                      label: uploadLocation.label.trim() || null,
+                      latitude: uploadLocation.latitude,
+                      longitude: uploadLocation.longitude,
+                    }) ?? t("site.location_auto_fill_hint")}
+                  </p>
+                )}
+              </div>
+            </div>
+
             {uploadingFiles.length > 0 && (
               <div className="space-y-2 mb-4">
                 {uploadingFiles.map((file, index) => (
@@ -1658,7 +1795,12 @@ export default function ProjectProfilePage() {
               </div>
             ) : (
               <div className="space-y-1.5">
-                {project.documents.map((doc) => (
+                {project.documents.map((doc) => {
+                  const location = getDocumentLocation(doc);
+                  const locationName = getDocumentLocationDisplayName(location);
+                  const mapUrl = location ? buildDocumentLocationMapUrl(location) : null;
+
+                  return (
                   <div key={doc.id} className="flex items-start gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
                     <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -1679,6 +1821,24 @@ export default function ProjectProfilePage() {
                       <p className="text-[11px] text-muted-foreground">
                         {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
                       </p>
+                      {locationName && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {locationName}
+                          </span>
+                          {mapUrl ? (
+                            <a
+                              href={mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              {t("site.view_map")}
+                            </a>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
@@ -1690,7 +1850,7 @@ export default function ProjectProfilePage() {
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
-                ))}
+                );})}
               </div>
             )}
           </div>
