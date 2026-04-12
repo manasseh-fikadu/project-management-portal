@@ -240,6 +240,7 @@ export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "
 export const tasks = pgTable("tasks", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   status: taskStatusEnum("status").default("pending").notNull(),
@@ -254,6 +255,7 @@ export const tasks = pgTable("tasks", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   progressRangeCheck: check("tasks_progress_range_check", sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+  budgetAllocationIdIdx: uniqueIndex("tasks_budget_allocation_id_idx").on(table.budgetAllocationId),
 }));
 
 export const taskDocuments = pgTable("task_documents", {
@@ -277,6 +279,7 @@ export const budgetAllocations = pgTable("budget_allocations", {
   q2Amount: integer("q2_amount").default(0).notNull(),
   q3Amount: integer("q3_amount").default(0).notNull(),
   q4Amount: integer("q4_amount").default(0).notNull(),
+  assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdBy: uuid("created_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -619,6 +622,10 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     fields: [tasks.projectId],
     references: [projects.id],
   }),
+  budgetAllocation: one(budgetAllocations, {
+    fields: [tasks.budgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
   assignee: one(users, {
     fields: [tasks.assignedTo],
     references: [users.id],
@@ -648,6 +655,14 @@ export const budgetAllocationsRelations = relations(budgetAllocations, ({ one, m
   project: one(projects, {
     fields: [budgetAllocations.projectId],
     references: [projects.id],
+  }),
+  task: one(tasks, {
+    fields: [budgetAllocations.id],
+    references: [tasks.budgetAllocationId],
+  }),
+  assignee: one(users, {
+    fields: [budgetAllocations.assignedTo],
+    references: [users.id],
   }),
   creator: one(users, {
     fields: [budgetAllocations.createdBy],

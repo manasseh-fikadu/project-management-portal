@@ -24,6 +24,7 @@ import {
   User,
   DollarSign,
   MoreVertical,
+  Pencil,
   Trash2,
   Upload,
   FileText,
@@ -108,6 +109,16 @@ type Task = {
   creator: { id: string; firstName: string; lastName: string };
 };
 
+type TaskFormState = {
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  progress: number;
+  dueDate: string;
+  assignedTo: string;
+};
+
 type Donor = {
   id: string;
   name: string;
@@ -162,6 +173,18 @@ type BudgetAllocation = {
   q3Amount: number;
   q4Amount: number;
   notes: string | null;
+  assignee: TaskUser | null;
+  task?: { id: string; title: string; status: string } | null;
+};
+
+type BudgetLineFormState = {
+  activityName: string;
+  plannedAmount: string;
+  q1Amount: string;
+  q2Amount: string;
+  q3Amount: string;
+  q4Amount: string;
+  assignedTo: string;
 };
 
 type ReportingProfile = {
@@ -376,10 +399,31 @@ export default function ProjectProfilePage() {
     dueDate: "",
     assignedTo: "",
   });
+  const [editingBudgetLine, setEditingBudgetLine] = useState<BudgetAllocation | null>(null);
+  const [budgetLineForm, setBudgetLineForm] = useState<BudgetLineFormState>({
+    activityName: "",
+    plannedAmount: "",
+    q1Amount: "",
+    q2Amount: "",
+    q3Amount: "",
+    q4Amount: "",
+    assignedTo: "",
+  });
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskForm, setTaskForm] = useState<TaskFormState>({
+    title: "",
+    description: "",
+    status: "pending",
+    priority: "medium",
+    progress: 0,
+    dueDate: "",
+    assignedTo: "",
+  });
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
   const [showAllBudgetLines, setShowAllBudgetLines] = useState(false);
+  const [creatingBudgetTasks, setCreatingBudgetTasks] = useState(false);
   const [isReportingSettingsOpen, setIsReportingSettingsOpen] = useState(false);
   const [savingReportingSettings, setSavingReportingSettings] = useState(false);
   const [reportingSettingsError, setReportingSettingsError] = useState("");
@@ -672,20 +716,156 @@ export default function ProjectProfilePage() {
     }
   }
 
+  function openBudgetLineEditor(line: BudgetAllocation) {
+    setEditingBudgetLine(line);
+    setBudgetLineForm({
+      activityName: line.activityName,
+      plannedAmount: String(line.plannedAmount),
+      q1Amount: String(line.q1Amount ?? 0),
+      q2Amount: String(line.q2Amount ?? 0),
+      q3Amount: String(line.q3Amount ?? 0),
+      q4Amount: String(line.q4Amount ?? 0),
+      assignedTo: line.assignee?.id || "",
+    });
+  }
+
+  function closeBudgetLineEditor() {
+    setEditingBudgetLine(null);
+    setBudgetLineForm({
+      activityName: "",
+      plannedAmount: "",
+      q1Amount: "",
+      q2Amount: "",
+      q3Amount: "",
+      q4Amount: "",
+      assignedTo: "",
+    });
+  }
+
+  async function handleEditBudgetLine(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project || !editingBudgetLine) return;
+
+    try {
+      const res = await fetch(`/api/budgets/${editingBudgetLine.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityName: budgetLineForm.activityName,
+          plannedAmount: Number(budgetLineForm.plannedAmount),
+          q1Amount: Number(budgetLineForm.q1Amount),
+          q2Amount: Number(budgetLineForm.q2Amount),
+          q3Amount: Number(budgetLineForm.q3Amount),
+          q4Amount: Number(budgetLineForm.q4Amount),
+          assignedTo: budgetLineForm.assignedTo || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.budgetAllocation) {
+        setProject({
+          ...project,
+          budgetAllocations: project.budgetAllocations.map((line) =>
+            line.id === data.budgetAllocation.id ? data.budgetAllocation : line
+          ),
+        });
+        closeBudgetLineEditor();
+      }
+    } catch (error) {
+      console.error(t("site.failed_to_create_budget_allocation"), error);
+    }
+  }
+
+  async function handleCreateBudgetTasks() {
+    try {
+      setCreatingBudgetTasks(true);
+      const res = await fetch(`/api/projects/${projectId}/budget-tasks`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to create tasks from budget lines");
+      }
+
+      await fetchProject();
+    } catch (error) {
+      console.error("Failed to create tasks from budget lines:", error);
+    } finally {
+      setCreatingBudgetTasks(false);
+    }
+  }
+
+  function openTaskEditor(task: Task) {
+    setEditingTask(task);
+    setTaskForm({
+      title: task.title,
+      description: task.description || "",
+      status: task.status,
+      priority: task.priority,
+      progress: task.progress ?? 0,
+      dueDate: task.dueDate ? task.dueDate.split("T")[0] : "",
+      assignedTo: task.assignee?.id || "",
+    });
+  }
+
+  function closeTaskEditor() {
+    setEditingTask(null);
+    setTaskForm({
+      title: "",
+      description: "",
+      status: "pending",
+      priority: "medium",
+      progress: 0,
+      dueDate: "",
+      assignedTo: "",
+    });
+  }
+
+  async function handleEditTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project || !editingTask) return;
+
+    try {
+      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskForm.title,
+          description: taskForm.description || null,
+          status: taskForm.status,
+          priority: taskForm.priority,
+          progress: taskForm.progress,
+          dueDate: taskForm.dueDate || null,
+          assignedTo: taskForm.assignedTo || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.task) {
+        setProject({
+          ...project,
+          tasks: project.tasks.map((task) => (task.id === data.task.id ? data.task : task)),
+        });
+        closeTaskEditor();
+      }
+    } catch (error) {
+      console.error(t("site.failed_to_update_task"), error);
+    }
+  }
+
   async function handleTaskStatusChange(taskId: string, newStatus: string) {
     if (!project) return;
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      setProject({
-        ...project,
-        tasks: project.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: newStatus } : t
-        ),
-      });
+      const data = await res.json();
+      if (data.task) {
+        setProject({
+          ...project,
+          tasks: project.tasks.map((task) => (task.id === data.task.id ? data.task : task)),
+        });
+      }
     } catch (error) {
       console.error(t("site.failed_to_update_task"), error);
     }
@@ -941,6 +1121,16 @@ export default function ProjectProfilePage() {
     .map((line) => ({ line, metadata: parseBudgetImportNotes(line.notes) }))
     .filter((entry) => Boolean(entry.metadata?.template));
   const importedTotal = importedBudgetLines.reduce((sum, entry) => sum + entry.line.plannedAmount, 0);
+  const budgetLinesMissingTasks = budgetLines.filter((line) => !line.task).length;
+  const assignableProjectMembers = [
+    {
+      id: project.manager.id,
+      firstName: project.manager.firstName,
+      lastName: project.manager.lastName,
+      email: project.manager.email,
+    },
+    ...project.members.map((member) => member.user),
+  ].filter((member, index, collection) => collection.findIndex((candidate) => candidate.id === member.id) === index);
 
   return (
     <div className="p-6 lg:p-10">
@@ -1279,6 +1469,25 @@ export default function ProjectProfilePage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {budgetLinesMissingTasks > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={handleCreateBudgetTasks}
+                      disabled={creatingBudgetTasks}
+                    >
+                      {creatingBudgetTasks ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {t("site.creating")}
+                        </>
+                      ) : (
+                        t("site.create_tasks_from_budget_lines")
+                      )}
+                    </Button>
+                  )}
                   <Badge variant="secondary" className="rounded-full px-3 py-1">
                     {t("site.lines_count", { count: budgetLines.length })}
                   </Badge>
@@ -1353,7 +1562,7 @@ export default function ProjectProfilePage() {
               )}
 
               <div className="space-y-3">
-                {visibleBudgetLines.map((line) => {
+                  {visibleBudgetLines.map((line) => {
                   const metadata = parseBudgetImportNotes(line.notes);
                   return (
                     <div key={line.id} className="rounded-xl border border-border/70 px-4 py-4">
@@ -1383,9 +1592,36 @@ export default function ProjectProfilePage() {
                               })}
                             </p>
                           )}
+                          {line.assignee && (
+                            <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                              <User className="h-3 w-3" />
+                              <span>
+                                {line.assignee.firstName} {line.assignee.lastName}
+                              </span>
+                            </div>
+                          )}
+                          {line.task && (
+                            <div className="mt-2">
+                              <Badge variant="secondary" className="rounded-full text-[11px]">
+                                {t("sidebar.tasks")}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
-                        <div className="shrink-0 rounded-full bg-muted/40 px-3 py-1.5 text-sm font-semibold text-foreground">
-                          {formatBudget(line.plannedAmount)}
+                        <div className="flex items-start gap-2">
+                          <div className="shrink-0 rounded-full bg-muted/40 px-3 py-1.5 text-sm font-semibold text-foreground">
+                            {formatBudget(line.plannedAmount)}
+                          </div>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 rounded-full"
+                            onClick={() => openBudgetLineEditor(line)}
+                            aria-label={t("site.edit")}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
 
@@ -1408,6 +1644,90 @@ export default function ProjectProfilePage() {
                   );
                 })}
               </div>
+
+              <Dialog open={editingBudgetLine !== null} onOpenChange={(open) => !open && closeBudgetLineEditor()}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="font-serif">{t("site.edit")}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleEditBudgetLine} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-budget-activity">{t("site.title")}</Label>
+                      <Input
+                        id="edit-budget-activity"
+                        value={budgetLineForm.activityName}
+                        onChange={(e) => setBudgetLineForm({ ...budgetLineForm, activityName: e.target.value })}
+                        required
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-budget-planned">{t("site.planned")}</Label>
+                        <Input
+                          id="edit-budget-planned"
+                          type="number"
+                          min="0"
+                          value={budgetLineForm.plannedAmount}
+                          onChange={(e) => setBudgetLineForm({ ...budgetLineForm, plannedAmount: e.target.value })}
+                          required
+                          className="rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-budget-assignee">{t("site.assign_to")}</Label>
+                        <Select
+                          value={budgetLineForm.assignedTo || "_none"}
+                          onValueChange={(value) => setBudgetLineForm({ ...budgetLineForm, assignedTo: value === "_none" ? "" : value })}
+                        >
+                          <SelectTrigger className="rounded-xl">
+                            <SelectValue placeholder={t("site.select_assignee")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
+                            {assignableProjectMembers.map((member) => (
+                              <SelectItem key={member.id} value={member.id}>
+                                {member.firstName} {member.lastName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        { key: "q1Amount", label: t("site.q1") },
+                        { key: "q2Amount", label: t("site.q2") },
+                        { key: "q3Amount", label: t("site.q3") },
+                        { key: "q4Amount", label: t("site.q4") },
+                      ].map((quarter) => (
+                        <div key={quarter.key} className="space-y-2">
+                          <Label htmlFor={`edit-budget-${quarter.key}`}>{quarter.label}</Label>
+                          <Input
+                            id={`edit-budget-${quarter.key}`}
+                            type="number"
+                            min="0"
+                            value={budgetLineForm[quarter.key as keyof BudgetLineFormState]}
+                            onChange={(e) =>
+                              setBudgetLineForm({
+                                ...budgetLineForm,
+                                [quarter.key]: e.target.value,
+                              })
+                            }
+                            className="rounded-xl"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button type="button" variant="ghost" onClick={closeBudgetLineEditor}>
+                        {t("site.cancel")}
+                      </Button>
+                      <Button type="submit" className="rounded-xl">{t("site.save_changes")}</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </div>
           )}
 
@@ -1605,9 +1925,9 @@ export default function ProjectProfilePage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.firstName} {user.lastName}
+                          {assignableProjectMembers.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.firstName} {member.lastName}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1690,6 +2010,9 @@ export default function ProjectProfilePage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openTaskEditor(task)}>
+                            <Pencil className="h-4 w-4 mr-2" /> {t("site.edit")}
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "pending")}>
                             {t("site.set_pending")}
                           </DropdownMenuItem>
@@ -1709,6 +2032,125 @@ export default function ProjectProfilePage() {
                 })}
               </div>
             )}
+
+            <Dialog open={editingTask !== null} onOpenChange={(open) => !open && closeTaskEditor()}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="font-serif">{t("site.edit_task")}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleEditTask} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-title">{t("site.title")}</Label>
+                    <Input
+                      id="edit-task-title"
+                      value={taskForm.title}
+                      onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                      placeholder={t("site.task_title")}
+                      required
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-description">{t("site.description")}</Label>
+                    <Textarea
+                      id="edit-task-description"
+                      value={taskForm.description}
+                      onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                      placeholder={t("site.what_needs_to_be_done")}
+                      rows={2}
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-task-status">{t("site.status")}</Label>
+                      <Select
+                        value={taskForm.status}
+                        onValueChange={(value) => setTaskForm({ ...taskForm, status: value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">{t("site.pending")}</SelectItem>
+                          <SelectItem value="in_progress">{t("site.in_progress")}</SelectItem>
+                          <SelectItem value="completed">{t("site.completed")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-task-priority">{t("site.priority")}</Label>
+                      <Select
+                        value={taskForm.priority}
+                        onValueChange={(value) => setTaskForm({ ...taskForm, priority: value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">{t("site.low")}</SelectItem>
+                          <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                          <SelectItem value="high">{t("site.high")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-progress">{t("site.progress")} ({taskForm.progress}%)</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="edit-task-progress"
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={taskForm.progress}
+                        onChange={(e) => setTaskForm({ ...taskForm, progress: Number(e.target.value) })}
+                        className="flex-1 h-2 accent-primary"
+                      />
+                      <span className="w-10 text-right text-sm font-medium text-foreground">{taskForm.progress}%</span>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-task-due">{t("site.due_date")}</Label>
+                      <Input
+                        id="edit-task-due"
+                        type="date"
+                        value={taskForm.dueDate}
+                        onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-task-assignee">{t("site.assignee")}</Label>
+                      <Select
+                        value={taskForm.assignedTo || "_none"}
+                        onValueChange={(value) => setTaskForm({ ...taskForm, assignedTo: value === "_none" ? "" : value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder={t("site.select_assignee")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
+                          {assignableProjectMembers.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.firstName} {member.lastName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button type="button" variant="ghost" onClick={closeTaskEditor}>
+                      {t("site.cancel")}
+                    </Button>
+                    <Button type="submit" className="rounded-xl">{t("site.save_changes")}</Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 

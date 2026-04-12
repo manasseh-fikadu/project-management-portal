@@ -69,6 +69,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 },
               },
               budgetAllocations: {
+                with: {
+                  assignee: {
+                    columns: { id: true, firstName: true, lastName: true, email: true },
+                  },
+                  task: {
+                    columns: { id: true, title: true, status: true },
+                  },
+                },
                 orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
               },
               members: {
@@ -119,6 +127,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 },
               },
               budgetAllocations: {
+                with: {
+                  assignee: {
+                    columns: { id: true, firstName: true, lastName: true, email: true },
+                  },
+                  task: {
+                    columns: { id: true, title: true, status: true },
+                  },
+                },
                 orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
               },
               members: {
@@ -170,6 +186,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             },
           },
           budgetAllocations: {
+            with: {
+              assignee: {
+                columns: { id: true, firstName: true, lastName: true, email: true },
+              },
+              task: {
+                columns: { id: true, title: true, status: true },
+              },
+            },
             orderBy: (budgetAllocations, { desc }) => [desc(budgetAllocations.plannedAmount)],
           },
           members: {

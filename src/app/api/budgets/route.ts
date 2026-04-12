@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, budgetAllocations } from "@/db";
+import { db, budgetAllocations, tasks } from "@/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+import { buildBudgetLineTaskDescription, buildBudgetLineTaskTitle } from "@/lib/budget-line-tasks";
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,6 +36,12 @@ export async function GET(request: NextRequest) {
     const allBudgetAllocations = await db.query.budgetAllocations.findMany({
       where: filters.length > 0 ? and(...filters) : undefined,
       with: {
+        assignee: {
+          columns: { id: true, firstName: true, lastName: true, email: true },
+        },
+        task: {
+          columns: { id: true, title: true, status: true },
+        },
         project: {
           columns: { id: true, name: true },
         },
@@ -62,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { projectId, activityName, plannedAmount, q1Amount, q2Amount, q3Amount, q4Amount, notes } = body;
+    const { projectId, activityName, plannedAmount, q1Amount, q2Amount, q3Amount, q4Amount, assignedTo, notes } = body;
 
     if (!projectId || !activityName || plannedAmount === undefined) {
       return NextResponse.json(
@@ -116,10 +123,20 @@ export async function POST(request: NextRequest) {
         q2Amount: roundedQ2,
         q3Amount: roundedQ3,
         q4Amount: roundedQ4,
+        assignedTo: assignedTo || null,
         notes: notes || null,
         createdBy: session.userId,
       })
       .returning();
+
+    await db.insert(tasks).values({
+      projectId,
+      budgetAllocationId: newBudgetAllocation.id,
+      title: buildBudgetLineTaskTitle(newBudgetAllocation.activityName),
+      description: buildBudgetLineTaskDescription(newBudgetAllocation.notes),
+      assignedTo: newBudgetAllocation.assignedTo ?? null,
+      createdBy: session.userId,
+    });
 
     await logAuditEvent({
       actorUserId: session.userId,
@@ -130,7 +147,25 @@ export async function POST(request: NextRequest) {
       request,
     });
 
-    return NextResponse.json({ budgetAllocation: newBudgetAllocation }, { status: 201 });
+    const budgetAllocationWithRelations = await db.query.budgetAllocations.findFirst({
+      where: eq(budgetAllocations.id, newBudgetAllocation.id),
+      with: {
+        assignee: {
+          columns: { id: true, firstName: true, lastName: true, email: true },
+        },
+        task: {
+          columns: { id: true, title: true, status: true },
+        },
+        project: {
+          columns: { id: true, name: true },
+        },
+        creator: {
+          columns: { id: true, firstName: true, lastName: true },
+        },
+      },
+    });
+
+    return NextResponse.json({ budgetAllocation: budgetAllocationWithRelations }, { status: 201 });
   } catch (error) {
     console.error("Error creating budget allocation:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
