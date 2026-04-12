@@ -11,6 +11,8 @@ import { DollarSign, ReceiptText, Scale, Leaf, TrendingUp } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/currency";
 
+type DisbursementDirection = "outward" | "inward";
+
 type Project = { id: string; name: string; totalBudget: number | null };
 type Donor = { id: string; name: string; type: string };
 type BudgetAllocation = {
@@ -34,11 +36,22 @@ type Expenditure = {
   project?: { id: string; name: string };
   budgetAllocation?: { id: string; activityName: string; plannedAmount: number } | null;
 };
+type DisbursementFormState = {
+  projectId: string;
+  donorId: string;
+  budgetAllocationId: string;
+  activityName: string;
+  amount: string;
+  disbursedAt: string;
+  reference: string;
+  notes: string;
+};
 type Disbursement = {
   id: string;
   projectId: string;
   donorId: string | null;
   budgetAllocationId: string | null;
+  direction: DisbursementDirection;
   activityName: string;
   amount: number;
   disbursedAt: string;
@@ -85,6 +98,54 @@ const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "performance", label: "site.performance", icon: Scale },
 ];
 
+const disbursementDirections: DisbursementDirection[] = ["outward", "inward"];
+
+const disbursementSectionCopy: Record<
+  DisbursementDirection,
+  {
+    formTitle: string;
+    formDescription: string;
+    listTitle: string;
+    saveLabel: string;
+    emptyLabel: string;
+    amountClassName: string;
+  }
+> = {
+  outward: {
+    formTitle: "site.record_outward_disbursement",
+    formDescription: "site.capture_outward_disbursement_flows_to_project_activities",
+    listTitle: "site.outward_log",
+    saveLabel: "site.save_outward_disbursement_log",
+    emptyLabel: "site.no_outward_disbursement_logs_for_this_project_yet",
+    amountClassName: "text-primary",
+  },
+  inward: {
+    formTitle: "site.record_inward_disbursement",
+    formDescription: "site.capture_inward_disbursement_flows_from_donors_and_other_sources",
+    listTitle: "site.inward_log",
+    saveLabel: "site.save_inward_disbursement_log",
+    emptyLabel: "site.no_inward_disbursement_logs_for_this_project_yet",
+    amountClassName: "text-lavender",
+  },
+};
+
+function createDisbursementFormState(): DisbursementFormState {
+  return {
+    projectId: "",
+    donorId: "none",
+    budgetAllocationId: "none",
+    activityName: "",
+    amount: "",
+    disbursedAt: new Date().toISOString().split("T")[0],
+    reference: "",
+    notes: "",
+  };
+}
+
+function normalizeDisbursementDirection(direction: string | null | undefined): DisbursementDirection {
+  return direction === "inward" ? "inward" : "outward";
+}
+
 export default function FinancialsPage() {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -116,18 +177,29 @@ export default function FinancialsPage() {
     description: "",
   });
 
-  const [disbursementForm, setDisbursementForm] = useState({
-    projectId: "",
-    donorId: "none",
-    budgetAllocationId: "none",
-    activityName: "",
-    amount: "",
-    disbursedAt: new Date().toISOString().split("T")[0],
-    reference: "",
-    notes: "",
+  const [disbursementForms, setDisbursementForms] = useState<Record<DisbursementDirection, DisbursementFormState>>({
+    outward: createDisbursementFormState(),
+    inward: createDisbursementFormState(),
   });
 
-  const [submitting, setSubmitting] = useState<"budget" | "expenditure" | "disbursement" | null>(null);
+  const [submitting, setSubmitting] = useState<"budget" | "expenditure" | DisbursementDirection | null>(null);
+
+  function updateDisbursementForm(direction: DisbursementDirection, updates: Partial<DisbursementFormState>) {
+    setDisbursementForms((current) => ({
+      ...current,
+      [direction]: {
+        ...current[direction],
+        ...updates,
+      },
+    }));
+  }
+
+  function resetDisbursementForm(direction: DisbursementDirection) {
+    setDisbursementForms((current) => ({
+      ...current,
+      [direction]: createDisbursementFormState(),
+    }));
+  }
 
   async function fetchReferenceData() {
     const [projectsRes, donorsRes] = await Promise.all([fetch("/api/projects"), fetch("/api/donors")]);
@@ -153,7 +225,14 @@ export default function FinancialsPage() {
 
     setBudgetAllocations(budgetsData.budgetAllocations || []);
     setExpenditures(expendituresData.expenditures || []);
-    setDisbursements(disbursementsData.disbursements || []);
+    setDisbursements(
+      Array.isArray(disbursementsData.disbursements)
+        ? disbursementsData.disbursements.map((disbursement: Disbursement) => ({
+            ...disbursement,
+            direction: normalizeDisbursementDirection(disbursement.direction),
+          }))
+        : []
+    );
     setComparison(financialsData.comparison || []);
     setTotals(financialsData.totals || null);
   }
@@ -175,9 +254,22 @@ export default function FinancialsPage() {
     );
   }, [projects]);
 
-  const projectBudgetsForDisbursement = useMemo(() => {
-    return budgetAllocations.filter((budget) => budget.projectId === disbursementForm.projectId);
-  }, [budgetAllocations, disbursementForm.projectId]);
+  const budgetAllocationsByProjectId = useMemo(() => {
+    return budgetAllocations.reduce((acc, budget) => {
+      const current = acc.get(budget.projectId) ?? [];
+      current.push(budget);
+      acc.set(budget.projectId, current);
+      return acc;
+    }, new Map<string, BudgetAllocation[]>());
+  }, [budgetAllocations]);
+
+  const projectBudgetsForDisbursement = useMemo(
+    () => ({
+      outward: budgetAllocationsByProjectId.get(disbursementForms.outward.projectId) ?? [],
+      inward: budgetAllocationsByProjectId.get(disbursementForms.inward.projectId) ?? [],
+    }),
+    [budgetAllocationsByProjectId, disbursementForms]
+  );
 
   const projectBudgetsForExpenditure = useMemo(() => {
     return budgetAllocations.filter((budget) => budget.projectId === expenditureForm.projectId);
@@ -188,6 +280,18 @@ export default function FinancialsPage() {
       ? disbursements.filter((entry) => entry.projectId === selectedDisbursementProjectId)
       : [];
   }, [disbursements, selectedDisbursementProjectId]);
+
+  const filteredDisbursementsByDirection = useMemo(
+    () => ({
+      outward: filteredDisbursements.filter(
+        (entry) => normalizeDisbursementDirection(entry.direction) === "outward"
+      ),
+      inward: filteredDisbursements.filter(
+        (entry) => normalizeDisbursementDirection(entry.direction) === "inward"
+      ),
+    }),
+    [filteredDisbursements]
+  );
 
   const filteredBudgetAllocations = useMemo(() => {
     return selectedBudgetProjectId
@@ -270,15 +374,18 @@ export default function FinancialsPage() {
     }
   }
 
-  async function submitDisbursement(e: React.FormEvent) {
+  async function submitDisbursement(direction: DisbursementDirection, e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting("disbursement");
+    setSubmitting(direction);
+
+    const disbursementForm = disbursementForms[direction];
 
     try {
       const res = await fetch("/api/disbursements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          direction,
           projectId: disbursementForm.projectId,
           donorId: disbursementForm.donorId === "none" ? null : disbursementForm.donorId,
           budgetAllocationId: disbursementForm.budgetAllocationId === "none" ? null : disbursementForm.budgetAllocationId,
@@ -292,22 +399,188 @@ export default function FinancialsPage() {
 
       if (!res.ok) throw new Error("Failed to create disbursement log");
 
-      setDisbursementForm({
-        projectId: "",
-        donorId: "none",
-        budgetAllocationId: "none",
-        activityName: "",
-        amount: "",
-        disbursedAt: new Date().toISOString().split("T")[0],
-        reference: "",
-        notes: "",
-      });
+      resetDisbursementForm(direction);
       await fetchFinancialData();
     } catch (error) {
       console.error(error);
     } finally {
       setSubmitting(null);
     }
+  }
+
+  function renderDisbursementForm(direction: DisbursementDirection) {
+    const copy = disbursementSectionCopy[direction];
+    const disbursementForm = disbursementForms[direction];
+    const projectBudgets = projectBudgetsForDisbursement[direction];
+
+    return (
+      <div key={`${direction}-form`} className="bg-card rounded-2xl p-6">
+        <div className="mb-5">
+          <h2 className="font-serif text-xl text-foreground">{t(copy.formTitle)}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t(copy.formDescription)}</p>
+        </div>
+        <form onSubmit={(e) => submitDisbursement(direction, e)} className="grid gap-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>{t("site.project_required")}</Label>
+            <Select
+              value={disbursementForm.projectId}
+              onValueChange={(value) =>
+                updateDisbursementForm(direction, { projectId: value, budgetAllocationId: "none" })
+              }
+            >
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder={t("site.select_project")} />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t("site.donor")}</Label>
+            <Select
+              value={disbursementForm.donorId}
+              onValueChange={(value) => updateDisbursementForm(direction, { donorId: value })}
+            >
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder={t("site.select_donor")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t("site.not_specified")}</SelectItem>
+                {donors.map((donor) => (
+                  <SelectItem key={donor.id} value={donor.id}>
+                    {donor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t("site.linked_budget_activity")}</Label>
+            <Select
+              value={disbursementForm.budgetAllocationId}
+              onValueChange={(value) => updateDisbursementForm(direction, { budgetAllocationId: value })}
+            >
+              <SelectTrigger className="rounded-xl">
+                <SelectValue placeholder={t("site.select_budget_line")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t("site.not_linked")}</SelectItem>
+                {projectBudgets.map((budget) => (
+                  <SelectItem key={budget.id} value={budget.id}>
+                    {budget.activityName} ({formatCurrency(budget.plannedAmount)})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${direction}-disbursement-activity`}>{t("site.activity_name_2")}</Label>
+            <Input
+              id={`${direction}-disbursement-activity`}
+              value={disbursementForm.activityName}
+              onChange={(e) => updateDisbursementForm(direction, { activityName: e.target.value })}
+              required
+              className="rounded-xl"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${direction}-disbursement-amount`}>{t("site.amount")}</Label>
+            <CurrencyInput
+              id={`${direction}-disbursement-amount`}
+              value={disbursementForm.amount}
+              onChange={(value) => updateDisbursementForm(direction, { amount: value })}
+              currency="ETB"
+              min={1}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${direction}-disbursed-at`}>{t("site.disbursement_date")}</Label>
+            <Input
+              id={`${direction}-disbursed-at`}
+              type="date"
+              value={disbursementForm.disbursedAt}
+              onChange={(e) => updateDisbursementForm(direction, { disbursedAt: e.target.value })}
+              required
+              className="rounded-xl"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${direction}-reference`}>{t("site.reference")}</Label>
+            <Input
+              id={`${direction}-reference`}
+              value={disbursementForm.reference}
+              onChange={(e) => updateDisbursementForm(direction, { reference: e.target.value })}
+              className="rounded-xl"
+            />
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor={`${direction}-disbursement-notes`}>{t("site.notes")}</Label>
+            <Textarea
+              id={`${direction}-disbursement-notes`}
+              value={disbursementForm.notes}
+              onChange={(e) => updateDisbursementForm(direction, { notes: e.target.value })}
+              className="rounded-xl"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <Button type="submit" disabled={submitting === direction} className="rounded-xl">
+              {submitting === direction ? t("site.saving") : t(copy.saveLabel)}
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  function renderDisbursementLog(direction: DisbursementDirection) {
+    const copy = disbursementSectionCopy[direction];
+    const entries = filteredDisbursementsByDirection[direction];
+
+    return (
+      <div key={`${direction}-log`} className="rounded-2xl border border-border p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <ReceiptText className={`h-4 w-4 ${copy.amountClassName}`} />
+          <h3 className="font-serif text-lg text-foreground">{t(copy.listTitle)}</h3>
+        </div>
+        {entries.length === 0 ? (
+          <div className="py-10 text-center">
+            <ReceiptText className="mx-auto mb-2 h-8 w-8 text-primary/15" />
+            <p className="text-sm text-muted-foreground">{t(copy.emptyLabel)}</p>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {entries.map((entry) => (
+              <div key={entry.id} className="rounded-xl border border-border p-4 transition-colors hover:bg-muted/30">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium text-foreground">{entry.activityName}</p>
+                  <p className={`font-serif text-lg ${copy.amountClassName}`}>{formatCurrency(entry.amount)}</p>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {entry.project?.name || t("site.unknown_project")} · {entry.donor?.name || t("site.donor_not_specified")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {new Date(entry.disbursedAt).toLocaleDateString()} {entry.reference ? `· Ref: ${entry.reference}` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   if (loading) {
@@ -328,7 +601,7 @@ export default function FinancialsPage() {
           {t("site.financial_tracking")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {t("site.track_budget_plans_expenditures_and_donor_disbursements_by_activity")}
+          {t("site.track_budget_plans_expenditures_and_inward_and_outward_disbursements_by_activity")}
         </p>
       </header>
 
@@ -381,129 +654,26 @@ export default function FinancialsPage() {
       {activeTab === "disbursement-log" && (
         <div className="space-y-6">
           <div className="bg-card rounded-2xl p-6">
-            <div className="mb-5">
-              <h2 className="font-serif text-xl text-foreground">{t("site.record_disbursement")}</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                {t("site.capture_donor_fund_flows_to_specific_project_activities")}
-              </p>
+            <div className="mb-6">
+              <div>
+                <h2 className="font-serif text-xl text-foreground">{t("site.disbursements")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t("site.capture_and_review_inward_and_outward_disbursement_flows")}
+                </p>
+              </div>
             </div>
-            <form onSubmit={submitDisbursement} className="grid gap-5 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>{t("site.project_required")}</Label>
-                <Select
-                  value={disbursementForm.projectId}
-                  onValueChange={(value) =>
-                    setDisbursementForm((prev) => ({ ...prev, projectId: value, budgetAllocationId: "none" }))
-                  }
-                >
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_project")} /></SelectTrigger>
-                  <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("site.donor")}</Label>
-                <Select value={disbursementForm.donorId} onValueChange={(value) => setDisbursementForm((prev) => ({ ...prev, donorId: value }))}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_donor")} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("site.not_specified")}</SelectItem>
-                    {donors.map((donor) => (
-                      <SelectItem key={donor.id} value={donor.id}>{donor.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{t("site.linked_budget_activity")}</Label>
-                <Select
-                  value={disbursementForm.budgetAllocationId}
-                  onValueChange={(value) => setDisbursementForm((prev) => ({ ...prev, budgetAllocationId: value }))}
-                >
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t("site.select_budget_line")} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("site.not_linked")}</SelectItem>
-                    {projectBudgetsForDisbursement.map((budget) => (
-                      <SelectItem key={budget.id} value={budget.id}>
-                        {budget.activityName} ({formatCurrency(budget.plannedAmount)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="disbursement-activity">{t("site.activity_name_2")}</Label>
-                <Input
-                  id="disbursement-activity"
-                  value={disbursementForm.activityName}
-                  onChange={(e) => setDisbursementForm((prev) => ({ ...prev, activityName: e.target.value }))}
-                  required
-                  className="rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="disbursement-amount">{t("site.amount")}</Label>
-                <CurrencyInput
-                  id="disbursement-amount"
-                  value={disbursementForm.amount}
-                  onChange={(val) => setDisbursementForm((prev) => ({ ...prev, amount: val }))}
-                  currency="ETB"
-                  min={1}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="disbursed-at">{t("site.disbursement_date")}</Label>
-                <Input
-                  id="disbursed-at"
-                  type="date"
-                  value={disbursementForm.disbursedAt}
-                  onChange={(e) => setDisbursementForm((prev) => ({ ...prev, disbursedAt: e.target.value }))}
-                  required
-                  className="rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="reference">{t("site.reference")}</Label>
-                <Input
-                  id="reference"
-                  value={disbursementForm.reference}
-                  onChange={(e) => setDisbursementForm((prev) => ({ ...prev, reference: e.target.value }))}
-                  className="rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="disbursement-notes">{t("site.notes")}</Label>
-                <Textarea
-                  id="disbursement-notes"
-                  value={disbursementForm.notes}
-                  onChange={(e) => setDisbursementForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="rounded-xl"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <Button type="submit" disabled={submitting === "disbursement"} className="rounded-xl">
-                  {submitting === "disbursement" ? t("site.saving") : t("site.save_disbursement_log")}
-                </Button>
-              </div>
-            </form>
+            <div className="grid gap-6 xl:grid-cols-2">
+              {disbursementDirections.map(renderDisbursementForm)}
+            </div>
           </div>
 
           <div className="bg-card rounded-2xl p-6">
-            <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
-                <h2 className="font-serif text-xl text-foreground">{t("site.disbursement_log")}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{t("site.show_entries_for_one_project_at_a_time")}</p>
+                <h2 className="font-serif text-xl text-foreground">{t("site.disbursement_log_entries")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t("site.show_inward_and_outward_entries_for_one_project_at_a_time")}
+                </p>
               </div>
               <div className="w-full md:w-72 space-y-2">
                 <Label>{t("site.view_project")}</Label>
@@ -521,29 +691,9 @@ export default function FinancialsPage() {
                 </Select>
               </div>
             </div>
-            {filteredDisbursements.length === 0 ? (
-              <div className="py-10 text-center">
-                <ReceiptText className="h-8 w-8 mx-auto mb-2 text-primary/15" />
-                <p className="text-sm text-muted-foreground">{t("site.no_disbursement_logs_for_this_project_yet")}</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {filteredDisbursements.map((entry) => (
-                  <div key={entry.id} className="rounded-xl border border-border p-4 hover:bg-muted/30 transition-colors">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-medium text-foreground">{entry.activityName}</p>
-                      <p className="font-serif text-lg text-primary">{formatCurrency(entry.amount)}</p>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {entry.project?.name || t("site.unknown_project")} · {entry.donor?.name || t("site.donor_not_specified")}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(entry.disbursedAt).toLocaleDateString()} {entry.reference ? `· Ref: ${entry.reference}` : ""}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="grid gap-6 xl:grid-cols-2">
+              {disbursementDirections.map(renderDisbursementLog)}
+            </div>
           </div>
         </div>
       )}

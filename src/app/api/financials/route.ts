@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, budgetAllocations, disbursementLogs, expenditures, projects } from "@/db";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canAccessProject, getAccessibleProjectIds } from "@/lib/rbac";
 
@@ -62,10 +62,10 @@ export async function GET(request: NextRequest) {
         : undefined;
 
     const disbursementScope = projectId
-      ? eq(disbursementLogs.projectId, projectId)
+      ? and(eq(disbursementLogs.projectId, projectId), eq(disbursementLogs.direction, "outward"))
       : accessibleProjectIds
-        ? inArray(disbursementLogs.projectId, accessibleProjectIds)
-        : undefined;
+        ? and(inArray(disbursementLogs.projectId, accessibleProjectIds), eq(disbursementLogs.direction, "outward"))
+        : eq(disbursementLogs.direction, "outward");
 
     const projectRows = await db.query.projects.findMany({
       where: projectScope,

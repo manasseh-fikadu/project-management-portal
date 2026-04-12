@@ -141,6 +141,9 @@ export const reportingTemplateEnum = pgEnum("reporting_template", ["agra_budget_
 export const reportingNodeTypeEnum = pgEnum("reporting_node_type", ["outcome", "output", "activity", "sub_activity"]);
 export const reportingFundingFacilityEnum = pgEnum("reporting_funding_facility", ["ff1", "ff2", "eif", "other", "unspecified"]);
 export const reportingTransactionTypeEnum = pgEnum("reporting_transaction_type", ["expenditure", "disbursement"]);
+export const disbursementDirectionValues = ["outward", "inward"] as const;
+export type DisbursementDirection = typeof disbursementDirectionValues[number];
+export const disbursementDirectionEnum = pgEnum("disbursement_direction", disbursementDirectionValues);
 
 export const donors = pgTable("donors", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -301,6 +304,7 @@ export const disbursementLogs = pgTable("disbursement_logs", {
   donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
   budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
   expenditureId: uuid("expenditure_id").references(() => expenditures.id, { onDelete: "set null" }),
+  direction: disbursementDirectionEnum("direction").default("outward").notNull(),
   activityName: varchar("activity_name", { length: 255 }).notNull(),
   amount: integer("amount").notNull(),
   disbursedAt: timestamp("disbursed_at").notNull(),
