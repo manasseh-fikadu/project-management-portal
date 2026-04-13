@@ -32,7 +32,7 @@ const TASK_WITH_RELATIONS = {
       },
     },
   },
-};
+} as const;
 
 function isAssigneeStatusUpdate(payload: unknown): payload is Record<string, unknown> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {

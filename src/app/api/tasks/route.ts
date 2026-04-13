@@ -31,7 +31,7 @@ const TASK_WITH_RELATIONS = {
       },
     },
   },
-};
+} as const;
 
 export async function GET(request: NextRequest) {
   try {
