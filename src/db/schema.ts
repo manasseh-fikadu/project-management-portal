@@ -171,6 +171,313 @@ export const projectDonors = pgTable("project_donors", {
   projectDonorUnique: uniqueIndex("project_donors_project_id_donor_id_key").on(table.projectId, table.donorId),
 }));
 
+export const procurementRequestTypeEnum = pgEnum("procurement_request_type", [
+  "goods",
+  "services",
+  "works",
+  "consultancy",
+]);
+export const procurementMethodEnum = pgEnum("procurement_method", [
+  "direct_purchase",
+  "request_for_quotation",
+  "framework_agreement",
+  "restricted_bidding",
+  "open_tender",
+  "single_source",
+]);
+export const procurementStatusEnum = pgEnum("procurement_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rfq_open",
+  "quotes_received",
+  "po_issued",
+  "partially_received",
+  "received",
+  "invoiced",
+  "paid",
+  "cancelled",
+  "rejected",
+]);
+export const procurementApprovalStatusEnum = pgEnum("procurement_approval_status", [
+  "not_started",
+  "pending",
+  "approved",
+  "rejected",
+]);
+export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", [
+  "draft",
+  "issued",
+  "partially_received",
+  "received",
+  "cancelled",
+]);
+export const goodsReceiptStatusEnum = pgEnum("goods_receipt_status", [
+  "partial",
+  "received",
+  "rejected",
+]);
+export const supplierInvoiceStatusEnum = pgEnum("supplier_invoice_status", [
+  "received",
+  "approved",
+  "paid",
+  "rejected",
+]);
+export const supplierPaymentStatusEnum = pgEnum("supplier_payment_status", [
+  "unpaid",
+  "partially_paid",
+  "paid",
+]);
+export const procurementApprovalRoleEnum = pgEnum("procurement_approval_role", [
+  "project_manager",
+  "admin",
+]);
+export const procurementApprovalDecisionEnum = pgEnum("procurement_approval_decision", [
+  "approved",
+  "rejected",
+]);
+export const procurementDocumentTypeEnum = pgEnum("procurement_document_type", [
+  "request",
+  "quotation",
+  "purchase_order",
+  "receipt",
+  "invoice",
+  "evaluation",
+  "other",
+]);
+
+export const vendors = pgTable("vendors", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  contactPerson: varchar("contact_person", { length: 255 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  address: text("address"),
+  website: varchar("website", { length: 500 }),
+  taxId: varchar("tax_id", { length: 120 }),
+  bankAccountName: varchar("bank_account_name", { length: 255 }),
+  bankAccountNumber: varchar("bank_account_number", { length: 120 }),
+  bankName: varchar("bank_name", { length: 255 }),
+  category: varchar("category", { length: 120 }),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  vendorNameIdx: index("vendors_name_idx").on(table.name),
+  vendorActiveIdx: index("vendors_is_active_idx").on(table.isActive),
+}));
+
+export const procurementRequests = pgTable("procurement_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestNumber: varchar("request_number", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  justification: text("justification"),
+  requestType: procurementRequestTypeEnum("request_type").default("goods").notNull(),
+  procurementMethod: procurementMethodEnum("procurement_method").default("request_for_quotation").notNull(),
+  status: procurementStatusEnum("status").default("draft").notNull(),
+  approvalStatus: procurementApprovalStatusEnum("approval_status").default("not_started").notNull(),
+  priority: varchar("priority", { length: 20 }).default("medium").notNull(),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  estimatedAmount: integer("estimated_amount").notNull(),
+  approvedAmount: integer("approved_amount"),
+  committedAmount: integer("committed_amount").default(0).notNull(),
+  invoicedAmount: integer("invoiced_amount").default(0).notNull(),
+  paidAmount: integer("paid_amount").default(0).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  requesterId: uuid("requester_id").references(() => users.id).notNull(),
+  procurementOfficerId: uuid("procurement_officer_id").references(() => users.id, { onDelete: "set null" }),
+  selectedVendorId: uuid("selected_vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+  lookupText: text("lookup_text"),
+  neededByDate: timestamp("needed_by_date"),
+  submittedAt: timestamp("submitted_at"),
+  approvedAt: timestamp("approved_at"),
+  purchaseOrderIssuedAt: timestamp("purchase_order_issued_at"),
+  receivedAt: timestamp("received_at"),
+  invoicedAt: timestamp("invoiced_at"),
+  paidAt: timestamp("paid_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  rejectionReason: text("rejection_reason"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  requestNumberUnique: uniqueIndex("procurement_requests_request_number_key").on(table.requestNumber),
+  procurementRequestsProjectIdx: index("procurement_requests_project_id_idx").on(table.projectId),
+  procurementRequestsBudgetIdx: index("procurement_requests_budget_allocation_id_idx").on(table.budgetAllocationId),
+  procurementRequestsTaskIdx: index("procurement_requests_task_id_idx").on(table.taskId),
+  procurementRequestsStatusIdx: index("procurement_requests_status_idx").on(table.status),
+  procurementRequestsApprovalStatusIdx: index("procurement_requests_approval_status_idx").on(table.approvalStatus),
+  procurementRequestsSelectedVendorIdx: index("procurement_requests_selected_vendor_id_idx").on(table.selectedVendorId),
+  procurementRequestsEstimatedAmountCheck: check(
+    "procurement_requests_estimated_amount_check",
+    sql`${table.estimatedAmount} > 0`
+  ),
+  procurementRequestsApprovedAmountCheck: check(
+    "procurement_requests_approved_amount_check",
+    sql`${table.approvedAmount} IS NULL OR ${table.approvedAmount} >= 0`
+  ),
+}));
+
+export const procurementRequestItems = pgTable("procurement_request_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  description: varchar("description", { length: 255 }).notNull(),
+  specification: text("specification"),
+  category: varchar("category", { length: 120 }),
+  quantity: integer("quantity").default(1).notNull(),
+  unit: varchar("unit", { length: 50 }),
+  unitPrice: integer("unit_price").default(0).notNull(),
+  totalPrice: integer("total_price").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  procurementRequestItemsRequestIdx: index("procurement_request_items_request_id_idx").on(table.procurementRequestId),
+  procurementRequestItemsQuantityCheck: check(
+    "procurement_request_items_quantity_check",
+    sql`${table.quantity} > 0`
+  ),
+  procurementRequestItemsUnitPriceCheck: check(
+    "procurement_request_items_unit_price_check",
+    sql`${table.unitPrice} >= 0`
+  ),
+  procurementRequestItemsTotalPriceCheck: check(
+    "procurement_request_items_total_price_check",
+    sql`${table.totalPrice} >= 0`
+  ),
+}));
+
+export const vendorQuotations = pgTable("vendor_quotations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  vendorId: uuid("vendor_id").references(() => vendors.id).notNull(),
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  submittedAt: timestamp("submitted_at"),
+  validUntil: timestamp("valid_until"),
+  isSelected: boolean("is_selected").default(false).notNull(),
+  notes: text("notes"),
+  comparisonNotes: text("comparison_notes"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  vendorQuotationsRequestIdx: index("vendor_quotations_request_id_idx").on(table.procurementRequestId),
+  vendorQuotationsVendorIdx: index("vendor_quotations_vendor_id_idx").on(table.vendorId),
+  vendorQuotationsAmountCheck: check("vendor_quotations_amount_check", sql`${table.amount} > 0`),
+}));
+
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  vendorId: uuid("vendor_id").references(() => vendors.id).notNull(),
+  poNumber: varchar("po_number", { length: 60 }).notNull(),
+  status: purchaseOrderStatusEnum("status").default("issued").notNull(),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  issuedAt: timestamp("issued_at").notNull(),
+  expectedDeliveryDate: timestamp("expected_delivery_date"),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  purchaseOrdersRequestUnique: uniqueIndex("purchase_orders_procurement_request_id_key").on(table.procurementRequestId),
+  purchaseOrdersPoNumberUnique: uniqueIndex("purchase_orders_po_number_key").on(table.poNumber),
+  purchaseOrdersVendorIdx: index("purchase_orders_vendor_id_idx").on(table.vendorId),
+  purchaseOrdersStatusIdx: index("purchase_orders_status_idx").on(table.status),
+  purchaseOrdersAmountCheck: check("purchase_orders_amount_check", sql`${table.amount} > 0`),
+}));
+
+export const goodsReceipts = pgTable("goods_receipts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "cascade" }).notNull(),
+  receiptNumber: varchar("receipt_number", { length: 60 }).notNull(),
+  status: goodsReceiptStatusEnum("status").default("received").notNull(),
+  receivedAmount: integer("received_amount").default(0).notNull(),
+  conditionNotes: text("condition_notes"),
+  notes: text("notes"),
+  receivedBy: uuid("received_by").references(() => users.id).notNull(),
+  receivedAt: timestamp("received_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  goodsReceiptsReceiptNumberUnique: uniqueIndex("goods_receipts_receipt_number_key").on(table.receiptNumber),
+  goodsReceiptsRequestIdx: index("goods_receipts_request_id_idx").on(table.procurementRequestId),
+  goodsReceiptsPurchaseOrderIdx: index("goods_receipts_purchase_order_id_idx").on(table.purchaseOrderId),
+  goodsReceiptsReceivedAmountCheck: check("goods_receipts_received_amount_check", sql`${table.receivedAmount} >= 0`),
+}));
+
+export const supplierInvoices = pgTable("supplier_invoices", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "set null" }),
+  vendorId: uuid("vendor_id").references(() => vendors.id).notNull(),
+  goodsReceiptId: uuid("goods_receipt_id").references(() => goodsReceipts.id, { onDelete: "set null" }),
+  invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
+  amount: integer("amount").notNull(),
+  currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
+  status: supplierInvoiceStatusEnum("status").default("received").notNull(),
+  paymentStatus: supplierPaymentStatusEnum("payment_status").default("unpaid").notNull(),
+  invoiceDate: timestamp("invoice_date").notNull(),
+  dueDate: timestamp("due_date"),
+  linkedExpenditureId: uuid("linked_expenditure_id").references(() => expenditures.id, { onDelete: "set null" }),
+  linkedDisbursementId: uuid("linked_disbursement_id").references(() => disbursementLogs.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  supplierInvoicesInvoiceNumberUnique: uniqueIndex("supplier_invoices_invoice_number_key").on(table.invoiceNumber),
+  supplierInvoicesRequestIdx: index("supplier_invoices_request_id_idx").on(table.procurementRequestId),
+  supplierInvoicesVendorIdx: index("supplier_invoices_vendor_id_idx").on(table.vendorId),
+  supplierInvoicesStatusIdx: index("supplier_invoices_status_idx").on(table.status),
+  supplierInvoicesAmountCheck: check("supplier_invoices_amount_check", sql`${table.amount} > 0`),
+}));
+
+export const procurementDocuments = pgTable("procurement_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  quotationId: uuid("quotation_id").references(() => vendorQuotations.id, { onDelete: "set null" }),
+  purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "set null" }),
+  goodsReceiptId: uuid("goods_receipt_id").references(() => goodsReceipts.id, { onDelete: "set null" }),
+  supplierInvoiceId: uuid("supplier_invoice_id").references(() => supplierInvoices.id, { onDelete: "set null" }),
+  documentType: procurementDocumentTypeEnum("document_type").default("other").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: varchar("type", { length: 100 }).notNull(),
+  url: text("url").notNull(),
+  size: integer("size").notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  procurementDocumentsRequestIdx: index("procurement_documents_request_id_idx").on(table.procurementRequestId),
+  procurementDocumentsQuotationIdx: index("procurement_documents_quotation_id_idx").on(table.quotationId),
+  procurementDocumentsPurchaseOrderIdx: index("procurement_documents_purchase_order_id_idx").on(table.purchaseOrderId),
+  procurementDocumentsGoodsReceiptIdx: index("procurement_documents_goods_receipt_id_idx").on(table.goodsReceiptId),
+  procurementDocumentsSupplierInvoiceIdx: index("procurement_documents_supplier_invoice_id_idx").on(table.supplierInvoiceId),
+}));
+
+export const procurementApprovals = pgTable("procurement_approvals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
+  approverId: uuid("approver_id").references(() => users.id).notNull(),
+  requiredRole: procurementApprovalRoleEnum("required_role").notNull(),
+  decision: procurementApprovalDecisionEnum("decision").notNull(),
+  thresholdAmount: integer("threshold_amount").notNull(),
+  comments: text("comments"),
+  decidedAt: timestamp("decided_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  procurementApprovalsRequestIdx: index("procurement_approvals_request_id_idx").on(table.procurementRequestId),
+  procurementApprovalsApproverIdx: index("procurement_approvals_approver_id_idx").on(table.approverId),
+  procurementApprovalsThresholdCheck: check("procurement_approvals_threshold_amount_check", sql`${table.thresholdAmount} >= 0`),
+}));
+
 export const proposalStatusEnum = pgEnum("proposal_status", ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]);
 export const proposalTypeEnum = pgEnum("proposal_type", ["grant", "tor"]);
 
@@ -448,6 +755,18 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   budgetAllocations: many(budgetAllocations),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  requestedProcurementRequests: many(procurementRequests, {
+    relationName: "procurementRequestRequester",
+  }),
+  assignedProcurementRequests: many(procurementRequests, {
+    relationName: "procurementRequestOfficer",
+  }),
+  createdVendorQuotations: many(vendorQuotations),
+  createdPurchaseOrders: many(purchaseOrders),
+  receivedGoodsReceipts: many(goodsReceipts),
+  createdSupplierInvoices: many(supplierInvoices),
+  uploadedProcurementDocuments: many(procurementDocuments),
+  procurementApprovals: many(procurementApprovals),
   notifications: many(notifications),
 }));
 
@@ -499,6 +818,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   budgetAllocations: many(budgetAllocations),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  procurementRequests: many(procurementRequests),
   reportingProfile: one(reportingProfiles, {
     fields: [projects.id],
     references: [reportingProfiles.projectId],
@@ -546,6 +866,15 @@ export const donorsRelations = relations(donors, ({ many }) => ({
   accessTokens: many(donorAccessTokens),
 }));
 
+export const vendorsRelations = relations(vendors, ({ many }) => ({
+  selectedProcurementRequests: many(procurementRequests, {
+    relationName: "selectedProcurementRequests",
+  }),
+  quotations: many(vendorQuotations),
+  purchaseOrders: many(purchaseOrders),
+  invoices: many(supplierInvoices),
+}));
+
 export const donorAccessTokensRelations = relations(donorAccessTokens, ({ one }) => ({
   donor: one(donors, {
     fields: [donorAccessTokens.donorId],
@@ -565,6 +894,174 @@ export const projectDonorsRelations = relations(projectDonors, ({ one }) => ({
   donor: one(donors, {
     fields: [projectDonors.donorId],
     references: [donors.id],
+  }),
+}));
+
+export const procurementRequestsRelations = relations(procurementRequests, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [procurementRequests.projectId],
+    references: [projects.id],
+  }),
+  budgetAllocation: one(budgetAllocations, {
+    fields: [procurementRequests.budgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
+  task: one(tasks, {
+    fields: [procurementRequests.taskId],
+    references: [tasks.id],
+  }),
+  requester: one(users, {
+    fields: [procurementRequests.requesterId],
+    references: [users.id],
+    relationName: "procurementRequestRequester",
+  }),
+  procurementOfficer: one(users, {
+    fields: [procurementRequests.procurementOfficerId],
+    references: [users.id],
+    relationName: "procurementRequestOfficer",
+  }),
+  selectedVendor: one(vendors, {
+    fields: [procurementRequests.selectedVendorId],
+    references: [vendors.id],
+    relationName: "selectedProcurementRequests",
+  }),
+  lineItems: many(procurementRequestItems),
+  quotations: many(vendorQuotations),
+  purchaseOrder: one(purchaseOrders, {
+    fields: [procurementRequests.id],
+    references: [purchaseOrders.procurementRequestId],
+  }),
+  receipts: many(goodsReceipts),
+  invoices: many(supplierInvoices),
+  documents: many(procurementDocuments),
+  approvals: many(procurementApprovals),
+}));
+
+export const procurementRequestItemsRelations = relations(procurementRequestItems, ({ one }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [procurementRequestItems.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+}));
+
+export const vendorQuotationsRelations = relations(vendorQuotations, ({ one, many }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [vendorQuotations.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+  vendor: one(vendors, {
+    fields: [vendorQuotations.vendorId],
+    references: [vendors.id],
+  }),
+  creator: one(users, {
+    fields: [vendorQuotations.createdBy],
+    references: [users.id],
+  }),
+  documents: many(procurementDocuments),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [purchaseOrders.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+  vendor: one(vendors, {
+    fields: [purchaseOrders.vendorId],
+    references: [vendors.id],
+  }),
+  creator: one(users, {
+    fields: [purchaseOrders.createdBy],
+    references: [users.id],
+  }),
+  receipts: many(goodsReceipts),
+  invoices: many(supplierInvoices),
+  documents: many(procurementDocuments),
+}));
+
+export const goodsReceiptsRelations = relations(goodsReceipts, ({ one, many }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [goodsReceipts.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+  purchaseOrder: one(purchaseOrders, {
+    fields: [goodsReceipts.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  receiver: one(users, {
+    fields: [goodsReceipts.receivedBy],
+    references: [users.id],
+  }),
+  invoices: many(supplierInvoices),
+  documents: many(procurementDocuments),
+}));
+
+export const supplierInvoicesRelations = relations(supplierInvoices, ({ one, many }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [supplierInvoices.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+  purchaseOrder: one(purchaseOrders, {
+    fields: [supplierInvoices.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  vendor: one(vendors, {
+    fields: [supplierInvoices.vendorId],
+    references: [vendors.id],
+  }),
+  goodsReceipt: one(goodsReceipts, {
+    fields: [supplierInvoices.goodsReceiptId],
+    references: [goodsReceipts.id],
+  }),
+  linkedExpenditure: one(expenditures, {
+    fields: [supplierInvoices.linkedExpenditureId],
+    references: [expenditures.id],
+  }),
+  linkedDisbursement: one(disbursementLogs, {
+    fields: [supplierInvoices.linkedDisbursementId],
+    references: [disbursementLogs.id],
+  }),
+  creator: one(users, {
+    fields: [supplierInvoices.createdBy],
+    references: [users.id],
+  }),
+  documents: many(procurementDocuments),
+}));
+
+export const procurementDocumentsRelations = relations(procurementDocuments, ({ one }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [procurementDocuments.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+  quotation: one(vendorQuotations, {
+    fields: [procurementDocuments.quotationId],
+    references: [vendorQuotations.id],
+  }),
+  purchaseOrder: one(purchaseOrders, {
+    fields: [procurementDocuments.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  goodsReceipt: one(goodsReceipts, {
+    fields: [procurementDocuments.goodsReceiptId],
+    references: [goodsReceipts.id],
+  }),
+  supplierInvoice: one(supplierInvoices, {
+    fields: [procurementDocuments.supplierInvoiceId],
+    references: [supplierInvoices.id],
+  }),
+  uploader: one(users, {
+    fields: [procurementDocuments.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+export const procurementApprovalsRelations = relations(procurementApprovals, ({ one }) => ({
+  procurementRequest: one(procurementRequests, {
+    fields: [procurementApprovals.procurementRequestId],
+    references: [procurementRequests.id],
+  }),
+  approver: one(users, {
+    fields: [procurementApprovals.approverId],
+    references: [users.id],
   }),
 }));
 
@@ -624,6 +1121,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   }),
   documents: many(taskDocuments),
   expenditures: many(expenditures),
+  procurementRequests: many(procurementRequests),
 }));
 
 export const taskDocumentsRelations = relations(taskDocuments, ({ one }) => ({
@@ -648,6 +1146,7 @@ export const budgetAllocationsRelations = relations(budgetAllocations, ({ one, m
   }),
   expenditures: many(expenditures),
   disbursementLogs: many(disbursementLogs),
+  procurementRequests: many(procurementRequests),
   reportingResults: many(reportingResults),
   reportingBudgetLines: many(reportingBudgetLines),
 }));
@@ -674,10 +1173,11 @@ export const expendituresRelations = relations(expenditures, ({ one, many }) => 
     references: [users.id],
   }),
   disbursementLogs: many(disbursementLogs),
+  supplierInvoices: many(supplierInvoices),
   reportingTransactions: many(reportingTransactions),
 }));
 
-export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) => ({
+export const disbursementLogsRelations = relations(disbursementLogs, ({ one, many }) => ({
   project: one(projects, {
     fields: [disbursementLogs.projectId],
     references: [projects.id],
@@ -698,6 +1198,7 @@ export const disbursementLogsRelations = relations(disbursementLogs, ({ one }) =
     fields: [disbursementLogs.createdBy],
     references: [users.id],
   }),
+  supplierInvoices: many(supplierInvoices),
 }));
 
 export const reportingProfilesRelations = relations(reportingProfiles, ({ one, many }) => ({
@@ -793,6 +1294,24 @@ export type Donor = typeof donors.$inferSelect;
 export type NewDonor = typeof donors.$inferInsert;
 export type ProjectDonor = typeof projectDonors.$inferSelect;
 export type NewProjectDonor = typeof projectDonors.$inferInsert;
+export type Vendor = typeof vendors.$inferSelect;
+export type NewVendor = typeof vendors.$inferInsert;
+export type ProcurementRequest = typeof procurementRequests.$inferSelect;
+export type NewProcurementRequest = typeof procurementRequests.$inferInsert;
+export type ProcurementRequestItem = typeof procurementRequestItems.$inferSelect;
+export type NewProcurementRequestItem = typeof procurementRequestItems.$inferInsert;
+export type VendorQuotation = typeof vendorQuotations.$inferSelect;
+export type NewVendorQuotation = typeof vendorQuotations.$inferInsert;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type NewPurchaseOrder = typeof purchaseOrders.$inferInsert;
+export type GoodsReceipt = typeof goodsReceipts.$inferSelect;
+export type NewGoodsReceipt = typeof goodsReceipts.$inferInsert;
+export type SupplierInvoice = typeof supplierInvoices.$inferSelect;
+export type NewSupplierInvoice = typeof supplierInvoices.$inferInsert;
+export type ProcurementDocument = typeof procurementDocuments.$inferSelect;
+export type NewProcurementDocument = typeof procurementDocuments.$inferInsert;
+export type ProcurementApproval = typeof procurementApprovals.$inferSelect;
+export type NewProcurementApproval = typeof procurementApprovals.$inferInsert;
 export type Proposal = typeof proposals.$inferSelect;
 export type NewProposal = typeof proposals.$inferInsert;
 export type ProposalTemplate = typeof proposalTemplates.$inferSelect;
