@@ -11,6 +11,15 @@ function generateReceiptNumber(requestNumber: string, sequence: number): string 
   return `${requestNumber}-GR-${String(sequence).padStart(2, "0")}`;
 }
 
+function parseOptionalDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -95,6 +104,11 @@ export async function POST(
     }
 
     const body = await request.json();
+    const parsedReceivedAt = parseOptionalDate(body.receivedAt);
+    if (typeof body.receivedAt === "string" && body.receivedAt.trim() && parsedReceivedAt === null) {
+      return NextResponse.json({ error: "receivedAt must be a valid date" }, { status: 400 });
+    }
+
     const receivedAmount = toRoundedAmount(body.receivedAmount ?? procurementRequest.purchaseOrder.amount);
     if (receivedAmount === null || receivedAmount < 0) {
       return NextResponse.json({ error: "receivedAmount must be zero or a positive number" }, { status: 400 });
@@ -113,40 +127,44 @@ export async function POST(
           ? "received"
           : "partial";
 
-    const [receipt] = await db
-      .insert(goodsReceipts)
-      .values({
-        procurementRequestId: id,
-        purchaseOrderId: procurementRequest.purchaseOrder.id,
-        receiptNumber:
-          typeof body.receiptNumber === "string" && body.receiptNumber.trim()
-            ? body.receiptNumber.trim()
-            : generateReceiptNumber(procurementRequest.requestNumber, procurementRequest.receipts.length + 1),
-        status,
-        receivedAmount,
-        conditionNotes: typeof body.conditionNotes === "string" ? body.conditionNotes.trim() || null : null,
-        notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
-        receivedBy: session.userId,
-        receivedAt: typeof body.receivedAt === "string" && body.receivedAt.trim() ? new Date(body.receivedAt) : new Date(),
-      })
-      .returning();
+    const receipt = await db.transaction(async (tx) => {
+      const [createdReceipt] = await tx
+        .insert(goodsReceipts)
+        .values({
+          procurementRequestId: id,
+          purchaseOrderId: procurementRequest.purchaseOrder.id,
+          receiptNumber:
+            typeof body.receiptNumber === "string" && body.receiptNumber.trim()
+              ? body.receiptNumber.trim()
+              : generateReceiptNumber(procurementRequest.requestNumber, procurementRequest.receipts.length + 1),
+          status,
+          receivedAmount,
+          conditionNotes: typeof body.conditionNotes === "string" ? body.conditionNotes.trim() || null : null,
+          notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
+          receivedBy: session.userId,
+          receivedAt: parsedReceivedAt ?? new Date(),
+        })
+        .returning();
 
-    await db
-      .update(purchaseOrders)
-      .set({
-        status: isComplete ? "received" : "partially_received",
-        updatedAt: new Date(),
-      })
-      .where(eq(purchaseOrders.id, procurementRequest.purchaseOrder.id));
+      await tx
+        .update(purchaseOrders)
+        .set({
+          status: isComplete ? "received" : "partially_received",
+          updatedAt: new Date(),
+        })
+        .where(eq(purchaseOrders.id, procurementRequest.purchaseOrder.id));
 
-    await db
-      .update(procurementRequests)
-      .set({
-        status: isComplete ? "received" : "partially_received",
-        receivedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(procurementRequests.id, id));
+      await tx
+        .update(procurementRequests)
+        .set({
+          status: isComplete ? "received" : "partially_received",
+          receivedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(procurementRequests.id, id));
+
+      return createdReceipt;
+    });
 
     await logAuditEvent({
       actorUserId: session.userId,

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { db, auditLogs } from "@/db";
 
 export type AuditAction = "create" | "update" | "delete";
+type AuditDbExecutor = Pick<typeof db, "insert">;
 
 export async function logAuditEvent(input: {
   actorUserId: string;
@@ -10,10 +11,12 @@ export async function logAuditEvent(input: {
   entityId: string;
   changes?: unknown;
   request?: NextRequest;
+  executor?: AuditDbExecutor;
 }) {
-  const { actorUserId, action, entityType, entityId, changes, request } = input;
+  const { actorUserId, action, entityType, entityId, changes, request, executor } = input;
+  const auditDb = executor ?? db;
 
-  await db.insert(auditLogs).values({
+  await auditDb.insert(auditLogs).values({
     actorUserId,
     action,
     entityType,

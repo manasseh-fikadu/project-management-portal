@@ -323,7 +323,15 @@ export async function PUT(
 
     if (Object.prototype.hasOwnProperty.call(body, "neededByDate")) {
       const neededByDate = normalizeOptionalText(body.neededByDate);
-      updateData.neededByDate = neededByDate ? new Date(neededByDate) : null;
+      if (!neededByDate) {
+        updateData.neededByDate = null;
+      } else {
+        const parsedNeededByDate = new Date(neededByDate);
+        if (Number.isNaN(parsedNeededByDate.getTime())) {
+          return NextResponse.json({ error: "neededByDate must be a valid date" }, { status: 400 });
+        }
+        updateData.neededByDate = parsedNeededByDate;
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "procurementOfficerId")) {

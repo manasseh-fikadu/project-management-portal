@@ -42,6 +42,8 @@ export async function GET(
           key = document.url.replace(`${R2_PUBLIC_URL}/`, "");
         } else if (document.url.startsWith("/uploads/")) {
           key = document.url.replace("/uploads/", "");
+        } else {
+          key = document.url.replace(/^https?:\/\/[^/]+\//, "");
         }
 
         const command = new GetObjectCommand({ Bucket: R2_BUCKET, Key: key });

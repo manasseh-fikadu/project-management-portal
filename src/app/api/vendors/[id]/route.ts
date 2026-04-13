@@ -151,11 +151,23 @@ export async function DELETE(
     try {
       await db.delete(vendors).where(eq(vendors.id, id));
     } catch (error) {
+      const isForeignKeyViolation =
+        typeof error === "object"
+        && error !== null
+        && (
+          ("code" in error && error.code === "23503")
+          || ("message" in error && typeof error.message === "string" && error.message.toLowerCase().includes("foreign key"))
+        );
+
+      if (isForeignKeyViolation) {
+        return NextResponse.json(
+          { error: "Vendor cannot be deleted while linked procurement records still exist" },
+          { status: 409 }
+        );
+      }
+
       console.error("Error deleting vendor:", error);
-      return NextResponse.json(
-        { error: "Vendor cannot be deleted while linked procurement records still exist" },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 
     await logAuditEvent({

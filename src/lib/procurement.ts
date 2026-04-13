@@ -136,15 +136,15 @@ export function isAllowedProcurementTransition(
 export function generateProcurementRequestNumber(date = new Date()): string {
   const year = date.getFullYear().toString().slice(-2);
   const month = String(date.getMonth() + 1).padStart(2, "0");
-  const random = Math.random().toString(36).toUpperCase().slice(2, 6);
-  return `PR-${year}${month}-${random}`;
+  const uniqueSuffix = crypto.randomUUID().replace(/-/g, "").toUpperCase();
+  return `PR-${year}${month}-${uniqueSuffix}`;
 }
 
 export function generatePurchaseOrderNumber(date = new Date()): string {
   const year = date.getFullYear().toString().slice(-2);
   const month = String(date.getMonth() + 1).padStart(2, "0");
-  const random = Math.random().toString(36).toUpperCase().slice(2, 6);
-  return `PO-${year}${month}-${random}`;
+  const uniqueSuffix = crypto.randomUUID().replace(/-/g, "").toUpperCase();
+  return `PO-${year}${month}-${uniqueSuffix}`;
 }
 
 export function normalizeOptionalText(value: unknown): string | null {

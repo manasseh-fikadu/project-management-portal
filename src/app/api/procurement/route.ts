@@ -36,6 +36,19 @@ type NormalizedLineItem = {
   totalPrice: number;
 };
 
+const PROCUREMENT_REQUEST_NUMBER_MAX_ATTEMPTS = 3;
+
+function isUniqueConstraintError(error: unknown, constraintName: string): boolean {
+  return (
+    typeof error === "object"
+    && error !== null
+    && "code" in error
+    && error.code === "23505"
+    && "constraint" in error
+    && error.constraint === constraintName
+  );
+}
+
 function normalizeLineItems(value: unknown): NormalizedLineItem[] {
   if (!Array.isArray(value)) {
     return [];
@@ -232,7 +245,6 @@ export async function POST(request: NextRequest) {
       : "request_for_quotation";
     const submitForApproval = body.submitForApproval === true;
     const lineItems = normalizeLineItems(body.lineItems);
-    const requestNumber = generateProcurementRequestNumber();
     const description = normalizeOptionalText(body.description);
     const justification = normalizeOptionalText(body.justification);
     const notes = normalizeOptionalText(body.notes);
@@ -241,51 +253,84 @@ export async function POST(request: NextRequest) {
     const neededByDate = normalizeOptionalText(body.neededByDate);
     const priority = typeof body.priority === "string" && body.priority.trim() ? body.priority.trim() : "medium";
 
-    const [createdRequest] = await db.transaction(async (tx) => {
-      const [newRequest] = await tx
-        .insert(procurementRequests)
-        .values({
-          requestNumber,
-          title,
-          description,
-          justification,
-          requestType,
-          procurementMethod,
-          status: submitForApproval ? "submitted" : "draft",
-          approvalStatus: submitForApproval ? "pending" : "not_started",
-          priority,
-          currency,
-          estimatedAmount,
-          projectId,
-          budgetAllocationId,
-          taskId,
-          requesterId: session.userId,
-          procurementOfficerId,
-          selectedVendorId,
-          neededByDate: neededByDate ? new Date(neededByDate) : null,
-          submittedAt: submitForApproval ? new Date() : null,
-          notes,
-          lookupText: buildProcurementLookupText({
-            requestNumber,
-            title,
-            description,
-            justification,
-            notes,
-          }),
-        })
-        .returning();
+    let createdRequest: typeof procurementRequests.$inferSelect | null = null;
 
-      if (lineItems.length > 0) {
-        await tx.insert(procurementRequestItems).values(
-          lineItems.map((item) => ({
-            procurementRequestId: newRequest.id,
-            ...item,
-          }))
-        );
+    for (let attempt = 0; attempt < PROCUREMENT_REQUEST_NUMBER_MAX_ATTEMPTS; attempt += 1) {
+      const requestNumber = generateProcurementRequestNumber();
+
+      try {
+        [createdRequest] = await db.transaction(async (tx) => {
+          const [newRequest] = await tx
+            .insert(procurementRequests)
+            .values({
+              requestNumber,
+              title,
+              description,
+              justification,
+              requestType,
+              procurementMethod,
+              status: submitForApproval ? "submitted" : "draft",
+              approvalStatus: submitForApproval ? "pending" : "not_started",
+              priority,
+              currency,
+              estimatedAmount,
+              projectId,
+              budgetAllocationId,
+              taskId,
+              requesterId: session.userId,
+              procurementOfficerId,
+              selectedVendorId,
+              neededByDate: neededByDate ? new Date(neededByDate) : null,
+              submittedAt: submitForApproval ? new Date() : null,
+              notes,
+              lookupText: buildProcurementLookupText({
+                requestNumber,
+                title,
+                description,
+                justification,
+                notes,
+              }),
+            })
+            .returning();
+
+          if (lineItems.length > 0) {
+            await tx.insert(procurementRequestItems).values(
+              lineItems.map((item) => ({
+                procurementRequestId: newRequest.id,
+                ...item,
+              }))
+            );
+          }
+
+          return [newRequest];
+        });
+        break;
+      } catch (error) {
+        if (
+          isUniqueConstraintError(error, "procurement_requests_request_number_key")
+          && attempt < PROCUREMENT_REQUEST_NUMBER_MAX_ATTEMPTS - 1
+        ) {
+          continue;
+        }
+
+        if (isUniqueConstraintError(error, "procurement_requests_request_number_key")) {
+          console.error("Failed to generate a unique procurement request number:", error);
+          return NextResponse.json(
+            { error: "Unable to generate a unique procurement request number. Please try again." },
+            { status: 500 }
+          );
+        }
+
+        throw error;
       }
+    }
 
-      return [newRequest];
-    });
+    if (!createdRequest) {
+      return NextResponse.json(
+        { error: "Unable to generate a unique procurement request number. Please try again." },
+        { status: 500 }
+      );
+    }
 
     await logAuditEvent({
       actorUserId: session.userId,

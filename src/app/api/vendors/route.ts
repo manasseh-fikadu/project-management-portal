@@ -13,6 +13,16 @@ export async function GET() {
     }
 
     const vendorRows = await db.query.vendors.findMany({
+      columns: {
+        id: true,
+        name: true,
+        contactPerson: true,
+        email: true,
+        phone: true,
+        category: true,
+        isActive: true,
+        createdAt: true,
+      },
       with: {
         selectedProcurementRequests: {
           columns: { id: true },
@@ -31,7 +41,14 @@ export async function GET() {
     });
 
     const vendorList = vendorRows.map((vendor) => ({
-      ...vendor,
+      id: vendor.id,
+      name: vendor.name,
+      contactPerson: vendor.contactPerson,
+      email: vendor.email,
+      phone: vendor.phone,
+      category: vendor.category,
+      isActive: vendor.isActive,
+      createdAt: vendor.createdAt,
       requestCount: vendor.selectedProcurementRequests.length,
       quotationCount: vendor.quotations.length,
       purchaseOrderCount: vendor.purchaseOrders.length,

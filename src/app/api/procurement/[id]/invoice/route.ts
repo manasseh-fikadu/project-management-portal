@@ -8,6 +8,15 @@ import { getProcurementRequestWithRelations } from "@/lib/procurement-data";
 import { postSupplierInvoiceToFinancials, syncProcurementRequestFinancials } from "@/lib/procurement-finance";
 import { normalizeOptionalText, toRoundedAmount } from "@/lib/procurement";
 
+function parseOptionalDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -104,7 +113,7 @@ export async function POST(
           actorUserId: session.userId,
           markAsPaid: body.markAsPaid === true,
           paymentReference: typeof body.paymentReference === "string" ? body.paymentReference.trim() || null : null,
-          paymentDate: typeof body.paymentDate === "string" && body.paymentDate.trim() ? new Date(body.paymentDate) : null,
+          paymentDate: parseOptionalDate(body.paymentDate),
         });
 
         await logAuditEvent({
@@ -136,7 +145,7 @@ export async function POST(
       ?? null;
     const amount = toRoundedAmount(body.amount ?? procurementRequest.purchaseOrder?.amount ?? procurementRequest.approvedAmount ?? procurementRequest.estimatedAmount);
     const invoiceNumber = typeof body.invoiceNumber === "string" ? body.invoiceNumber.trim() : "";
-    const invoiceDate = typeof body.invoiceDate === "string" && body.invoiceDate.trim() ? new Date(body.invoiceDate) : null;
+    const invoiceDate = parseOptionalDate(body.invoiceDate);
 
     if (!vendorId || amount === null || amount <= 0 || !invoiceNumber || !invoiceDate) {
       return NextResponse.json(
@@ -167,7 +176,7 @@ export async function POST(
         status: body.markAsPaid === true ? "paid" : body.postToFinancials === true ? "approved" : "received",
         paymentStatus: body.markAsPaid === true ? "paid" : "unpaid",
         invoiceDate,
-        dueDate: typeof body.dueDate === "string" && body.dueDate.trim() ? new Date(body.dueDate) : null,
+        dueDate: parseOptionalDate(body.dueDate),
         notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
         createdBy: session.userId,
       })
@@ -179,7 +188,7 @@ export async function POST(
         actorUserId: session.userId,
         markAsPaid: body.markAsPaid === true,
         paymentReference: typeof body.paymentReference === "string" ? body.paymentReference.trim() || null : null,
-        paymentDate: typeof body.paymentDate === "string" && body.paymentDate.trim() ? new Date(body.paymentDate) : null,
+        paymentDate: parseOptionalDate(body.paymentDate),
       });
     } else {
       await syncProcurementRequestFinancials(id);

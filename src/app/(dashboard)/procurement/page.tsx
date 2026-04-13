@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from "@/lib/currency";
 import {
   ArrowRight,
   Building2,
@@ -31,6 +31,7 @@ import {
 
 const EDIT_ROLES = new Set(["admin", "project_manager"]);
 const FINAL_STATUSES = new Set(["paid", "cancelled", "rejected"]);
+const DEFAULT_CURRENCY: CurrencyCode = "ETB";
 
 type ProcurementRequest = {
   id: string;
@@ -82,6 +83,79 @@ type ProcurementRequest = {
   } | null;
 };
 
+type CurrencyAmount = {
+  currency: CurrencyCode;
+  amount: number;
+};
+
+type ProjectSpendEntry = {
+  id: string;
+  projectName: string;
+  commitments: CurrencyAmount[];
+  paid: CurrencyAmount[];
+  count: number;
+};
+
+type TopVendorEntry = {
+  id: string;
+  vendorName: string;
+  count: number;
+  value: CurrencyAmount[];
+};
+
+function isSupportedCurrency(currency: string): currency is CurrencyCode {
+  return (SUPPORTED_CURRENCIES as readonly string[]).includes(currency);
+}
+
+function getCurrency(currency: string): CurrencyCode {
+  return isSupportedCurrency(currency) ? currency : DEFAULT_CURRENCY;
+}
+
+function addCurrencyAmount(grouped: Map<CurrencyCode, number>, currency: CurrencyCode, amount: number) {
+  grouped.set(currency, (grouped.get(currency) ?? 0) + amount);
+}
+
+function toCurrencyAmounts(grouped: Map<CurrencyCode, number>): CurrencyAmount[] {
+  return Array.from(grouped.entries())
+    .map(([currency, amount]) => ({ currency, amount }))
+    .sort(
+      (left, right) => SUPPORTED_CURRENCIES.indexOf(left.currency) - SUPPORTED_CURRENCIES.indexOf(right.currency),
+    );
+}
+
+function sumAmountsByCurrency(
+  requests: ProcurementRequest[],
+  getAmount: (request: ProcurementRequest) => number
+): CurrencyAmount[] {
+  const grouped = new Map<CurrencyCode, number>();
+
+  for (const request of requests) {
+    addCurrencyAmount(grouped, getCurrency(request.currency), getAmount(request));
+  }
+
+  return toCurrencyAmounts(grouped);
+}
+
+function CurrencyAmountStack({
+  amounts,
+  className,
+}: {
+  amounts: CurrencyAmount[];
+  className?: string;
+}) {
+  const displayAmounts = amounts.length > 0 ? amounts : [{ currency: DEFAULT_CURRENCY, amount: 0 }];
+
+  return (
+    <span className="flex flex-col gap-1">
+      {displayAmounts.map(({ currency, amount }) => (
+        <span key={currency} className={className}>
+          {formatCurrency(amount, currency)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 const statusConfig: Record<string, { className: string }> = {
   draft: { className: "bg-muted text-muted-foreground" },
   submitted: { className: "bg-amber-pale text-amber-warm" },
@@ -106,6 +180,7 @@ export default function ProcurementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [referenceTime, setReferenceTime] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadPage() {
@@ -134,6 +209,10 @@ export default function ProcurementPage() {
     }
 
     void loadPage();
+  }, []);
+
+  useEffect(() => {
+    setReferenceTime(Date.now());
   }, []);
 
   const canEdit = currentUserRole !== null && EDIT_ROLES.has(currentUserRole);
@@ -179,67 +258,102 @@ export default function ProcurementPage() {
       awaitingApproval: filteredRequests.filter((request) => request.approvalStatus === "pending").length,
       openPurchaseOrders: filteredRequests.filter((request) => ["po_issued", "partially_received", "received"].includes(request.status)).length,
       unpaidInvoices: filteredRequests.filter((request) => request.invoicedAmount > request.paidAmount).length,
-      commitments: filteredRequests.reduce((sum, request) => sum + request.committedAmount, 0),
-      paid: filteredRequests.reduce((sum, request) => sum + request.paidAmount, 0),
+      commitments: sumAmountsByCurrency(filteredRequests, (request) => request.committedAmount),
+      paid: sumAmountsByCurrency(filteredRequests, (request) => request.paidAmount),
     };
   }, [filteredRequests]);
 
   const spendByProject = useMemo(() => {
-    const grouped = new Map<string, { projectName: string; commitments: number; paid: number; count: number }>();
+    const grouped = new Map<
+      string,
+      {
+        id: string;
+        projectName: string;
+        commitments: Map<CurrencyCode, number>;
+        paid: Map<CurrencyCode, number>;
+        count: number;
+      }
+    >();
 
     for (const request of filteredRequests) {
       const key = request.project?.id ?? "unassigned";
       const current = grouped.get(key) ?? {
+        id: key,
         projectName: request.project?.name ?? t("site.unassigned", { defaultValue: "Unassigned" }),
-        commitments: 0,
-        paid: 0,
+        commitments: new Map<CurrencyCode, number>(),
+        paid: new Map<CurrencyCode, number>(),
         count: 0,
       };
+      const currency = getCurrency(request.currency);
 
-      current.commitments += request.committedAmount;
-      current.paid += request.paidAmount;
+      addCurrencyAmount(current.commitments, currency, request.committedAmount);
+      addCurrencyAmount(current.paid, currency, request.paidAmount);
       current.count += 1;
       grouped.set(key, current);
     }
 
-    return Array.from(grouped.values())
-      .sort((left, right) => right.commitments - left.commitments)
+    return Array.from(grouped.values()).map<ProjectSpendEntry>((entry) => ({
+      id: entry.id,
+      projectName: entry.projectName,
+      commitments: toCurrencyAmounts(entry.commitments),
+      paid: toCurrencyAmounts(entry.paid),
+      count: entry.count,
+    }))
+      .sort((left, right) => right.count - left.count || left.projectName.localeCompare(right.projectName))
       .slice(0, 5);
   }, [filteredRequests, t]);
 
   const topVendors = useMemo(() => {
-    const grouped = new Map<string, { vendorName: string; count: number; value: number }>();
+    const grouped = new Map<
+      string,
+      {
+        id: string;
+        vendorName: string;
+        count: number;
+        value: Map<CurrencyCode, number>;
+      }
+    >();
 
     for (const request of filteredRequests) {
       if (!request.selectedVendor) continue;
       const current = grouped.get(request.selectedVendor.id) ?? {
+        id: request.selectedVendor.id,
         vendorName: request.selectedVendor.name,
         count: 0,
-        value: 0,
+        value: new Map<CurrencyCode, number>(),
       };
+      const currency = getCurrency(request.currency);
+
       current.count += 1;
-      current.value += request.approvedAmount ?? request.estimatedAmount;
+      addCurrencyAmount(current.value, currency, request.approvedAmount ?? request.estimatedAmount);
       grouped.set(request.selectedVendor.id, current);
     }
 
-    return Array.from(grouped.values())
-      .sort((left, right) => right.value - left.value)
+    return Array.from(grouped.values()).map<TopVendorEntry>((entry) => ({
+      id: entry.id,
+      vendorName: entry.vendorName,
+      count: entry.count,
+      value: toCurrencyAmounts(entry.value),
+    }))
+      .sort((left, right) => right.count - left.count || left.vendorName.localeCompare(right.vendorName))
       .slice(0, 5);
   }, [filteredRequests]);
 
   const agingQueue = useMemo(() => {
-    const now = Date.now();
+    if (referenceTime === null) {
+      return [];
+    }
 
     return filteredRequests
       .filter((request) => !FINAL_STATUSES.has(request.status))
       .map((request) => {
-        const ageInDays = Math.floor((now - new Date(request.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+        const ageInDays = Math.floor((referenceTime - new Date(request.createdAt).getTime()) / (1000 * 60 * 60 * 24));
         return { request, ageInDays };
       })
       .filter(({ ageInDays }) => ageInDays >= 7)
       .sort((left, right) => right.ageInDays - left.ageInDays)
       .slice(0, 6);
-  }, [filteredRequests]);
+  }, [filteredRequests, referenceTime]);
 
   function formatDate(value: string | null) {
     if (!value) {
@@ -370,13 +484,17 @@ export default function ProcurementPage() {
         <Card>
           <CardHeader className="gap-1">
             <CardDescription>{t("site.commitments", { defaultValue: "Commitments" })}</CardDescription>
-            <CardTitle className="text-3xl">{formatCurrency(summary.commitments, "ETB")}</CardTitle>
+            <CardTitle className="text-3xl">
+              <CurrencyAmountStack amounts={summary.commitments} />
+            </CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="gap-1">
             <CardDescription>{t("site.paid", { defaultValue: "Paid" })}</CardDescription>
-            <CardTitle className="text-3xl">{formatCurrency(summary.paid, "ETB")}</CardTitle>
+            <CardTitle className="text-3xl">
+              <CurrencyAmountStack amounts={summary.paid} />
+            </CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -435,7 +553,11 @@ export default function ProcurementPage() {
                   <div className="grid gap-3 rounded-2xl bg-muted/35 p-4 md:grid-cols-2">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-                      <span>{request.requestType.replace(/_/g, " ")}</span>
+                      <span>
+                        {t(`site.${request.requestType}`, {
+                          defaultValue: request.requestType.replace(/_/g, " "),
+                        })}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Building2 className="h-3.5 w-3.5 shrink-0" />
@@ -449,7 +571,11 @@ export default function ProcurementPage() {
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <FileText className="h-3.5 w-3.5 shrink-0" />
-                      <span>{request.procurementMethod.replace(/_/g, " ")}</span>
+                      <span>
+                        {t(`site.${request.procurementMethod}`, {
+                          defaultValue: request.procurementMethod.replace(/_/g, " "),
+                        })}
+                      </span>
                     </div>
                   </div>
 
@@ -459,7 +585,7 @@ export default function ProcurementPage() {
                         {t("site.estimated_amount", { defaultValue: "Estimated Amount" })}
                       </p>
                       <p className="mt-1 text-lg font-semibold text-foreground">
-                        {formatCurrency(request.estimatedAmount, "ETB")}
+                        {formatCurrency(request.estimatedAmount, getCurrency(request.currency))}
                       </p>
                     </div>
                     <div>
@@ -467,7 +593,7 @@ export default function ProcurementPage() {
                         {t("site.commitments", { defaultValue: "Commitments" })}
                       </p>
                       <p className="mt-1 text-lg font-semibold text-foreground">
-                        {formatCurrency(request.committedAmount, "ETB")}
+                        {formatCurrency(request.committedAmount, getCurrency(request.currency))}
                       </p>
                     </div>
                     <div>
@@ -475,7 +601,7 @@ export default function ProcurementPage() {
                         {t("site.paid", { defaultValue: "Paid" })}
                       </p>
                       <p className="mt-1 text-lg font-semibold text-foreground">
-                        {formatCurrency(request.paidAmount, "ETB")}
+                        {formatCurrency(request.paidAmount, getCurrency(request.currency))}
                       </p>
                     </div>
                   </div>
@@ -511,7 +637,7 @@ export default function ProcurementPage() {
                   </p>
                 ) : (
                   spendByProject.map((entry) => (
-                    <div key={entry.projectName} className="rounded-2xl bg-muted/35 p-4">
+                    <div key={entry.id} className="rounded-2xl bg-muted/35 p-4">
                       <p className="font-medium text-foreground">{entry.projectName}</p>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {entry.count} {t("site.requests", { defaultValue: "requests" })}
@@ -521,13 +647,17 @@ export default function ProcurementPage() {
                           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground/70">
                             {t("site.commitments", { defaultValue: "Commitments" })}
                           </p>
-                          <p className="mt-1 font-semibold text-foreground">{formatCurrency(entry.commitments, "ETB")}</p>
+                          <p className="mt-1 font-semibold text-foreground">
+                            <CurrencyAmountStack amounts={entry.commitments} />
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground/70">
                             {t("site.paid", { defaultValue: "Paid" })}
                           </p>
-                          <p className="mt-1 font-semibold text-foreground">{formatCurrency(entry.paid, "ETB")}</p>
+                          <p className="mt-1 font-semibold text-foreground">
+                            <CurrencyAmountStack amounts={entry.paid} />
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -552,7 +682,7 @@ export default function ProcurementPage() {
                   </p>
                 ) : (
                   topVendors.map((vendor) => (
-                    <div key={vendor.vendorName} className="flex items-start justify-between gap-4 rounded-2xl bg-muted/35 p-4">
+                    <div key={vendor.id} className="flex items-start justify-between gap-4 rounded-2xl bg-muted/35 p-4">
                       <div>
                         <p className="font-medium text-foreground">{vendor.vendorName}</p>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -560,7 +690,7 @@ export default function ProcurementPage() {
                         </p>
                       </div>
                       <p className="font-semibold text-foreground">
-                        {formatCurrency(vendor.value, "ETB")}
+                        <CurrencyAmountStack amounts={vendor.value} />
                       </p>
                     </div>
                   ))

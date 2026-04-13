@@ -37,6 +37,20 @@ export async function DELETE(
       ? document.url.replace(/^\/uploads\//, "")
       : document.url.replace(/^https?:\/\/[^/]+\//, "");
 
+    await db.transaction(async (tx) => {
+      await tx.delete(procurementDocuments).where(eq(procurementDocuments.id, documentId));
+
+      await logAuditEvent({
+        actorUserId: session.userId,
+        action: "delete",
+        entityType: "procurement_document",
+        entityId: documentId,
+        changes: { before: document },
+        request,
+        executor: tx,
+      });
+    });
+
     try {
       await r2Client.send(
         new DeleteObjectCommand({
@@ -44,20 +58,9 @@ export async function DELETE(
           Key: key,
         })
       );
-    } catch {
-      console.error("Failed to delete procurement file from R2");
+    } catch (error) {
+      console.error("Failed to delete procurement file from R2:", error);
     }
-
-    await db.delete(procurementDocuments).where(eq(procurementDocuments.id, documentId));
-
-    await logAuditEvent({
-      actorUserId: session.userId,
-      action: "delete",
-      entityType: "procurement_document",
-      entityId: documentId,
-      changes: { before: document },
-      request,
-    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

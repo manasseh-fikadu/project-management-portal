@@ -24,6 +24,8 @@ const ACTIVE_COMMITMENT_STATUSES = [
   "paid",
 ] as const;
 
+type ProcurementFinanceExecutor = Pick<typeof db, "select" | "update" | "execute">;
+
 function toRoundedNumber(value: unknown): number {
   const numericValue = Number(value ?? 0);
   return Number.isFinite(numericValue) ? Math.round(numericValue) : 0;
@@ -41,17 +43,50 @@ export type ProcurementBudgetSnapshot = {
   availableAmount: number;
 };
 
+async function lockProcurementBudgetScope(
+  executor: ProcurementFinanceExecutor,
+  params: { projectId: string; budgetAllocationId?: string | null }
+) {
+  await executor.execute(
+    sql`SELECT ${projects.id} FROM ${projects} WHERE ${projects.id} = ${params.projectId} FOR UPDATE`
+  );
+
+  if (params.budgetAllocationId) {
+    await executor.execute(
+      sql`SELECT ${budgetAllocations.id} FROM ${budgetAllocations} WHERE ${budgetAllocations.id} = ${params.budgetAllocationId} FOR UPDATE`
+    );
+  }
+}
+
 export async function getProcurementBudgetSnapshot(params: {
   projectId: string;
   budgetAllocationId?: string | null;
   excludeRequestId?: string | null;
+  executor?: ProcurementFinanceExecutor;
+  lockBudgetScope?: boolean;
 }): Promise<ProcurementBudgetSnapshot | null> {
-  const { projectId, budgetAllocationId, excludeRequestId } = params;
+  const {
+    projectId,
+    budgetAllocationId,
+    excludeRequestId,
+    executor = db,
+    lockBudgetScope = false,
+  } = params;
 
-  const project = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
-    columns: { id: true, name: true, totalBudget: true, spentBudget: true },
-  });
+  if (lockBudgetScope) {
+    await lockProcurementBudgetScope(executor, { projectId, budgetAllocationId });
+  }
+
+  const [project] = await executor
+    .select({
+      id: projects.id,
+      name: projects.name,
+      totalBudget: projects.totalBudget,
+      spentBudget: projects.spentBudget,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
 
   if (!project) {
     return null;
@@ -64,7 +99,7 @@ export async function getProcurementBudgetSnapshot(params: {
     excludeRequestId ? ne(procurementRequests.id, excludeRequestId) : undefined,
   ].filter(Boolean);
 
-  const [commitmentRow] = await db
+  const [commitmentRow] = await executor
     .select({
       total: sql<number>`coalesce(sum(${procurementRequests.committedAmount}), 0)`,
     })
@@ -72,16 +107,21 @@ export async function getProcurementBudgetSnapshot(params: {
     .where(and(...commitmentFilters));
 
   if (budgetAllocationId) {
-    const budgetAllocation = await db.query.budgetAllocations.findFirst({
-      where: eq(budgetAllocations.id, budgetAllocationId),
-      columns: { id: true, activityName: true, plannedAmount: true },
-    });
+    const [budgetAllocation] = await executor
+      .select({
+        id: budgetAllocations.id,
+        activityName: budgetAllocations.activityName,
+        plannedAmount: budgetAllocations.plannedAmount,
+      })
+      .from(budgetAllocations)
+      .where(eq(budgetAllocations.id, budgetAllocationId))
+      .limit(1);
 
     if (!budgetAllocation) {
       return null;
     }
 
-    const [spentRow] = await db
+    const [spentRow] = await executor
       .select({
         total: sql<number>`coalesce(sum(${expenditures.amount}), 0)`,
       })
@@ -127,6 +167,8 @@ export async function ensureProcurementBudgetAvailable(params: {
   budgetAllocationId?: string | null;
   amount: number;
   excludeRequestId?: string | null;
+  executor?: ProcurementFinanceExecutor;
+  lockBudgetScope?: boolean;
 }) {
   const snapshot = await getProcurementBudgetSnapshot(params);
   if (!snapshot) {
@@ -145,29 +187,55 @@ export async function ensureProcurementBudgetAvailable(params: {
   };
 }
 
-export async function syncProcurementRequestFinancials(procurementRequestId: string) {
-  const procurementRequest = await db.query.procurementRequests.findFirst({
-    where: eq(procurementRequests.id, procurementRequestId),
-    with: {
-      purchaseOrder: true,
-      invoices: true,
-    },
-  });
+export async function syncProcurementRequestFinancials(
+  procurementRequestId: string,
+  options: { executor?: ProcurementFinanceExecutor } = {}
+) {
+  const executor = options.executor ?? db;
+  const [procurementRequest] = await executor
+    .select({
+      id: procurementRequests.id,
+      status: procurementRequests.status,
+      approvedAmount: procurementRequests.approvedAmount,
+      estimatedAmount: procurementRequests.estimatedAmount,
+      invoicedAt: procurementRequests.invoicedAt,
+      paidAt: procurementRequests.paidAt,
+    })
+    .from(procurementRequests)
+    .where(eq(procurementRequests.id, procurementRequestId))
+    .limit(1);
 
   if (!procurementRequest) {
     return null;
   }
 
+  const [purchaseOrder] = await executor
+    .select({
+      amount: purchaseOrders.amount,
+    })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.procurementRequestId, procurementRequestId))
+    .limit(1);
+
+  const invoiceRows = await executor
+    .select({
+      amount: supplierInvoices.amount,
+      status: supplierInvoices.status,
+      paymentStatus: supplierInvoices.paymentStatus,
+    })
+    .from(supplierInvoices)
+    .where(eq(supplierInvoices.procurementRequestId, procurementRequestId));
+
   const isCommitmentStage = ACTIVE_COMMITMENT_STATUSES.includes(procurementRequest.status as (typeof ACTIVE_COMMITMENT_STATUSES)[number]);
   const committedAmount = isCommitmentStage
     ? toRoundedNumber(
-        procurementRequest.purchaseOrder?.amount
+        purchaseOrder?.amount
         ?? procurementRequest.approvedAmount
         ?? procurementRequest.estimatedAmount
       )
     : 0;
 
-  const activeInvoices = procurementRequest.invoices.filter((invoice) => invoice.status !== "rejected");
+  const activeInvoices = invoiceRows.filter((invoice) => invoice.status !== "rejected");
   const invoicedAmount = activeInvoices.reduce((sum, invoice) => sum + toRoundedNumber(invoice.amount), 0);
   const paidAmount = activeInvoices
     .filter((invoice) => invoice.paymentStatus === "paid")
@@ -180,7 +248,7 @@ export async function syncProcurementRequestFinancials(procurementRequestId: str
         ? "invoiced"
         : procurementRequest.status;
 
-  const [updatedRequest] = await db
+  const [updatedRequest] = await executor
     .update(procurementRequests)
     .set({
       committedAmount,
@@ -206,86 +274,102 @@ export async function postSupplierInvoiceToFinancials(params: {
 }) {
   const { invoiceId, actorUserId, markAsPaid = false, paymentReference, paymentDate } = params;
 
-  const invoice = await db.query.supplierInvoices.findFirst({
-    where: eq(supplierInvoices.id, invoiceId),
-    with: {
-      procurementRequest: {
-        with: {
-          project: {
-            columns: { id: true, donorId: true },
-          },
-        },
-      },
-    },
-  });
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT ${supplierInvoices.id} FROM ${supplierInvoices} WHERE ${supplierInvoices.id} = ${invoiceId} FOR UPDATE`
+    );
 
-  if (!invoice) {
-    return null;
-  }
-
-  let expenditureId = invoice.linkedExpenditureId;
-  let disbursementId = invoice.linkedDisbursementId;
-
-  if (!expenditureId) {
-    const [newExpenditure] = await db
-      .insert(expenditures)
-      .values({
-        projectId: invoice.procurementRequest.projectId,
-        budgetAllocationId: invoice.procurementRequest.budgetAllocationId,
-        taskId: invoice.procurementRequest.taskId,
-        donorId: invoice.procurementRequest.project?.donorId ?? null,
-        activityName: invoice.procurementRequest.title,
-        amount: Math.round(invoice.amount),
-        expenditureDate: invoice.invoiceDate,
-        description: `Supplier invoice ${invoice.invoiceNumber} for ${invoice.procurementRequest.requestNumber}`,
-        createdBy: actorUserId,
+    const [invoice] = await tx
+      .select({
+        id: supplierInvoices.id,
+        procurementRequestId: supplierInvoices.procurementRequestId,
+        linkedExpenditureId: supplierInvoices.linkedExpenditureId,
+        linkedDisbursementId: supplierInvoices.linkedDisbursementId,
+        invoiceNumber: supplierInvoices.invoiceNumber,
+        amount: supplierInvoices.amount,
+        invoiceDate: supplierInvoices.invoiceDate,
+        paymentStatus: supplierInvoices.paymentStatus,
+        projectId: procurementRequests.projectId,
+        budgetAllocationId: procurementRequests.budgetAllocationId,
+        taskId: procurementRequests.taskId,
+        requestTitle: procurementRequests.title,
+        requestNumber: procurementRequests.requestNumber,
+        donorId: projects.donorId,
       })
-      .returning();
+      .from(supplierInvoices)
+      .innerJoin(procurementRequests, eq(procurementRequests.id, supplierInvoices.procurementRequestId))
+      .leftJoin(projects, eq(projects.id, procurementRequests.projectId))
+      .where(eq(supplierInvoices.id, invoiceId))
+      .limit(1);
 
-    expenditureId = newExpenditure.id;
+    if (!invoice) {
+      return null;
+    }
 
-    await db
-      .update(projects)
+    let expenditureId = invoice.linkedExpenditureId;
+    let disbursementId = invoice.linkedDisbursementId;
+
+    if (!expenditureId) {
+      const [newExpenditure] = await tx
+        .insert(expenditures)
+        .values({
+          projectId: invoice.projectId,
+          budgetAllocationId: invoice.budgetAllocationId,
+          taskId: invoice.taskId,
+          donorId: invoice.donorId ?? null,
+          activityName: invoice.requestTitle,
+          amount: Math.round(invoice.amount),
+          expenditureDate: invoice.invoiceDate,
+          description: `Supplier invoice ${invoice.invoiceNumber} for ${invoice.requestNumber}`,
+          createdBy: actorUserId,
+        })
+        .returning();
+
+      expenditureId = newExpenditure.id;
+
+      await tx
+        .update(projects)
+        .set({
+          spentBudget: sql`COALESCE(${projects.spentBudget}, 0) + ${Math.round(invoice.amount)}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, invoice.projectId));
+    }
+
+    if (markAsPaid && !disbursementId) {
+      const [newDisbursement] = await tx
+        .insert(disbursementLogs)
+        .values({
+          projectId: invoice.projectId,
+          donorId: invoice.donorId ?? null,
+          budgetAllocationId: invoice.budgetAllocationId,
+          expenditureId,
+          activityName: invoice.requestTitle,
+          amount: Math.round(invoice.amount),
+          disbursedAt: paymentDate ?? new Date(),
+          reference: paymentReference ?? null,
+          notes: `Payment recorded for supplier invoice ${invoice.invoiceNumber}`,
+          createdBy: actorUserId,
+        })
+        .returning();
+
+      disbursementId = newDisbursement.id;
+    }
+
+    const [updatedInvoice] = await tx
+      .update(supplierInvoices)
       .set({
-        spentBudget: sql`COALESCE(${projects.spentBudget}, 0) + ${Math.round(invoice.amount)}`,
+        linkedExpenditureId: expenditureId,
+        linkedDisbursementId: disbursementId ?? null,
+        status: markAsPaid ? "paid" : "approved",
+        paymentStatus: markAsPaid ? "paid" : invoice.paymentStatus,
         updatedAt: new Date(),
       })
-      .where(eq(projects.id, invoice.procurementRequest.projectId));
-  }
-
-  if (markAsPaid && !disbursementId) {
-    const [newDisbursement] = await db
-      .insert(disbursementLogs)
-      .values({
-        projectId: invoice.procurementRequest.projectId,
-        donorId: invoice.procurementRequest.project?.donorId ?? null,
-        budgetAllocationId: invoice.procurementRequest.budgetAllocationId,
-        expenditureId,
-        activityName: invoice.procurementRequest.title,
-        amount: Math.round(invoice.amount),
-        disbursedAt: paymentDate ?? new Date(),
-        reference: paymentReference ?? null,
-        notes: `Payment recorded for supplier invoice ${invoice.invoiceNumber}`,
-        createdBy: actorUserId,
-      })
+      .where(eq(supplierInvoices.id, invoiceId))
       .returning();
 
-    disbursementId = newDisbursement.id;
-  }
+    await syncProcurementRequestFinancials(invoice.procurementRequestId, { executor: tx });
 
-  const [updatedInvoice] = await db
-    .update(supplierInvoices)
-    .set({
-      linkedExpenditureId: expenditureId,
-      linkedDisbursementId: disbursementId ?? null,
-      status: markAsPaid ? "paid" : "approved",
-      paymentStatus: markAsPaid ? "paid" : invoice.paymentStatus,
-      updatedAt: new Date(),
-    })
-    .where(eq(supplierInvoices.id, invoiceId))
-    .returning();
-
-  await syncProcurementRequestFinancials(invoice.procurementRequestId);
-
-  return updatedInvoice ?? null;
+    return updatedInvoice ?? null;
+  });
 }
