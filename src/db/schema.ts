@@ -437,7 +437,10 @@ export const supplierInvoices = pgTable("supplier_invoices", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
-  supplierInvoicesInvoiceNumberUnique: uniqueIndex("supplier_invoices_invoice_number_key").on(table.invoiceNumber),
+  supplierInvoicesVendorInvoiceUnique: uniqueIndex("supplier_invoices_vendor_invoice_key").on(
+    table.vendorId,
+    table.invoiceNumber
+  ),
   supplierInvoicesRequestIdx: index("supplier_invoices_request_id_idx").on(table.procurementRequestId),
   supplierInvoicesVendorIdx: index("supplier_invoices_vendor_id_idx").on(table.vendorId),
   supplierInvoicesStatusIdx: index("supplier_invoices_status_idx").on(table.status),

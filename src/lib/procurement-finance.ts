@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, ne, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   budgetAllocations,
   db,
@@ -12,7 +12,6 @@ import {
   supplierInvoices,
 } from "@/db";
 
-const EXCLUDED_COMMITMENT_STATUSES = ["cancelled", "rejected"] as const;
 const ACTIVE_COMMITMENT_STATUSES = [
   "approved",
   "rfq_open",
@@ -24,7 +23,7 @@ const ACTIVE_COMMITMENT_STATUSES = [
   "paid",
 ] as const;
 
-type ProcurementFinanceExecutor = Pick<typeof db, "select" | "update" | "execute">;
+type ProcurementFinanceExecutor = Pick<typeof db, "select" | "update" | "insert" | "execute">;
 
 function toRoundedNumber(value: unknown): number {
   const numericValue = Number(value ?? 0);
@@ -94,7 +93,7 @@ export async function getProcurementBudgetSnapshot(params: {
 
   const commitmentFilters = [
     eq(procurementRequests.projectId, projectId),
-    notInArray(procurementRequests.status, [...EXCLUDED_COMMITMENT_STATUSES]),
+    inArray(procurementRequests.status, [...ACTIVE_COMMITMENT_STATUSES]),
     budgetAllocationId ? eq(procurementRequests.budgetAllocationId, budgetAllocationId) : undefined,
     excludeRequestId ? ne(procurementRequests.id, excludeRequestId) : undefined,
   ].filter(Boolean);
@@ -271,10 +270,11 @@ export async function postSupplierInvoiceToFinancials(params: {
   markAsPaid?: boolean;
   paymentReference?: string | null;
   paymentDate?: Date | null;
+  executor?: ProcurementFinanceExecutor;
 }) {
-  const { invoiceId, actorUserId, markAsPaid = false, paymentReference, paymentDate } = params;
+  const { invoiceId, actorUserId, markAsPaid = false, paymentReference, paymentDate, executor } = params;
 
-  return db.transaction(async (tx) => {
+  const run = async (tx: ProcurementFinanceExecutor) => {
     await tx.execute(
       sql`SELECT ${supplierInvoices.id} FROM ${supplierInvoices} WHERE ${supplierInvoices.id} = ${invoiceId} FOR UPDATE`
     );
@@ -371,5 +371,11 @@ export async function postSupplierInvoiceToFinancials(params: {
     await syncProcurementRequestFinancials(invoice.procurementRequestId, { executor: tx });
 
     return updatedInvoice ?? null;
-  });
+  };
+
+  if (executor) {
+    return run(executor);
+  }
+
+  return db.transaction(run);
 }

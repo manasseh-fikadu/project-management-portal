@@ -38,6 +38,27 @@ type NormalizedLineItem = {
 
 const PROCUREMENT_REQUEST_NUMBER_MAX_ATTEMPTS = 3;
 
+function isValidProcurementStatus(value: string): value is ProcurementStatus {
+  return [
+    "draft",
+    "submitted",
+    "approved",
+    "rfq_open",
+    "quotes_received",
+    "po_issued",
+    "partially_received",
+    "received",
+    "invoiced",
+    "paid",
+    "cancelled",
+    "rejected",
+  ].includes(value);
+}
+
+function isValidProcurementApprovalStatus(value: string): value is ProcurementApprovalStatus {
+  return ["not_started", "pending", "approved", "rejected"].includes(value);
+}
+
 function isUniqueConstraintError(error: unknown, constraintName: string): boolean {
   return (
     typeof error === "object"
@@ -134,16 +155,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ procurementRequests: [] });
     }
 
+    if (status && !isValidProcurementStatus(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    if (approvalStatus && !isValidProcurementApprovalStatus(approvalStatus)) {
+      return NextResponse.json({ error: "Invalid approvalStatus" }, { status: 400 });
+    }
+
+    const validatedStatus: ProcurementStatus | null =
+      status && isValidProcurementStatus(status) ? status : null;
+    const validatedApprovalStatus: ProcurementApprovalStatus | null =
+      approvalStatus && isValidProcurementApprovalStatus(approvalStatus) ? approvalStatus : null;
+
     const filters = [
       projectId ? eq(procurementRequests.projectId, projectId) : undefined,
       !projectId && accessibleProjectIds ? inArray(procurementRequests.projectId, accessibleProjectIds) : undefined,
-      status ? eq(procurementRequests.status, status as ProcurementStatus) : undefined,
-      approvalStatus
-        ? eq(
-            procurementRequests.approvalStatus,
-            approvalStatus as ProcurementApprovalStatus
-          )
-        : undefined,
+      validatedStatus ? eq(procurementRequests.status, validatedStatus) : undefined,
+      validatedApprovalStatus ? eq(procurementRequests.approvalStatus, validatedApprovalStatus) : undefined,
     ].filter(Boolean);
 
     const requestRows = await db.query.procurementRequests.findMany({
@@ -302,6 +331,16 @@ export async function POST(request: NextRequest) {
             );
           }
 
+          await logAuditEvent({
+            actorUserId: session.userId,
+            action: "create",
+            entityType: "procurement_request",
+            entityId: newRequest.id,
+            changes: { after: newRequest },
+            request,
+            executor: tx,
+          });
+
           return [newRequest];
         });
         break;
@@ -332,26 +371,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await logAuditEvent({
-      actorUserId: session.userId,
-      action: "create",
-      entityType: "procurement_request",
-      entityId: createdRequest.id,
-      changes: { after: createdRequest },
-      request,
-    });
-
     if (submitForApproval) {
-      const { project, recipientIds } = await getApprovalRecipients(projectId, estimatedAmount, session.userId);
-      if (project && recipientIds.length > 0) {
-        await notifyUsers(recipientIds, {
-          type: "approval_pending",
-          title: "Procurement approval pending",
-          message: `${createdRequest.requestNumber} for ${project.name} is awaiting approval.`,
-          entityType: "procurement_request",
-          entityId: createdRequest.id,
-          sendEmail: true,
-        });
+      try {
+        const { project, recipientIds } = await getApprovalRecipients(projectId, estimatedAmount, session.userId);
+        if (project && recipientIds.length > 0) {
+          await notifyUsers(recipientIds, {
+            type: "approval_pending",
+            title: "Procurement approval pending",
+            message: `${createdRequest.requestNumber} for ${project.name} is awaiting approval.`,
+            entityType: "procurement_request",
+            entityId: createdRequest.id,
+            sendEmail: true,
+          });
+        }
+      } catch (notificationError) {
+        console.error("Error sending procurement approval notifications:", notificationError);
       }
     }
 

@@ -82,25 +82,35 @@ export async function POST(
         });
       }
 
-      if (!canUserApproveProcurement(session.user.role, procurementRequest.estimatedAmount)) {
-        throw new ProcurementApprovalError(403, {
-          error: `This request requires ${getRequiredProcurementApprovalRole(procurementRequest.estimatedAmount)} approval`,
-        });
-      }
-
       const approvedAmount = toRoundedAmount(
         rawApprovedAmount ?? procurementRequest.approvedAmount ?? procurementRequest.estimatedAmount
       );
 
+      if (decision === "approved" && (approvedAmount === null || approvedAmount <= 0)) {
+        throw new ProcurementApprovalError(400, { error: "approvedAmount must be a positive number" });
+      }
+
+      const approvalCheckAmount = approvedAmount ?? procurementRequest.estimatedAmount;
+
+      if (!canUserApproveProcurement(session.user.role, approvalCheckAmount)) {
+        throw new ProcurementApprovalError(403, {
+          error: `This request requires ${getRequiredProcurementApprovalRole(approvalCheckAmount)} approval`,
+        });
+      }
+
+      const approvalMetadataAmount =
+        decision === "approved" ? approvalCheckAmount : procurementRequest.estimatedAmount;
+
       if (decision === "approved") {
-        if (approvedAmount === null || approvedAmount <= 0) {
+        const approvedDecisionAmount = approvedAmount;
+        if (approvedDecisionAmount === null) {
           throw new ProcurementApprovalError(400, { error: "approvedAmount must be a positive number" });
         }
 
         const budgetCheck = await ensureProcurementBudgetAvailable({
           projectId: procurementRequest.projectId,
           budgetAllocationId: procurementRequest.budgetAllocationId,
-          amount: approvedAmount,
+          amount: approvedDecisionAmount,
           excludeRequestId: id,
           executor: tx,
           lockBudgetScope: true,
@@ -120,9 +130,9 @@ export async function POST(
         .values({
           procurementRequestId: id,
           approverId: session.userId,
-          requiredRole: getRequiredProcurementApprovalRole(procurementRequest.estimatedAmount),
+          requiredRole: getRequiredProcurementApprovalRole(approvalMetadataAmount),
           decision,
-          thresholdAmount: getRequiredProcurementApprovalThreshold(procurementRequest.estimatedAmount),
+          thresholdAmount: getRequiredProcurementApprovalThreshold(approvalMetadataAmount),
           comments,
         })
         .returning();

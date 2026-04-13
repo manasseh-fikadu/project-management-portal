@@ -18,6 +18,17 @@ const PROCUREMENT_LOCKED_STATUSES = new Set([
   "rejected",
 ]);
 
+class ProcurementQuotationError extends Error {
+  status: number;
+  body: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    super(typeof body.error === "string" ? body.error : "Quotation request failed");
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -96,25 +107,24 @@ export async function POST(
         return NextResponse.json({ error: "Quotation not found" }, { status: 404 });
       }
 
-      const budgetCheck = await ensureProcurementBudgetAvailable({
-        projectId: procurementRequest.projectId,
-        budgetAllocationId: procurementRequest.budgetAllocationId,
-        amount: existingQuotation.amount,
-        excludeRequestId: id,
-      });
+      await db.transaction(async (tx) => {
+        const budgetCheck = await ensureProcurementBudgetAvailable({
+          projectId: procurementRequest.projectId,
+          budgetAllocationId: procurementRequest.budgetAllocationId,
+          amount: existingQuotation.amount,
+          excludeRequestId: id,
+          executor: tx,
+          lockBudgetScope: true,
+        });
 
-      if (!budgetCheck.isWithinBudget) {
-        return NextResponse.json(
-          {
+        if (!budgetCheck.isWithinBudget) {
+          throw new ProcurementQuotationError(400, {
             error: "The selected quotation exceeds the available budget for this request",
             budgetSnapshot: budgetCheck.snapshot,
             remainingAfterAmount: budgetCheck.remainingAfterAmount,
-          },
-          { status: 400 }
-        );
-      }
+          });
+        }
 
-      await db.transaction(async (tx) => {
         await tx
           .update(vendorQuotations)
           .set({ isSelected: false, updatedAt: new Date() })
@@ -136,6 +146,8 @@ export async function POST(
             updatedAt: new Date(),
           })
           .where(eq(procurementRequests.id, id));
+
+        await syncProcurementRequestFinancials(id, { executor: tx });
       });
 
       await logAuditEvent({
@@ -147,7 +159,6 @@ export async function POST(
         request,
       });
 
-      await syncProcurementRequestFinancials(id);
       const detail = await getProcurementRequestWithRelations(id);
       return NextResponse.json(detail);
     }
@@ -289,6 +300,9 @@ export async function POST(
     const detail = await getProcurementRequestWithRelations(id);
     return NextResponse.json(detail, { status: 201 });
   } catch (error) {
+    if (error instanceof ProcurementQuotationError) {
+      return NextResponse.json(error.body, { status: error.status });
+    }
     console.error("Error saving vendor quotation:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

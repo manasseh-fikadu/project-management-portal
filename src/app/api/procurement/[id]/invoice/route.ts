@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { db, procurementRequests, supplierInvoices, vendors } from "@/db";
+import { and, eq } from "drizzle-orm";
+import { db, goodsReceipts, procurementRequests, supplierInvoices, vendors } from "@/db";
 import { getSession } from "@/lib/auth";
 import { canAccessProcurementRequest, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
@@ -146,6 +146,7 @@ export async function POST(
     const amount = toRoundedAmount(body.amount ?? procurementRequest.purchaseOrder?.amount ?? procurementRequest.approvedAmount ?? procurementRequest.estimatedAmount);
     const invoiceNumber = typeof body.invoiceNumber === "string" ? body.invoiceNumber.trim() : "";
     const invoiceDate = parseOptionalDate(body.invoiceDate);
+    const candidateGoodsReceiptId = normalizeOptionalText(body.goodsReceiptId);
 
     if (!vendorId || amount === null || amount <= 0 || !invoiceNumber || !invoiceDate) {
       return NextResponse.json(
@@ -163,44 +164,69 @@ export async function POST(
       return NextResponse.json({ error: "Vendor not found" }, { status: 404 });
     }
 
-    const [invoice] = await db
-      .insert(supplierInvoices)
-      .values({
-        procurementRequestId: id,
-        purchaseOrderId: procurementRequest.purchaseOrder?.id ?? null,
-        vendorId,
-        goodsReceiptId: normalizeOptionalText(body.goodsReceiptId),
-        invoiceNumber,
-        amount,
-        currency: typeof body.currency === "string" && body.currency.trim() ? body.currency.trim() : procurementRequest.currency,
-        status: body.markAsPaid === true ? "paid" : body.postToFinancials === true ? "approved" : "received",
-        paymentStatus: body.markAsPaid === true ? "paid" : "unpaid",
-        invoiceDate,
-        dueDate: parseOptionalDate(body.dueDate),
-        notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
-        createdBy: session.userId,
-      })
-      .returning();
-
-    if (body.postToFinancials === true || body.markAsPaid === true) {
-      await postSupplierInvoiceToFinancials({
-        invoiceId: invoice.id,
-        actorUserId: session.userId,
-        markAsPaid: body.markAsPaid === true,
-        paymentReference: typeof body.paymentReference === "string" ? body.paymentReference.trim() || null : null,
-        paymentDate: parseOptionalDate(body.paymentDate),
+    let goodsReceiptId: string | null = null;
+    if (candidateGoodsReceiptId) {
+      const goodsReceipt = await db.query.goodsReceipts.findFirst({
+        where: and(
+          eq(goodsReceipts.id, candidateGoodsReceiptId),
+          eq(goodsReceipts.procurementRequestId, procurementRequest.id)
+        ),
+        columns: { id: true },
       });
-    } else {
-      await syncProcurementRequestFinancials(id);
+
+      if (!goodsReceipt) {
+        return NextResponse.json(
+          { error: "goodsReceiptId is invalid for this procurement request" },
+          { status: 400 }
+        );
+      }
+
+      goodsReceiptId = goodsReceipt.id;
     }
 
-    await logAuditEvent({
-      actorUserId: session.userId,
-      action: "create",
-      entityType: "supplier_invoice",
-      entityId: invoice.id,
-      changes: { after: invoice, procurementRequestId: id },
-      request,
+    await db.transaction(async (tx) => {
+      const [createdInvoice] = await tx
+        .insert(supplierInvoices)
+        .values({
+          procurementRequestId: id,
+          purchaseOrderId: procurementRequest.purchaseOrder?.id ?? null,
+          vendorId,
+          goodsReceiptId,
+          invoiceNumber,
+          amount,
+          currency: typeof body.currency === "string" && body.currency.trim() ? body.currency.trim() : procurementRequest.currency,
+          status: body.markAsPaid === true ? "paid" : body.postToFinancials === true ? "approved" : "received",
+          paymentStatus: body.markAsPaid === true ? "paid" : "unpaid",
+          invoiceDate,
+          dueDate: parseOptionalDate(body.dueDate),
+          notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
+          createdBy: session.userId,
+        })
+        .returning();
+
+      if (body.postToFinancials === true || body.markAsPaid === true) {
+        await postSupplierInvoiceToFinancials({
+          invoiceId: createdInvoice.id,
+          actorUserId: session.userId,
+          markAsPaid: body.markAsPaid === true,
+          paymentReference: typeof body.paymentReference === "string" ? body.paymentReference.trim() || null : null,
+          paymentDate: parseOptionalDate(body.paymentDate),
+          executor: tx,
+        });
+      } else {
+        await syncProcurementRequestFinancials(id, { executor: tx });
+      }
+
+      await logAuditEvent({
+        actorUserId: session.userId,
+        action: "create",
+        entityType: "supplier_invoice",
+        entityId: createdInvoice.id,
+        changes: { after: createdInvoice, procurementRequestId: id },
+        request,
+        executor: tx,
+      });
+
     });
 
     const detail = await getProcurementRequestWithRelations(id);

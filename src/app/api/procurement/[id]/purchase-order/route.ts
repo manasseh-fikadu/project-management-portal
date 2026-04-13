@@ -8,7 +8,6 @@ import { getProcurementRequestWithRelations } from "@/lib/procurement-data";
 import { ensureProcurementBudgetAvailable, syncProcurementRequestFinancials } from "@/lib/procurement-finance";
 import {
   generatePurchaseOrderNumber,
-  isPurchaseOrderStatus,
   normalizeOptionalText,
   toRoundedAmount,
 } from "@/lib/procurement";
@@ -25,6 +24,7 @@ class PurchaseOrderError extends Error {
 }
 
 const PURCHASE_ORDER_NUMBER_MAX_ATTEMPTS = 3;
+const MANAGED_PURCHASE_ORDER_STATUSES = ["issued", "cancelled"] as const;
 
 function parseOptionalDate(value: unknown): Date | null {
   if (typeof value !== "string" || !value.trim()) {
@@ -116,10 +116,24 @@ export async function POST(
       return NextResponse.json({ error: "expectedDeliveryDate must be a valid date" }, { status: 400 });
     }
 
-    const status =
-      typeof body.status === "string" && isPurchaseOrderStatus(body.status)
-        ? body.status
-        : "issued";
+    const requestedStatus = typeof body.status === "string" ? body.status.trim() : "";
+    if (
+      requestedStatus
+      && !MANAGED_PURCHASE_ORDER_STATUSES.includes(
+        requestedStatus as (typeof MANAGED_PURCHASE_ORDER_STATUSES)[number]
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error: `status must be one of: ${MANAGED_PURCHASE_ORDER_STATUSES.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const status = requestedStatus
+      ? (requestedStatus as (typeof MANAGED_PURCHASE_ORDER_STATUSES)[number])
+      : "issued";
 
     const attemptCount = customPoNumber ? 1 : PURCHASE_ORDER_NUMBER_MAX_ATTEMPTS;
     let responseMeta: { statusCode: number } | null = null;
@@ -259,13 +273,17 @@ export async function POST(
               .returning();
           }
 
+          const shouldDriveParentStatus = status === "issued";
+
           await tx
             .update(procurementRequests)
             .set({
               selectedVendorId: vendorId,
               approvedAmount: amount,
-              status: status === "cancelled" ? procurementRequest.status : "po_issued",
-              purchaseOrderIssuedAt: status === "cancelled" ? procurementRequest.purchaseOrderIssuedAt : new Date(),
+              status: shouldDriveParentStatus ? "po_issued" : procurementRequest.status,
+              purchaseOrderIssuedAt: shouldDriveParentStatus
+                ? (procurementRequest.purchaseOrderIssuedAt ?? new Date())
+                : procurementRequest.purchaseOrderIssuedAt,
               updatedAt: new Date(),
             })
             .where(eq(procurementRequests.id, id));

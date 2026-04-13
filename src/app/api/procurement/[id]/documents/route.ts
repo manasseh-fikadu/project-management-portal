@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { db, procurementDocuments } from "@/db";
+import { db, goodsReceipts, procurementDocuments, purchaseOrders, supplierInvoices, vendorQuotations } from "@/db";
 import { getSession } from "@/lib/auth";
 import { canAccessProcurementRequest, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
@@ -93,6 +93,94 @@ export async function POST(
     const documentType: ProcurementDocumentType = PROCUREMENT_DOCUMENT_TYPES.includes(rawDocumentType as ProcurementDocumentType)
       ? (rawDocumentType as ProcurementDocumentType)
       : "other";
+    const quotationId = (formData.get("quotationId") as string) || null;
+    const purchaseOrderId = (formData.get("purchaseOrderId") as string) || null;
+    const goodsReceiptId = (formData.get("goodsReceiptId") as string) || null;
+    const supplierInvoiceId = (formData.get("supplierInvoiceId") as string) || null;
+
+    const [
+      quotationRecord,
+      purchaseOrderRecord,
+      goodsReceiptRecord,
+      supplierInvoiceRecord,
+    ] = await Promise.all([
+      quotationId
+        ? db
+            .select({
+              id: vendorQuotations.id,
+              procurementRequestId: vendorQuotations.procurementRequestId,
+            })
+            .from(vendorQuotations)
+            .where(eq(vendorQuotations.id, quotationId))
+            .limit(1)
+        : Promise.resolve([]),
+      purchaseOrderId
+        ? db
+            .select({
+              id: purchaseOrders.id,
+              procurementRequestId: purchaseOrders.procurementRequestId,
+            })
+            .from(purchaseOrders)
+            .where(eq(purchaseOrders.id, purchaseOrderId))
+            .limit(1)
+        : Promise.resolve([]),
+      goodsReceiptId
+        ? db
+            .select({
+              id: goodsReceipts.id,
+              procurementRequestId: goodsReceipts.procurementRequestId,
+            })
+            .from(goodsReceipts)
+            .where(eq(goodsReceipts.id, goodsReceiptId))
+            .limit(1)
+        : Promise.resolve([]),
+      supplierInvoiceId
+        ? db
+            .select({
+              id: supplierInvoices.id,
+              procurementRequestId: supplierInvoices.procurementRequestId,
+            })
+            .from(supplierInvoices)
+            .where(eq(supplierInvoices.id, supplierInvoiceId))
+            .limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    if (quotationId) {
+      if (!quotationRecord[0]) {
+        return NextResponse.json({ error: "Invalid quotationId" }, { status: 400 });
+      }
+      if (quotationRecord[0].procurementRequestId !== id) {
+        return NextResponse.json({ error: "quotationId does not belong to this procurement request" }, { status: 403 });
+      }
+    }
+
+    if (purchaseOrderId) {
+      if (!purchaseOrderRecord[0]) {
+        return NextResponse.json({ error: "Invalid purchaseOrderId" }, { status: 400 });
+      }
+      if (purchaseOrderRecord[0].procurementRequestId !== id) {
+        return NextResponse.json({ error: "purchaseOrderId does not belong to this procurement request" }, { status: 403 });
+      }
+    }
+
+    if (goodsReceiptId) {
+      if (!goodsReceiptRecord[0]) {
+        return NextResponse.json({ error: "Invalid goodsReceiptId" }, { status: 400 });
+      }
+      if (goodsReceiptRecord[0].procurementRequestId !== id) {
+        return NextResponse.json({ error: "goodsReceiptId does not belong to this procurement request" }, { status: 403 });
+      }
+    }
+
+    if (supplierInvoiceId) {
+      if (!supplierInvoiceRecord[0]) {
+        return NextResponse.json({ error: "Invalid supplierInvoiceId" }, { status: 400 });
+      }
+      if (supplierInvoiceRecord[0].procurementRequestId !== id) {
+        return NextResponse.json({ error: "supplierInvoiceId does not belong to this procurement request" }, { status: 403 });
+      }
+    }
 
     await r2Client.send(
       new PutObjectCommand({
@@ -108,10 +196,10 @@ export async function POST(
       .insert(procurementDocuments)
       .values({
         procurementRequestId: id,
-        quotationId: (formData.get("quotationId") as string) || null,
-        purchaseOrderId: (formData.get("purchaseOrderId") as string) || null,
-        goodsReceiptId: (formData.get("goodsReceiptId") as string) || null,
-        supplierInvoiceId: (formData.get("supplierInvoiceId") as string) || null,
+        quotationId,
+        purchaseOrderId,
+        goodsReceiptId,
+        supplierInvoiceId,
         documentType,
         name: name || file.name,
         type: file.type || "application/octet-stream",
