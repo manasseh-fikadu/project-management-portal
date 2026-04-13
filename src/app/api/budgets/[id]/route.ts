@@ -46,6 +46,10 @@ export async function PUT(
       updateData.activityName = body.activityName.trim();
     }
 
+    if (typeof body.notes === "string") {
+      updateData.notes = body.notes.trim();
+    }
+
     if (body.plannedAmount !== undefined) {
       const plannedAmount = Math.round(Number(body.plannedAmount));
       if (!Number.isFinite(plannedAmount) || plannedAmount <= 0) {
