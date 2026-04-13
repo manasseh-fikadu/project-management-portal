@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { db, budgetAllocations, projectDocuments, projectDonors, projectMembers, projects, reportingProfiles } from "@/db";
+import { db, budgetAllocations, projectDocuments, projectDonors, projectMembers, projects, reportingProfiles, tasks } from "@/db";
 import { getSession } from "@/lib/auth";
 import { ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { parseProjectBudgetWorkbook } from "@/lib/project-budget-import";
+import { buildBudgetLineTaskDescription, buildBudgetLineTaskTitle } from "@/lib/budget-line-tasks";
 import { hasReportingTables } from "@/lib/reports/schema-availability";
 import { R2_BUCKET, R2_PUBLIC_URL, r2Client } from "@/lib/storage";
 
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
         role: "manager",
       });
 
-      await tx.insert(budgetAllocations).values(
+      const insertedBudgetAllocations = await tx.insert(budgetAllocations).values(
         normalizedAllocations.map((allocation) => ({
           projectId: project.id,
           activityName: allocation.activityName,
@@ -116,6 +117,17 @@ export async function POST(request: NextRequest) {
           q3Amount: allocation.q3,
           q4Amount: allocation.q4,
           notes: allocation.notes,
+          createdBy: session.userId,
+        }))
+      ).returning();
+
+      await tx.insert(tasks).values(
+        insertedBudgetAllocations.map((allocation) => ({
+          projectId: project.id,
+          budgetAllocationId: allocation.id,
+          title: buildBudgetLineTaskTitle(allocation.activityName),
+          description: buildBudgetLineTaskDescription(allocation.notes),
+          assignedTo: allocation.assignedTo ?? null,
           createdBy: session.userId,
         }))
       );

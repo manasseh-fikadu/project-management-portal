@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, disbursementLogs } from "@/db";
+import { db, disbursementLogs, type DisbursementDirection } from "@/db";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth";
 import { canAccessDonor, canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
+
+function parseDisbursementDirection(value: unknown): DisbursementDirection | null {
+  return value === "outward" || value === "inward" ? value : null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +19,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");
     const donorId = searchParams.get("donorId");
+    const requestedDirection = searchParams.get("direction");
+    const direction = requestedDirection ? parseDisbursementDirection(requestedDirection) : null;
     const accessibleProjectIds = await getAccessibleProjectIds(session.user);
+
+    if (requestedDirection && !direction) {
+      return NextResponse.json({ error: "direction must be either inward or outward" }, { status: 400 });
+    }
 
     if (projectId) {
       const hasAccess = await canAccessProject(session.user, projectId);
@@ -39,6 +49,7 @@ export async function GET(request: NextRequest) {
       projectId ? eq(disbursementLogs.projectId, projectId) : undefined,
       !projectId && accessibleProjectIds ? inArray(disbursementLogs.projectId, accessibleProjectIds) : undefined,
       donorId ? eq(disbursementLogs.donorId, donorId) : undefined,
+      direction ? eq(disbursementLogs.direction, direction) : undefined,
     ].filter(Boolean);
 
     const logs = await db.query.disbursementLogs.findMany({
@@ -85,12 +96,18 @@ export async function POST(request: NextRequest) {
       donorId,
       budgetAllocationId,
       expenditureId,
+      direction: rawDirection,
       activityName,
       amount,
       disbursedAt,
       reference,
       notes,
     } = body;
+
+    const direction = rawDirection == null ? "outward" : parseDisbursementDirection(rawDirection);
+    if (!direction) {
+      return NextResponse.json({ error: "direction must be either inward or outward" }, { status: 400 });
+    }
 
     if (!projectId || !activityName || amount === undefined || !disbursedAt) {
       return NextResponse.json(
@@ -123,6 +140,7 @@ export async function POST(request: NextRequest) {
         donorId: donorId || null,
         budgetAllocationId: budgetAllocationId || null,
         expenditureId: expenditureId || null,
+        direction,
         activityName,
         amount: Math.round(numericAmount),
         disbursedAt: new Date(disbursedAt),

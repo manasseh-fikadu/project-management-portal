@@ -199,7 +199,7 @@ export default function ProjectsPage() {
           ) : null}
         </div>
       ) : (
-        <div className="grid gap-6 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
+        <div className="grid gap-5 [grid-template-columns:repeat(auto-fit,minmax(250px,1fr))]">
           {filteredProjects.map((project) => {
             const status = statusConfig[project.status] || statusConfig.planning;
             const progress = getMilestoneProgress(project.milestones);
@@ -220,56 +220,48 @@ export default function ProjectsPage() {
               <button
                 key={project.id}
                 onClick={() => router.push(`/projects/${project.id}`)}
-                className="group flex min-h-[320px] flex-col rounded-[28px] border border-border/60 bg-card p-6 text-left shadow-[0_12px_30px_rgba(34,48,24,0.05)] transition-all duration-200 hover:-translate-y-1 hover:border-primary/20 hover:shadow-[0_18px_38px_rgba(34,48,24,0.09)]"
+                className="group flex min-h-[252px] flex-col rounded-[24px] border border-border/60 bg-card p-5 text-left shadow-[0_10px_24px_rgba(34,48,24,0.05)] transition-all duration-200 hover:-translate-y-1 hover:border-primary/20 hover:shadow-[0_16px_32px_rgba(34,48,24,0.09)]"
               >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div className="space-y-2">
-                    <h3 className="font-serif text-[clamp(1.2rem,1rem+0.7vw,1.7rem)] leading-tight text-foreground transition-colors group-hover:text-primary">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1.5">
+                    <h3 className="line-clamp-3 font-serif text-[clamp(1.05rem,0.95rem+0.45vw,1.4rem)] leading-[1.1] text-foreground transition-colors group-hover:text-primary">
                       {project.name}
                     </h3>
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground/70">
-                      {t("site.managed_by_name", {
-                        firstName: project.manager.firstName,
-                        lastName: project.manager.lastName,
-                      })}
-                    </p>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <User className="h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                        {project.manager.firstName} {project.manager.lastName}
+                      </span>
+                    </div>
                   </div>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap shrink-0 ${status.bg} ${status.text}`}>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 ${status.bg} ${status.text}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
                     {t(status.label)}
                   </span>
                 </div>
 
-                <p className="mb-5 min-h-[3rem] text-sm leading-relaxed text-muted-foreground">
+                <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
                   {project.description || t("site.no_project_summary_added_yet_open_the_project_to_define_its_scope_and_delivery_notes")}
                 </p>
 
-                <div className="mb-5 grid gap-3 rounded-2xl bg-muted/35 p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <User className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">
-                      {project.manager.firstName} {project.manager.lastName}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <DollarSign className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{donorList}</span>
-                  </div>
+                <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+                  <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{donorList}</span>
                 </div>
 
-                <div className="mt-auto space-y-4">
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                <div className="mt-auto space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span className="font-medium text-foreground">{budgetLabel}</span>
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1 text-muted-foreground">
                       <Calendar className="h-3 w-3" />
                       {formatDate(project.startDate)}
                     </span>
                   </div>
 
-                  <div>
-                    <div className="mb-1.5 flex justify-between text-xs">
-                      <span className="text-muted-foreground">{milestoneLabel}</span>
-                      <span className="font-medium text-foreground">{progress}%</span>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3 text-[11px]">
+                      <span className="truncate text-muted-foreground">{milestoneLabel}</span>
+                      <span className="shrink-0 font-medium text-foreground">{progress}%</span>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-sage-pale">
                       <div
@@ -277,11 +269,6 @@ export default function ProjectsPage() {
                         style={{ width: `${progress}%` }}
                       />
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs font-medium text-primary">
-                    <FolderKanban className="h-3.5 w-3.5" />
-                    <span>{t("site.open_project_workspace")}</span>
                   </div>
                 </div>
               </button>

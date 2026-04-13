@@ -29,13 +29,29 @@ import {
   Eye,
   Loader2,
   ArrowLeft,
+  LocateFixed,
 } from "lucide-react";
 import { CurrencyInput } from "@/components/currency-input";
 import { formatCurrency } from "@/lib/currency";
+import {
+  DOCUMENT_LOCATION_TIMEOUT_MS,
+  getDocumentLocationDisplayName,
+  getGeolocationErrorMessage,
+  resolveLocationLabelFromCoordinates,
+} from "@/lib/document-location";
+
+type UploadLocationState = {
+  label: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  capturedAt: string | null;
+};
 
 const PROJECT_CREATION_ROLES = new Set(["admin", "project_manager"]);
 
 type MilestoneInput = {
+  id: string;
   title: string;
   description: string;
   dueDate: string;
@@ -47,6 +63,7 @@ type TaskInput = {
   priority: string;
   dueDate: string;
   assignedTo: string;
+  milestoneIds: string[];
 };
 
 type Donor = {
@@ -112,6 +129,47 @@ function formatLocalDate(dateStr: string): string {
   return new Date(year, month - 1, day).toLocaleDateString();
 }
 
+function createEmptyUploadLocation(): UploadLocationState {
+  return {
+    label: "",
+    latitude: null,
+    longitude: null,
+    accuracyMeters: null,
+    capturedAt: null,
+  };
+}
+
+function buildUploadLocationPayload(location: UploadLocationState): string | null {
+  const label = location.label.trim();
+  const hasCoordinates = location.latitude !== null && location.longitude !== null;
+
+  if (!label && !hasCoordinates) return null;
+
+  return JSON.stringify({
+    label: label || null,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    capturedAt: location.capturedAt ?? new Date().toISOString(),
+    source: hasCoordinates ? "browser_geolocation" : "manual",
+  });
+}
+
+function createMilestoneInput(): MilestoneInput {
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    description: "",
+    dueDate: "",
+  };
+}
+
+function toggleSelection(currentIds: string[], id: string) {
+  return currentIds.includes(id)
+    ? currentIds.filter((currentId) => currentId !== id)
+    : [...currentIds, id];
+}
+
 export default function NewProjectPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -133,6 +191,9 @@ export default function NewProjectPage() {
     return t(`roles.${role}`, { defaultValue: role.replace(/_/g, " ") });
   }
   const [files, setFiles] = useState<File[]>([]);
+  const [uploadLocation, setUploadLocation] = useState<UploadLocationState>(createEmptyUploadLocation());
+  const [capturingUploadLocation, setCapturingUploadLocation] = useState(false);
+  const [uploadLocationError, setUploadLocationError] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [milestones, setMilestones] = useState<MilestoneInput[]>([]);
@@ -226,6 +287,47 @@ export default function NewProjectPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function captureUploadLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUploadLocationError(t("site.geolocation_not_supported"));
+      return;
+    }
+
+    setCapturingUploadLocation(true);
+    setUploadLocationError(null);
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: DOCUMENT_LOCATION_TIMEOUT_MS,
+          maximumAge: 60000,
+        });
+      });
+      const resolvedLabel = await resolveLocationLabelFromCoordinates(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      setUploadLocation((current) => ({
+        ...current,
+        label: current.label.trim() || resolvedLabel || "",
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      }));
+    } catch (error) {
+      const geolocationError =
+        error && typeof error === "object" && "code" in error
+          ? (error as GeolocationPositionError)
+          : null;
+      setUploadLocationError(getGeolocationErrorMessage(t, geolocationError));
+    } finally {
+      setCapturingUploadLocation(false);
+    }
+  }
+
   async function handleImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -296,15 +398,24 @@ export default function NewProjectPage() {
   function addMilestone() {
     setMilestones((prev) => [
       ...prev,
-      { title: "", description: "", dueDate: "" },
+      createMilestoneInput(),
     ]);
   }
   function removeMilestone(index: number) {
+    const removedMilestoneId = milestones[index]?.id;
     setMilestones((prev) => prev.filter((_, i) => i !== index));
+    if (removedMilestoneId) {
+      setTaskInputs((prev) =>
+        prev.map((task) => ({
+          ...task,
+          milestoneIds: task.milestoneIds.filter((milestoneId) => milestoneId !== removedMilestoneId),
+        })),
+      );
+    }
   }
   function updateMilestone(
     index: number,
-    field: keyof MilestoneInput,
+    field: "title" | "description" | "dueDate",
     value: string
   ) {
     setMilestones((prev) =>
@@ -321,21 +432,39 @@ export default function NewProjectPage() {
         priority: "medium",
         dueDate: "",
         assignedTo: "",
+        milestoneIds: [],
       },
     ]);
   }
   function removeTask(index: number) {
     setTaskInputs((prev) => prev.filter((_, i) => i !== index));
   }
-  function updateTask(index: number, field: keyof TaskInput, value: string) {
+  function updateTask(index: number, field: "title" | "description" | "priority" | "dueDate" | "assignedTo", value: string) {
     setTaskInputs((prev) =>
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+    );
+  }
+
+  function toggleTaskMilestone(taskIndex: number, milestoneId: string) {
+    setTaskInputs((prev) =>
+      prev.map((task, index) => (
+        index === taskIndex
+          ? { ...task, milestoneIds: toggleSelection(task.milestoneIds, milestoneId) }
+          : task
+      ))
     );
   }
 
   function canProceed(): boolean {
     if (currentStep === 0) {
       return formData.name.trim().length > 0;
+    }
+    if (currentStep === 1) {
+      const validMilestoneIds = new Set(
+        milestones.filter((milestone) => milestone.title.trim()).map((milestone) => milestone.id),
+      );
+      const validTasks = taskInputs.filter((task) => task.title.trim());
+      return validTasks.every((task) => task.milestoneIds.some((milestoneId) => validMilestoneIds.has(milestoneId)));
     }
     return true;
   }
@@ -359,6 +488,16 @@ export default function NewProjectPage() {
     setLoading(true);
 
     try {
+      const validMilestones = milestones.filter((milestone) => milestone.title.trim());
+      const validMilestoneIds = new Set(validMilestones.map((milestone) => milestone.id));
+      const hasTaskWithoutMilestones = taskInputs
+        .filter((task) => task.title.trim())
+        .some((task) => !task.milestoneIds.some((milestoneId) => validMilestoneIds.has(milestoneId)));
+
+      if (hasTaskWithoutMilestones) {
+        throw new Error(t("site.link_at_least_one_milestone"));
+      }
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -367,7 +506,7 @@ export default function NewProjectPage() {
           donorIds: selectedDonorIds,
           managerId: formData.managerId || null,
           totalBudget: formData.totalBudget ? parseInt(formData.totalBudget) : 0,
-          milestones: milestones.filter((m) => m.title.trim()),
+          milestones: validMilestones.map(({ id, ...milestone }) => milestone),
         }),
       });
 
@@ -375,10 +514,19 @@ export default function NewProjectPage() {
       if (!res.ok) throw new Error(data.error || t("site.failed_to_create_project"));
 
       const projectId = data.project.id;
+      const createdMilestones: Array<{ id: string }> = Array.isArray(data.milestones) ? data.milestones : [];
+      const milestoneIdMap = new Map(
+        validMilestones.map((milestone, index) => [milestone.id, createdMilestones[index]?.id ?? ""])
+      );
+      const locationPayload = buildUploadLocationPayload(uploadLocation);
 
       const validTasks = taskInputs.filter((t) => t.title.trim());
       for (const task of validTasks) {
-        await fetch("/api/tasks", {
+        const milestoneIds = task.milestoneIds
+          .map((milestoneId) => milestoneIdMap.get(milestoneId) ?? "")
+          .filter((milestoneId): milestoneId is string => Boolean(milestoneId));
+
+        const taskRes = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -388,14 +536,22 @@ export default function NewProjectPage() {
             priority: task.priority,
             dueDate: task.dueDate || null,
             assignedTo: task.assignedTo || null,
+            milestoneIds,
           }),
         });
+        if (!taskRes.ok) {
+          const taskData = await taskRes.json();
+          throw new Error(taskData.error || t("site.failed_to_add_task"));
+        }
       }
 
       if (files.length > 0) {
         for (const file of files) {
           const uploadFormData = new FormData();
           uploadFormData.append("file", file);
+          if (locationPayload) {
+            uploadFormData.append("locationMetadata", locationPayload);
+          }
           await fetch(`/api/projects/${projectId}/documents`, {
             method: "POST",
             body: uploadFormData,
@@ -410,6 +566,8 @@ export default function NewProjectPage() {
       setLoading(false);
     }
   }
+
+  const availableTaskMilestones = milestones.filter((milestone) => milestone.title.trim());
 
   function getSelectedDonors(): Donor[] {
     return donors.filter((d) => selectedDonorIds.includes(d.id));
@@ -837,7 +995,7 @@ export default function NewProjectPage() {
                 <div className="space-y-3">
                   {milestones.map((milestone, index) => (
                     <div
-                      key={index}
+                      key={milestone.id}
                       className="p-4 bg-muted/40 rounded-xl space-y-3"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1028,6 +1186,43 @@ export default function NewProjectPage() {
                       </Select>
                     </div>
                   </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>{t("site.linked_milestones")}</Label>
+                      <span className="text-xs text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</span>
+                    </div>
+                    {availableTaskMilestones.length > 0 ? (
+                      <div className="rounded-xl border border-border/70 bg-background p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {availableTaskMilestones.map((milestone) => {
+                            const selected = task.milestoneIds.includes(milestone.id);
+                            return (
+                              <button
+                                key={milestone.id}
+                                type="button"
+                                onClick={() => toggleTaskMilestone(index, milestone.id)}
+                                disabled={loading}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                  selected
+                                    ? "border-primary bg-sage-pale text-primary"
+                                    : "border-border bg-card text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {milestone.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                        {t("site.no_milestones_available_create_one_first")}
+                      </p>
+                    )}
+                    {task.title.trim() && !task.milestoneIds.some((milestoneId) => availableTaskMilestones.some((milestone) => milestone.id === milestoneId)) ? (
+                      <p className="text-xs text-destructive">{t("site.link_at_least_one_milestone")}</p>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1135,6 +1330,45 @@ export default function NewProjectPage() {
 
             <div className="border-t border-border pt-8">
               <h3 className="font-serif text-lg text-foreground mb-4">{t("site.project_documents")}</h3>
+              <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+                <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <div className="space-y-2">
+                    <Label htmlFor="new-project-document-location">{t("site.location_label")}</Label>
+                    <Input
+                      id="new-project-document-location"
+                      value={uploadLocation.label}
+                      onChange={(event) => setUploadLocation((current) => ({ ...current, label: event.target.value }))}
+                      placeholder={t("site.location_label_placeholder")}
+                      className="rounded-xl"
+                      disabled={loading}
+                    />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl sm:self-end"
+                      onClick={captureUploadLocation}
+                      disabled={loading || capturingUploadLocation}
+                    >
+                      <LocateFixed className="h-3.5 w-3.5 mr-1.5" />
+                      {capturingUploadLocation ? t("site.capturing_location") : t("site.use_current_location")}
+                    </Button>
+                  </div>
+                  {uploadLocationError ? (
+                    <p className="text-xs text-destructive">{uploadLocationError}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {getDocumentLocationDisplayName({
+                        label: uploadLocation.label.trim() || null,
+                        latitude: uploadLocation.latitude,
+                        longitude: uploadLocation.longitude,
+                      }) ?? t("site.location_auto_fill_hint")}
+                    </p>
+                  )}
+                </div>
+              </div>
               <div className="border border-dashed border-border rounded-2xl p-8 text-center">
                 <input
                   ref={fileInputRef}
@@ -1316,6 +1550,18 @@ export default function NewProjectPage() {
                               </span>
                             )}
                           </div>
+                          {task.milestoneIds.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {task.milestoneIds
+                                .map((milestoneId) => availableTaskMilestones.find((milestone) => milestone.id === milestoneId))
+                                .filter((milestone): milestone is MilestoneInput => Boolean(milestone))
+                                .map((milestone) => (
+                                  <Badge key={milestone.id} variant="secondary" className="rounded-full text-[11px]">
+                                    {milestone.title}
+                                  </Badge>
+                                ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ))}

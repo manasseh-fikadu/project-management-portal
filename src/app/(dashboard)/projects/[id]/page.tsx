@@ -24,6 +24,7 @@ import {
   User,
   DollarSign,
   MoreVertical,
+  Pencil,
   Trash2,
   Upload,
   FileText,
@@ -36,8 +37,19 @@ import {
   HandCoins,
   Send,
   Leaf,
+  LocateFixed,
+  MapPin,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
+import {
+  buildDocumentLocationMapUrl,
+  DOCUMENT_LOCATION_TIMEOUT_MS,
+  getDocumentLocationDisplayName,
+  getGeolocationErrorMessage,
+  parseDocumentMetadata,
+  resolveLocationLabelFromCoordinates,
+  type DocumentMetadata,
+} from "@/lib/document-location";
 
 type Milestone = {
   id: string;
@@ -55,6 +67,7 @@ type Document = {
   type: string;
   url: string;
   size: number;
+  metadata?: DocumentMetadata | null;
   createdAt: string;
   uploader: {
     firstName: string;
@@ -82,6 +95,10 @@ type TaskUser = {
   email?: string;
 };
 
+type TaskMilestoneLink = {
+  milestone: Pick<Milestone, "id" | "title" | "status">;
+};
+
 type Task = {
   id: string;
   title: string;
@@ -94,6 +111,17 @@ type Task = {
   createdAt: string;
   assignee: TaskUser | null;
   creator: { id: string; firstName: string; lastName: string };
+  taskMilestones: TaskMilestoneLink[];
+};
+
+type TaskFormState = {
+  title: string;
+  description: string;
+  priority: string;
+  progress: number;
+  dueDate: string;
+  assignedTo: string;
+  milestoneIds: string[];
 };
 
 type Donor = {
@@ -150,6 +178,18 @@ type BudgetAllocation = {
   q3Amount: number;
   q4Amount: number;
   notes: string | null;
+  assignee: TaskUser | null;
+  task?: { id: string; title: string; status: string } | null;
+};
+
+type BudgetLineFormState = {
+  activityName: string;
+  plannedAmount: string;
+  q1Amount: string;
+  q2Amount: string;
+  q3Amount: string;
+  q4Amount: string;
+  assignedTo: string;
 };
 
 type ReportingProfile = {
@@ -166,6 +206,14 @@ type ReportingProfile = {
   leadAgency: string | null;
   implementingPartner: string | null;
   procurementNotes: string | null;
+};
+
+type UploadLocationState = {
+  label: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracyMeters: number | null;
+  capturedAt: string | null;
 };
 
 type Project = {
@@ -220,6 +268,36 @@ function parseBudgetImportNotes(notes: string | null): BudgetImportNotes | null 
   } catch {
     return null;
   }
+}
+
+function createEmptyUploadLocation(): UploadLocationState {
+  return {
+    label: "",
+    latitude: null,
+    longitude: null,
+    accuracyMeters: null,
+    capturedAt: null,
+  };
+}
+
+function buildUploadLocationPayload(location: UploadLocationState): string | null {
+  const label = location.label.trim();
+  const hasCoordinates = location.latitude !== null && location.longitude !== null;
+
+  if (!label && !hasCoordinates) return null;
+
+  return JSON.stringify({
+    label: label || null,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    accuracyMeters: location.accuracyMeters,
+    capturedAt: location.capturedAt ?? new Date().toISOString(),
+    source: hasCoordinates ? "browser_geolocation" : "manual",
+  });
+}
+
+function getDocumentLocation(document: Document) {
+  return parseDocumentMetadata(document.metadata)?.location ?? null;
 }
 
 function getPortalInviteErrorMessageKey(code: unknown, error: unknown): string | null {
@@ -294,6 +372,16 @@ const taskPriorityLabels: Record<string, string> = {
   high: "site.high",
 };
 
+function getLinkedMilestones(task: Task) {
+  return task.taskMilestones.map((link) => link.milestone);
+}
+
+function toggleSelection(currentIds: string[], id: string) {
+  return currentIds.includes(id)
+    ? currentIds.filter((currentId) => currentId !== id)
+    : [...currentIds, id];
+}
+
 const donorStatusLabels: Record<string, string> = {
   active: "site.active",
   pending: "site.pending",
@@ -315,6 +403,9 @@ export default function ProjectProfilePage() {
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
   const [newMilestone, setNewMilestone] = useState({ title: "", description: "", dueDate: "" });
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [uploadLocation, setUploadLocation] = useState<UploadLocationState>(createEmptyUploadLocation());
+  const [capturingUploadLocation, setCapturingUploadLocation] = useState(false);
+  const [uploadLocationError, setUploadLocationError] = useState("");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [newTask, setNewTask] = useState({
     title: "",
@@ -322,11 +413,35 @@ export default function ProjectProfilePage() {
     priority: "medium",
     dueDate: "",
     assignedTo: "",
+    milestoneIds: [] as string[],
   });
+  const [newTaskMilestoneError, setNewTaskMilestoneError] = useState("");
+  const [editingBudgetLine, setEditingBudgetLine] = useState<BudgetAllocation | null>(null);
+  const [budgetLineForm, setBudgetLineForm] = useState<BudgetLineFormState>({
+    activityName: "",
+    plannedAmount: "",
+    q1Amount: "",
+    q2Amount: "",
+    q3Amount: "",
+    q4Amount: "",
+    assignedTo: "",
+  });
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskForm, setTaskForm] = useState<TaskFormState>({
+    title: "",
+    description: "",
+    priority: "medium",
+    progress: 0,
+    dueDate: "",
+    assignedTo: "",
+    milestoneIds: [],
+  });
+  const [taskFormMilestoneError, setTaskFormMilestoneError] = useState("");
   const [allDonors, setAllDonors] = useState<Donor[]>([]);
   const [isAddDonorOpen, setIsAddDonorOpen] = useState(false);
   const [addingDonorId, setAddingDonorId] = useState("");
   const [showAllBudgetLines, setShowAllBudgetLines] = useState(false);
+  const [creatingBudgetTasks, setCreatingBudgetTasks] = useState(false);
   const [isReportingSettingsOpen, setIsReportingSettingsOpen] = useState(false);
   const [savingReportingSettings, setSavingReportingSettings] = useState(false);
   const [reportingSettingsError, setReportingSettingsError] = useState("");
@@ -534,17 +649,14 @@ export default function ProjectProfilePage() {
   async function handleMilestoneStatusChange(milestoneId: string, newStatus: string) {
     if (!project) return;
     try {
-      await fetch(`/api/milestones/${milestoneId}`, {
+      const res = await fetch(`/api/milestones/${milestoneId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      setProject({
-        ...project,
-        milestones: project.milestones.map((m) =>
-          m.id === milestoneId ? { ...m, status: newStatus } : m
-        ),
-      });
+      if (res.ok) {
+        await fetchProject();
+      }
     } catch (error) {
       console.error(t("site.failed_to_update_milestone"), error);
     }
@@ -578,11 +690,10 @@ export default function ProjectProfilePage() {
     if (!project || !confirm(t("site.are_you_sure_you_want_to_delete_this_milestone"))) return;
 
     try {
-      await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
-      setProject({
-        ...project,
-        milestones: project.milestones.filter((m) => m.id !== milestoneId),
-      });
+      const res = await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchProject();
+      }
     } catch (error) {
       console.error(t("site.failed_to_delete_milestone"), error);
     }
@@ -591,6 +702,10 @@ export default function ProjectProfilePage() {
   async function handleAddTask(e: React.FormEvent) {
     e.preventDefault();
     if (!project) return;
+    if (newTask.milestoneIds.length === 0) {
+      setNewTaskMilestoneError(t("site.link_at_least_one_milestone"));
+      return;
+    }
 
     try {
       const res = await fetch("/api/tasks", {
@@ -603,6 +718,7 @@ export default function ProjectProfilePage() {
           priority: newTask.priority,
           dueDate: newTask.dueDate || null,
           assignedTo: newTask.assignedTo || null,
+          milestoneIds: newTask.milestoneIds,
         }),
       });
       const data = await res.json();
@@ -611,7 +727,15 @@ export default function ProjectProfilePage() {
           ...project,
           tasks: [data.task, ...project.tasks],
         });
-        setNewTask({ title: "", description: "", priority: "medium", dueDate: "", assignedTo: "" });
+        setNewTask({
+          title: "",
+          description: "",
+          priority: "medium",
+          dueDate: "",
+          assignedTo: "",
+          milestoneIds: [],
+        });
+        setNewTaskMilestoneError("");
         setIsAddTaskOpen(false);
       }
     } catch (error) {
@@ -619,20 +743,142 @@ export default function ProjectProfilePage() {
     }
   }
 
-  async function handleTaskStatusChange(taskId: string, newStatus: string) {
-    if (!project) return;
+  function openBudgetLineEditor(line: BudgetAllocation) {
+    setEditingBudgetLine(line);
+    setBudgetLineForm({
+      activityName: line.activityName,
+      plannedAmount: String(line.plannedAmount),
+      q1Amount: String(line.q1Amount ?? 0),
+      q2Amount: String(line.q2Amount ?? 0),
+      q3Amount: String(line.q3Amount ?? 0),
+      q4Amount: String(line.q4Amount ?? 0),
+      assignedTo: line.assignee?.id || "",
+    });
+  }
+
+  function closeBudgetLineEditor() {
+    setEditingBudgetLine(null);
+    setBudgetLineForm({
+      activityName: "",
+      plannedAmount: "",
+      q1Amount: "",
+      q2Amount: "",
+      q3Amount: "",
+      q4Amount: "",
+      assignedTo: "",
+    });
+  }
+
+  async function handleEditBudgetLine(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project || !editingBudgetLine) return;
+
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/budgets/${editingBudgetLine.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          activityName: budgetLineForm.activityName,
+          plannedAmount: Number(budgetLineForm.plannedAmount),
+          q1Amount: Number(budgetLineForm.q1Amount),
+          q2Amount: Number(budgetLineForm.q2Amount),
+          q3Amount: Number(budgetLineForm.q3Amount),
+          q4Amount: Number(budgetLineForm.q4Amount),
+          assignedTo: budgetLineForm.assignedTo || null,
+        }),
       });
-      setProject({
-        ...project,
-        tasks: project.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: newStatus } : t
-        ),
+      const data = await res.json();
+      if (data.budgetAllocation) {
+        setProject({
+          ...project,
+          budgetAllocations: project.budgetAllocations.map((line) =>
+            line.id === data.budgetAllocation.id ? data.budgetAllocation : line
+          ),
+        });
+        closeBudgetLineEditor();
+      }
+    } catch (error) {
+      console.error(t("site.failed_to_update_budget_allocation"), error);
+    }
+  }
+
+  async function handleCreateBudgetTasks() {
+    try {
+      setCreatingBudgetTasks(true);
+      const res = await fetch(`/api/projects/${projectId}/budget-tasks`, {
+        method: "POST",
       });
+
+      if (!res.ok) {
+        throw new Error("Failed to create tasks from budget lines");
+      }
+
+      await fetchProject();
+    } catch (error) {
+      console.error("Failed to create tasks from budget lines:", error);
+    } finally {
+      setCreatingBudgetTasks(false);
+    }
+  }
+
+  function openTaskEditor(task: Task) {
+    setEditingTask(task);
+    setTaskForm({
+      title: task.title,
+      description: task.description || "",
+      priority: task.priority,
+      progress: task.progress ?? 0,
+      dueDate: task.dueDate ? task.dueDate.split("T")[0] : "",
+      assignedTo: task.assignee?.id || "",
+      milestoneIds: getLinkedMilestones(task).map((milestone) => milestone.id),
+    });
+    setTaskFormMilestoneError("");
+  }
+
+  function closeTaskEditor() {
+    setEditingTask(null);
+    setTaskForm({
+      title: "",
+      description: "",
+      priority: "medium",
+      progress: 0,
+      dueDate: "",
+      assignedTo: "",
+      milestoneIds: [],
+    });
+    setTaskFormMilestoneError("");
+  }
+
+  async function handleEditTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!project || !editingTask) return;
+    if (taskForm.milestoneIds.length === 0) {
+      setTaskFormMilestoneError(t("site.link_at_least_one_milestone"));
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskForm.title,
+          description: taskForm.description || null,
+          priority: taskForm.priority,
+          progress: taskForm.progress,
+          dueDate: taskForm.dueDate || null,
+          assignedTo: taskForm.assignedTo || null,
+          milestoneIds: taskForm.milestoneIds,
+        }),
+      });
+      const data = await res.json();
+      if (data.task) {
+        setProject({
+          ...project,
+          tasks: project.tasks.map((task) => (task.id === data.task.id ? data.task : task)),
+        });
+        closeTaskEditor();
+      }
     } catch (error) {
       console.error(t("site.failed_to_update_task"), error);
     }
@@ -654,6 +900,7 @@ export default function ProjectProfilePage() {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !project) return;
+    const locationPayload = buildUploadLocationPayload(uploadLocation);
 
     const newUploads: UploadingFile[] = files.map((f) => ({ name: f.name, progress: 0 }));
     setUploadingFiles((prev) => [...prev, ...newUploads]);
@@ -662,6 +909,9 @@ export default function ProjectProfilePage() {
       const file = files[i];
       const formData = new FormData();
       formData.append("file", file);
+      if (locationPayload) {
+        formData.append("locationMetadata", locationPayload);
+      }
 
       setUploadingFiles((prev) =>
         prev.map((u, idx) => (u.name === file.name && idx === prev.findIndex((p) => p.name === file.name) ? { ...u, progress: 50 } : u))
@@ -693,6 +943,47 @@ export default function ProjectProfilePage() {
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }
+
+  async function captureUploadLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUploadLocationError(t("site.geolocation_not_supported"));
+      return;
+    }
+
+    setCapturingUploadLocation(true);
+    setUploadLocationError("");
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: DOCUMENT_LOCATION_TIMEOUT_MS,
+          maximumAge: 60000,
+        });
+      });
+      const resolvedLabel = await resolveLocationLabelFromCoordinates(
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+      setUploadLocation((current) => ({
+        ...current,
+        label: current.label.trim() || resolvedLabel || "",
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+        capturedAt: new Date(position.timestamp).toISOString(),
+      }));
+    } catch (error) {
+      const geolocationError =
+        error && typeof error === "object" && "code" in error
+          ? (error as GeolocationPositionError)
+          : null;
+      setUploadLocationError(getGeolocationErrorMessage(t, geolocationError));
+    } finally {
+      setCapturingUploadLocation(false);
     }
   }
 
@@ -843,6 +1134,16 @@ export default function ProjectProfilePage() {
     .map((line) => ({ line, metadata: parseBudgetImportNotes(line.notes) }))
     .filter((entry) => Boolean(entry.metadata?.template));
   const importedTotal = importedBudgetLines.reduce((sum, entry) => sum + entry.line.plannedAmount, 0);
+  const budgetLinesMissingTasks = budgetLines.filter((line) => !line.task).length;
+  const assignableProjectMembers = [
+    {
+      id: project.manager.id,
+      firstName: project.manager.firstName,
+      lastName: project.manager.lastName,
+      email: project.manager.email,
+    },
+    ...project.members.map((member) => member.user),
+  ].filter((member, index, collection) => collection.findIndex((candidate) => candidate.id === member.id) === index);
 
   return (
     <div className="p-6 lg:p-10">
@@ -1181,6 +1482,25 @@ export default function ProjectProfilePage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {budgetLinesMissingTasks > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={handleCreateBudgetTasks}
+                      disabled={creatingBudgetTasks}
+                    >
+                      {creatingBudgetTasks ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {t("site.creating")}
+                        </>
+                      ) : (
+                        t("site.create_tasks_from_budget_lines")
+                      )}
+                    </Button>
+                  )}
                   <Badge variant="secondary" className="rounded-full px-3 py-1">
                     {t("site.lines_count", { count: budgetLines.length })}
                   </Badge>
@@ -1255,7 +1575,7 @@ export default function ProjectProfilePage() {
               )}
 
               <div className="space-y-3">
-                {visibleBudgetLines.map((line) => {
+                  {visibleBudgetLines.map((line) => {
                   const metadata = parseBudgetImportNotes(line.notes);
                   return (
                     <div key={line.id} className="rounded-xl border border-border/70 px-4 py-4">
@@ -1285,9 +1605,36 @@ export default function ProjectProfilePage() {
                               })}
                             </p>
                           )}
+                          {line.assignee && (
+                            <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                              <User className="h-3 w-3" />
+                              <span>
+                                {line.assignee.firstName} {line.assignee.lastName}
+                              </span>
+                            </div>
+                          )}
+                          {line.task && (
+                            <div className="mt-2">
+                              <Badge variant="secondary" className="rounded-full text-[11px]">
+                                {t("sidebar.tasks")}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
-                        <div className="shrink-0 rounded-full bg-muted/40 px-3 py-1.5 text-sm font-semibold text-foreground">
-                          {formatBudget(line.plannedAmount)}
+                        <div className="flex items-start gap-2">
+                          <div className="shrink-0 rounded-full bg-muted/40 px-3 py-1.5 text-sm font-semibold text-foreground">
+                            {formatBudget(line.plannedAmount)}
+                          </div>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 rounded-full"
+                            onClick={() => openBudgetLineEditor(line)}
+                            aria-label={t("site.edit")}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
 
@@ -1310,6 +1657,90 @@ export default function ProjectProfilePage() {
                   );
                 })}
               </div>
+
+              <Dialog open={editingBudgetLine !== null} onOpenChange={(open) => !open && closeBudgetLineEditor()}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle className="font-serif">{t("site.edit")}</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleEditBudgetLine} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-budget-activity">{t("site.title")}</Label>
+                      <Input
+                        id="edit-budget-activity"
+                        value={budgetLineForm.activityName}
+                        onChange={(e) => setBudgetLineForm({ ...budgetLineForm, activityName: e.target.value })}
+                        required
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-budget-planned">{t("site.planned")}</Label>
+                        <Input
+                          id="edit-budget-planned"
+                          type="number"
+                          min="0"
+                          value={budgetLineForm.plannedAmount}
+                          onChange={(e) => setBudgetLineForm({ ...budgetLineForm, plannedAmount: e.target.value })}
+                          required
+                          className="rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-budget-assignee">{t("site.assign_to")}</Label>
+                        <Select
+                          value={budgetLineForm.assignedTo || "_none"}
+                          onValueChange={(value) => setBudgetLineForm({ ...budgetLineForm, assignedTo: value === "_none" ? "" : value })}
+                        >
+                          <SelectTrigger className="rounded-xl">
+                            <SelectValue placeholder={t("site.select_assignee")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
+                            {assignableProjectMembers.map((member) => (
+                              <SelectItem key={member.id} value={member.id}>
+                                {member.firstName} {member.lastName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        { key: "q1Amount", label: t("site.q1") },
+                        { key: "q2Amount", label: t("site.q2") },
+                        { key: "q3Amount", label: t("site.q3") },
+                        { key: "q4Amount", label: t("site.q4") },
+                      ].map((quarter) => (
+                        <div key={quarter.key} className="space-y-2">
+                          <Label htmlFor={`edit-budget-${quarter.key}`}>{quarter.label}</Label>
+                          <Input
+                            id={`edit-budget-${quarter.key}`}
+                            type="number"
+                            min="0"
+                            value={budgetLineForm[quarter.key as keyof BudgetLineFormState]}
+                            onChange={(e) =>
+                              setBudgetLineForm({
+                                ...budgetLineForm,
+                                [quarter.key]: e.target.value,
+                              })
+                            }
+                            className="rounded-xl"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button type="button" variant="ghost" onClick={closeBudgetLineEditor}>
+                        {t("site.cancel")}
+                      </Button>
+                      <Button type="submit" className="rounded-xl">{t("site.save_changes")}</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </div>
           )}
 
@@ -1434,8 +1865,19 @@ export default function ProjectProfilePage() {
           {/* Tasks */}
           <div className="bg-card rounded-2xl p-6 lg:p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="font-serif text-xl text-foreground">{t("site.tasks_and_activities")}</h2>
-              <Dialog open={isAddTaskOpen} onOpenChange={setIsAddTaskOpen}>
+              <div>
+                <h2 className="font-serif text-xl text-foreground">{t("site.tasks_and_activities")}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</p>
+              </div>
+              <Dialog
+                open={isAddTaskOpen}
+                onOpenChange={(open) => {
+                  setIsAddTaskOpen(open);
+                  if (!open) {
+                    setNewTaskMilestoneError("");
+                  }
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button size="sm" className="rounded-xl">
                     <Plus className="h-4 w-4 mr-1" /> {t("site.add")}
@@ -1507,19 +1949,70 @@ export default function ProjectProfilePage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.firstName} {user.lastName}
+                          {assignableProjectMembers.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.firstName} {member.lastName}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>{t("site.linked_milestones")}</Label>
+                        <span className="text-xs text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</span>
+                      </div>
+                      {project.milestones.length > 0 ? (
+                        <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                          <div className="flex flex-wrap gap-2">
+                            {project.milestones.map((milestone) => {
+                              const selected = newTask.milestoneIds.includes(milestone.id);
+                              return (
+                                <button
+                                  key={milestone.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setNewTask((current) => ({
+                                      ...current,
+                                      milestoneIds: toggleSelection(current.milestoneIds, milestone.id),
+                                    }));
+                                    setNewTaskMilestoneError("");
+                                  }}
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    selected
+                                      ? "border-primary bg-sage-pale text-primary"
+                                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                                  }`}
+                                >
+                                  {milestone.title}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                          {t("site.no_milestones_available_create_one_first")}
+                        </p>
+                      )}
+                      {newTaskMilestoneError ? (
+                        <p className="text-xs text-destructive">{newTaskMilestoneError}</p>
+                      ) : null}
+                    </div>
                     <div className="flex gap-2 justify-end">
-                      <Button type="button" variant="ghost" onClick={() => setIsAddTaskOpen(false)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsAddTaskOpen(false);
+                          setNewTaskMilestoneError("");
+                        }}
+                      >
                         {t("site.cancel")}
                       </Button>
-                      <Button type="submit" className="rounded-xl">{t("site.add_task")}</Button>
+                      <Button type="submit" className="rounded-xl" disabled={project.milestones.length === 0}>
+                        {t("site.add_task")}
+                      </Button>
                     </div>
                   </form>
                 </DialogContent>
@@ -1536,6 +2029,7 @@ export default function ProjectProfilePage() {
                 {project.tasks.map((task) => {
                   const ts = taskStatusConfig[task.status] || taskStatusConfig.pending;
                   const tp = taskPriorityConfig[task.priority] || taskPriorityConfig.medium;
+                  const linkedMilestones = getLinkedMilestones(task);
                   return (
                     <div key={task.id} className="flex items-start gap-3 p-4 rounded-xl hover:bg-muted/30 transition-colors">
                       <div className="mt-0.5">
@@ -1561,6 +2055,17 @@ export default function ProjectProfilePage() {
                         </div>
                         {task.description && (
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+                        )}
+                        {linkedMilestones.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {linkedMilestones.map((milestone) => (
+                              <Badge key={milestone.id} variant="secondary" className="rounded-full text-[11px]">
+                                {milestone.title}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-amber-warm">{t("site.link_milestones_to_enable_status_automation")}</p>
                         )}
                         <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                           {task.assignee && (
@@ -1592,14 +2097,8 @@ export default function ProjectProfilePage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "pending")}>
-                            {t("site.set_pending")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "in_progress")}>
-                            {t("site.set_in_progress")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleTaskStatusChange(task.id, "completed")}>
-                            {t("site.set_completed")}
+                          <DropdownMenuItem onClick={() => openTaskEditor(task)}>
+                            <Pencil className="h-4 w-4 mr-2" /> {t("site.edit")}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDeleteTask(task.id)} className="text-destructive">
                             <Trash2 className="h-4 w-4 mr-2" /> {t("site.delete")}
@@ -1611,6 +2110,151 @@ export default function ProjectProfilePage() {
                 })}
               </div>
             )}
+
+            <Dialog open={editingTask !== null} onOpenChange={(open) => !open && closeTaskEditor()}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="font-serif">{t("site.edit_task")}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleEditTask} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-title">{t("site.title")}</Label>
+                    <Input
+                      id="edit-task-title"
+                      value={taskForm.title}
+                      onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+                      placeholder={t("site.task_title")}
+                      required
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-description">{t("site.description")}</Label>
+                    <Textarea
+                      id="edit-task-description"
+                      value={taskForm.description}
+                      onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                      placeholder={t("site.what_needs_to_be_done")}
+                      rows={2}
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-priority">{t("site.priority")}</Label>
+                    <Select
+                      value={taskForm.priority}
+                      onValueChange={(value) => setTaskForm({ ...taskForm, priority: value })}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">{t("site.low")}</SelectItem>
+                        <SelectItem value="medium">{t("site.medium")}</SelectItem>
+                        <SelectItem value="high">{t("site.high")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-task-progress">{t("site.progress")} ({taskForm.progress}%)</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="edit-task-progress"
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={taskForm.progress}
+                        onChange={(e) => setTaskForm({ ...taskForm, progress: Number(e.target.value) })}
+                        className="flex-1 h-2 accent-primary"
+                      />
+                      <span className="w-10 text-right text-sm font-medium text-foreground">{taskForm.progress}%</span>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-task-due">{t("site.due_date")}</Label>
+                      <Input
+                        id="edit-task-due"
+                        type="date"
+                        value={taskForm.dueDate}
+                        onChange={(e) => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                        className="rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-task-assignee">{t("site.assignee")}</Label>
+                      <Select
+                        value={taskForm.assignedTo || "_none"}
+                        onValueChange={(value) => setTaskForm({ ...taskForm, assignedTo: value === "_none" ? "" : value })}
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder={t("site.select_assignee")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">{t("site.unassigned")}</SelectItem>
+                          {assignableProjectMembers.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.firstName} {member.lastName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>{t("site.linked_milestones")}</Label>
+                      <span className="text-xs text-muted-foreground">{t("site.task_status_is_driven_by_linked_milestones")}</span>
+                    </div>
+                    {project.milestones.length > 0 ? (
+                      <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                        <div className="flex flex-wrap gap-2">
+                          {project.milestones.map((milestone) => {
+                            const selected = taskForm.milestoneIds.includes(milestone.id);
+                            return (
+                              <button
+                                key={milestone.id}
+                                type="button"
+                                onClick={() => {
+                                  setTaskForm((current) => ({
+                                    ...current,
+                                    milestoneIds: toggleSelection(current.milestoneIds, milestone.id),
+                                  }));
+                                  setTaskFormMilestoneError("");
+                                }}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                  selected
+                                    ? "border-primary bg-sage-pale text-primary"
+                                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {milestone.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                        {t("site.no_milestones_available_create_one_first")}
+                      </p>
+                    )}
+                    {taskFormMilestoneError ? (
+                      <p className="text-xs text-destructive">{taskFormMilestoneError}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button type="button" variant="ghost" onClick={closeTaskEditor}>
+                      {t("site.cancel")}
+                    </Button>
+                    <Button type="submit" className="rounded-xl" disabled={project.milestones.length === 0}>
+                      {t("site.save_changes")}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -1630,6 +2274,45 @@ export default function ProjectProfilePage() {
                 className="hidden"
                 onChange={handleFileUpload}
               />
+            </div>
+
+            <div className="mb-4 rounded-xl border border-border/70 bg-muted/20 p-4">
+              <div className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <div className="space-y-2">
+                  <Label htmlFor="project-document-location">{t("site.location_label")}</Label>
+                  <Input
+                    id="project-document-location"
+                    value={uploadLocation.label}
+                    onChange={(event) => setUploadLocation((current) => ({ ...current, label: event.target.value }))}
+                    placeholder={t("site.location_label_placeholder")}
+                    className="rounded-xl"
+                  />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl sm:self-end"
+                    onClick={captureUploadLocation}
+                    disabled={capturingUploadLocation}
+                  >
+                    <LocateFixed className="h-3.5 w-3.5 mr-1.5" />
+                    {capturingUploadLocation ? t("site.capturing_location") : t("site.use_current_location")}
+                  </Button>
+                </div>
+                {uploadLocationError ? (
+                  <p className="text-xs text-destructive">{uploadLocationError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {getDocumentLocationDisplayName({
+                      label: uploadLocation.label.trim() || null,
+                      latitude: uploadLocation.latitude,
+                      longitude: uploadLocation.longitude,
+                    }) ?? t("site.location_auto_fill_hint")}
+                  </p>
+                )}
+              </div>
             </div>
 
             {uploadingFiles.length > 0 && (
@@ -1658,7 +2341,12 @@ export default function ProjectProfilePage() {
               </div>
             ) : (
               <div className="space-y-1.5">
-                {project.documents.map((doc) => (
+                {project.documents.map((doc) => {
+                  const location = getDocumentLocation(doc);
+                  const locationName = getDocumentLocationDisplayName(location);
+                  const mapUrl = location ? buildDocumentLocationMapUrl(location) : null;
+
+                  return (
                   <div key={doc.id} className="flex items-start gap-2.5 p-2.5 hover:bg-muted/40 rounded-xl group transition-colors">
                     <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -1679,6 +2367,24 @@ export default function ProjectProfilePage() {
                       <p className="text-[11px] text-muted-foreground">
                         {formatFileSize(doc.size)} · {formatDate(doc.createdAt)}
                       </p>
+                      {locationName && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {locationName}
+                          </span>
+                          {mapUrl ? (
+                            <a
+                              href={mapUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline"
+                            >
+                              {t("site.view_map")}
+                            </a>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
@@ -1690,7 +2396,7 @@ export default function ProjectProfilePage() {
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
-                ))}
+                );})}
               </div>
             )}
           </div>

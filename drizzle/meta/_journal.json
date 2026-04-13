@@ -57,6 +57,34 @@
       "when": 1775520000000,
       "tag": "0007_reporting_template_agra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775606400000,
+      "tag": "0008_disbursement_direction",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775952000000,
+      "tag": "0009_budget_allocations_assignee",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775955600000,
+      "tag": "0010_tasks_budget_allocation_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776042000000,
+      "tag": "0011_task_milestones",
+      "breakpoints": true
     }
   ]
 }

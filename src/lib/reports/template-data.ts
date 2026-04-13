@@ -856,21 +856,23 @@ function buildDerivedTransactions(
     };
   });
 
-  const disbursementTransactions = projectRecord.disbursementLogs.map((disbursement) => {
-    const budgetLine = getBudgetLineForTransaction(disbursement.budgetAllocationId, disbursement.disbursedAt);
-    return {
-      id: `derived-disbursement-${disbursement.id}`,
-      resultId: budgetLine?.resultId ?? resultBySourceAllocationId.get(disbursement.budgetAllocationId ?? "") ?? null,
-      budgetLineId: budgetLine?.id ?? null,
-      donorId: disbursement.donorId,
-      transactionType: "disbursement" as const,
-      amount: disbursement.amount,
-      currency: stripEmpty(projectRecord.reportingProfile?.currency) ?? "ETB",
-      occurredAt: disbursement.disbursedAt,
-      notes: disbursement.notes,
-      source: "derived" as const,
-    };
-  });
+  const disbursementTransactions = projectRecord.disbursementLogs
+    .filter((disbursement) => disbursement.direction === "outward")
+    .map((disbursement) => {
+      const budgetLine = getBudgetLineForTransaction(disbursement.budgetAllocationId, disbursement.disbursedAt);
+      return {
+        id: `derived-disbursement-${disbursement.id}`,
+        resultId: budgetLine?.resultId ?? resultBySourceAllocationId.get(disbursement.budgetAllocationId ?? "") ?? null,
+        budgetLineId: budgetLine?.id ?? null,
+        donorId: disbursement.donorId,
+        transactionType: "disbursement" as const,
+        amount: disbursement.amount,
+        currency: stripEmpty(projectRecord.reportingProfile?.currency) ?? "ETB",
+        occurredAt: disbursement.disbursedAt,
+        notes: disbursement.notes,
+        source: "derived" as const,
+      };
+    });
 
   return [...expenditureTransactions, ...disbursementTransactions];
 }

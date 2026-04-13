@@ -92,17 +92,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (inputMilestones && inputMilestones.length > 0) {
-      await db.insert(milestones).values(
-        inputMilestones.map((m: { title: string; description?: string; dueDate?: string }, index: number) => ({
-          projectId: newProject.id,
-          title: m.title,
-          description: m.description || null,
-          dueDate: m.dueDate ? new Date(m.dueDate) : null,
-          order: index,
-        }))
-      );
-    }
+    const createdMilestones =
+      inputMilestones && inputMilestones.length > 0
+        ? await db.insert(milestones).values(
+          inputMilestones.map((m: { title: string; description?: string; dueDate?: string }, index: number) => ({
+            projectId: newProject.id,
+            title: m.title,
+            description: m.description || null,
+            dueDate: m.dueDate ? new Date(m.dueDate) : null,
+            order: index,
+          }))
+        ).returning()
+        : [];
 
     await db.insert(projectMembers).values({
       projectId: newProject.id,
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
       request,
     });
 
-    return NextResponse.json({ project: newProject }, { status: 201 });
+    return NextResponse.json({ project: newProject, milestones: createdMilestones }, { status: 201 });
   } catch (error) {
     console.error("Error creating project:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

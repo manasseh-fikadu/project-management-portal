@@ -173,7 +173,9 @@ export async function getFinancialReportData(projectId?: string): Promise<Financ
   });
 
   const disbursementRows = await db.query.disbursementLogs.findMany({
-    where: projectId ? eq(disbursementLogs.projectId, projectId) : undefined,
+    where: projectId
+      ? and(eq(disbursementLogs.projectId, projectId), eq(disbursementLogs.direction, "outward"))
+      : eq(disbursementLogs.direction, "outward"),
     columns: { projectId: true, amount: true },
   });
 
@@ -327,6 +329,7 @@ export async function getDonorReportData(donorId: string): Promise<DonorReportDa
         where: and(
           eq(disbursementLogs.donorId, donorId),
           inArray(disbursementLogs.projectId, projectIds),
+          eq(disbursementLogs.direction, "outward"),
         ),
         columns: { projectId: true, amount: true },
       })
