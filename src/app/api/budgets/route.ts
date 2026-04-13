@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { canAccessProject, ensureEditAccess, getAccessibleProjectIds } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { buildBudgetLineTaskDescription, buildBudgetLineTaskTitle } from "@/lib/budget-line-tasks";
+import { getActiveUserById } from "@/lib/users";
 
 export async function GET(request: NextRequest) {
   try {
@@ -70,12 +71,24 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { projectId, activityName, plannedAmount, q1Amount, q2Amount, q3Amount, q4Amount, assignedTo, notes } = body;
+    const normalizedAssignedTo = typeof assignedTo === "string" ? assignedTo.trim() || null : assignedTo ?? null;
 
     if (!projectId || !activityName || plannedAmount === undefined) {
       return NextResponse.json(
         { error: "projectId, activityName, and plannedAmount are required" },
         { status: 400 }
       );
+    }
+
+    if (assignedTo !== undefined && assignedTo !== null && typeof assignedTo !== "string") {
+      return NextResponse.json({ error: "assignedTo must be a valid user ID or null" }, { status: 400 });
+    }
+
+    if (normalizedAssignedTo) {
+      const assignedUser = await getActiveUserById(normalizedAssignedTo);
+      if (!assignedUser) {
+        return NextResponse.json({ error: "assignedTo must reference an active user" }, { status: 400 });
+      }
     }
 
     const amount = Number(plannedAmount);
@@ -113,29 +126,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [newBudgetAllocation] = await db
-      .insert(budgetAllocations)
-      .values({
-        projectId,
-        activityName,
-        plannedAmount: roundedPlannedAmount,
-        q1Amount: roundedQ1,
-        q2Amount: roundedQ2,
-        q3Amount: roundedQ3,
-        q4Amount: roundedQ4,
-        assignedTo: assignedTo || null,
-        notes: notes || null,
-        createdBy: session.userId,
-      })
-      .returning();
+    const [newBudgetAllocation] = await db.transaction(async (tx) => {
+      const [insertedBudgetAllocation] = await tx
+        .insert(budgetAllocations)
+        .values({
+          projectId,
+          activityName,
+          plannedAmount: roundedPlannedAmount,
+          q1Amount: roundedQ1,
+          q2Amount: roundedQ2,
+          q3Amount: roundedQ3,
+          q4Amount: roundedQ4,
+          assignedTo: normalizedAssignedTo,
+          notes: notes || null,
+          createdBy: session.userId,
+        })
+        .returning();
 
-    await db.insert(tasks).values({
-      projectId,
-      budgetAllocationId: newBudgetAllocation.id,
-      title: buildBudgetLineTaskTitle(newBudgetAllocation.activityName),
-      description: buildBudgetLineTaskDescription(newBudgetAllocation.notes),
-      assignedTo: newBudgetAllocation.assignedTo ?? null,
-      createdBy: session.userId,
+      const taskValues = {
+        projectId,
+        budgetAllocationId: insertedBudgetAllocation.id,
+        title: buildBudgetLineTaskTitle(insertedBudgetAllocation.activityName),
+        description: buildBudgetLineTaskDescription(insertedBudgetAllocation.notes),
+        assignedTo: insertedBudgetAllocation.assignedTo ?? null,
+        createdBy: session.userId,
+      };
+
+      await tx
+        .insert(tasks)
+        .values(taskValues)
+        .onConflictDoUpdate({
+          target: tasks.budgetAllocationId,
+          set: {
+            projectId: taskValues.projectId,
+            title: taskValues.title,
+            description: taskValues.description,
+            assignedTo: taskValues.assignedTo,
+            updatedAt: new Date(),
+          },
+        });
+
+      return [insertedBudgetAllocation] as const;
     });
 
     await logAuditEvent({

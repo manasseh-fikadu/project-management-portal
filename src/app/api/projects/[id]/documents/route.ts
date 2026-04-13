@@ -63,15 +63,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const file = formData.get("file") as File | null;
     const name = formData.get("name") as string | null;
     const rawLocationMetadata = formData.get("locationMetadata");
-    const locationMetadata = parseDocumentLocationMetadata(
-      typeof rawLocationMetadata === "string" ? rawLocationMetadata : null
-    );
+    const normalizedLocationMetadata =
+      typeof rawLocationMetadata === "string"
+        ? rawLocationMetadata === "" ? null : rawLocationMetadata
+        : null;
+    const locationMetadata = parseDocumentLocationMetadata(normalizedLocationMetadata);
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    if (rawLocationMetadata !== null && !locationMetadata) {
+    if (normalizedLocationMetadata !== null && !locationMetadata) {
       return NextResponse.json({ error: "Invalid location metadata" }, { status: 400 });
     }
 

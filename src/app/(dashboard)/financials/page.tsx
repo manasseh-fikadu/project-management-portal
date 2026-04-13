@@ -129,6 +129,23 @@ const disbursementSectionCopy: Record<
   },
 };
 
+function formatLocalDateToYYYYMMDD(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseYYYYMMDDAsLocal(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return new Date(dateString);
+  }
+
+  return new Date(year, month - 1, day);
+}
+
 function createDisbursementFormState(): DisbursementFormState {
   return {
     projectId: "",
@@ -136,7 +153,7 @@ function createDisbursementFormState(): DisbursementFormState {
     budgetAllocationId: "none",
     activityName: "",
     amount: "",
-    disbursedAt: new Date().toISOString().split("T")[0],
+    disbursedAt: formatLocalDateToYYYYMMDD(),
     reference: "",
     notes: "",
   };
@@ -173,7 +190,7 @@ export default function FinancialsPage() {
     budgetAllocationId: "none",
     activityName: "",
     amount: "",
-    expenditureDate: new Date().toISOString().split("T")[0],
+    expenditureDate: formatLocalDateToYYYYMMDD(),
     description: "",
   });
 
@@ -363,7 +380,7 @@ export default function FinancialsPage() {
         budgetAllocationId: "none",
         activityName: "",
         amount: "",
-        expenditureDate: new Date().toISOString().split("T")[0],
+        expenditureDate: formatLocalDateToYYYYMMDD(),
         description: "",
       });
       await fetchFinancialData();
@@ -573,7 +590,7 @@ export default function FinancialsPage() {
                   {entry.project?.name || t("site.unknown_project")} · {entry.donor?.name || t("site.donor_not_specified")}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {new Date(entry.disbursedAt).toLocaleDateString()} {entry.reference ? `· Ref: ${entry.reference}` : ""}
+                  {parseYYYYMMDDAsLocal(entry.disbursedAt).toLocaleDateString()} {entry.reference ? `· Ref: ${entry.reference}` : ""}
                 </p>
               </div>
             ))}
@@ -916,7 +933,7 @@ export default function FinancialsPage() {
                         <p className="font-serif text-lg text-rose-muted">{formatCurrency(expense.amount)}</p>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {expense.project?.name || t("site.unknown_project")} · {new Date(expense.expenditureDate).toLocaleDateString()}
+                        {expense.project?.name || t("site.unknown_project")} · {parseYYYYMMDDAsLocal(expense.expenditureDate).toLocaleDateString()}
                       </p>
                     </div>
                   ))}

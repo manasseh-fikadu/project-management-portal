@@ -798,7 +798,7 @@ export default function ProjectProfilePage() {
         closeBudgetLineEditor();
       }
     } catch (error) {
-      console.error(t("site.failed_to_create_budget_allocation"), error);
+      console.error(t("site.failed_to_update_budget_allocation"), error);
     }
   }
 

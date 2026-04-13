@@ -86,7 +86,12 @@ export async function POST(
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    if (rawLocationMetadata !== null && !locationMetadata) {
+    if (
+      rawLocationMetadata !== null
+      && typeof rawLocationMetadata === "string"
+      && rawLocationMetadata !== ""
+      && !locationMetadata
+    ) {
       return NextResponse.json({ error: "Invalid location metadata" }, { status: 400 });
     }
 

@@ -36,7 +36,7 @@ export async function POST(
       return NextResponse.json({ createdCount: 0 });
     }
 
-    await db.insert(tasks).values(
+    const insertedTasks = await db.insert(tasks).values(
       missingTaskBudgetLines.map((line) => ({
         projectId: id,
         budgetAllocationId: line.id,
@@ -45,9 +45,11 @@ export async function POST(
         assignedTo: line.assignedTo ?? null,
         createdBy: session.userId,
       }))
-    );
+    )
+      .onConflictDoNothing({ target: tasks.budgetAllocationId })
+      .returning({ id: tasks.id });
 
-    return NextResponse.json({ createdCount: missingTaskBudgetLines.length });
+    return NextResponse.json({ createdCount: insertedTasks.length });
   } catch (error) {
     console.error("Error creating tasks from budget lines:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

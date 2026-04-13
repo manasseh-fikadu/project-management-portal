@@ -35,7 +35,7 @@ export function buildBudgetLineTaskDescription(notes: string | null) {
   const parts = [
     parsed.categoryName?.trim(),
     parsed.description?.trim(),
-    parsed.unitCost || parsed.unitCount
+    parsed.unitCost != null || parsed.unitCount != null
       ? `Unit cost ${parsed.unitCost ?? 0}${parsed.unitType ? ` per ${parsed.unitType}` : ""}; Units ${parsed.unitCount ?? 0}`
       : null,
   ].filter((value): value is string => Boolean(value));

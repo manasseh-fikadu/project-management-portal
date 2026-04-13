@@ -185,6 +185,7 @@
     "failed_to_add_milestone": "Failed to add milestone:",
     "failed_to_add_task": "Failed to add task:",
     "failed_to_create_budget_allocation": "Failed to create budget allocation",
+    "failed_to_update_budget_allocation": "Failed to update budget allocation",
     "failed_to_create_disbursement_log": "Failed to create disbursement log",
     "failed_to_create_expenditure": "Failed to create expenditure",
     "failed_to_create_project": "Failed to create project",

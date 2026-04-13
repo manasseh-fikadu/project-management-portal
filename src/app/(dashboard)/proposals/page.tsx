@@ -774,7 +774,9 @@ export default function ProposalsPage() {
 
   async function openDocumentsDialog(proposal: Proposal) {
     setDocumentsDialogProposal(proposal);
+    setUploadLocation(createEmptyUploadLocation());
     setUploadLocationError("");
+    setCapturingUploadLocation(false);
     try {
       const res = await fetch(`/api/proposals/${proposal.id}/documents`);
       const data = await res.json();
@@ -1850,7 +1852,17 @@ export default function ProposalsPage() {
       )}
 
       {/* Documents Dialog */}
-      <Dialog open={!!documentsDialogProposal} onOpenChange={(open) => !open && setDocumentsDialogProposal(null)}>
+      <Dialog
+        open={!!documentsDialogProposal}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDocumentsDialogProposal(null);
+            setUploadLocation(createEmptyUploadLocation());
+            setUploadLocationError("");
+            setCapturingUploadLocation(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl">

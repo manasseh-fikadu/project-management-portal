@@ -185,6 +185,7 @@
     "failed_to_add_milestone": "ዋና ደረጃ መጨመር አልተሳካም፦",
     "failed_to_add_task": "ተግባር መጨመር አልተሳካም፦",
     "failed_to_create_budget_allocation": "የበጀት መመደብ መፍጠር አልተሳካም",
+    "failed_to_update_budget_allocation": "የበጀት መመደብ ማዘመን አልተሳካም",
     "failed_to_create_disbursement_log": "የክፍያ መዝገብ መፍጠር አልተሳካም",
     "failed_to_create_expenditure": "ወጪ መፍጠር አልተሳካም",
     "failed_to_create_project": "ፕሮጀክት መፍጠር አልተሳካም",

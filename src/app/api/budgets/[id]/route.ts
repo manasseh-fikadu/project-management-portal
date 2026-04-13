@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { canAccessProject, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { buildBudgetLineTaskDescription, buildBudgetLineTaskTitle } from "@/lib/budget-line-tasks";
+import { getActiveUserById } from "@/lib/users";
 
 export async function PUT(
   request: NextRequest,
@@ -39,6 +40,7 @@ export async function PUT(
     const updateData: Record<string, unknown> = {
       updatedAt: new Date(),
     };
+    const assignedToProvided = Object.prototype.hasOwnProperty.call(body, "assignedTo");
 
     if (typeof body.activityName === "string" && body.activityName.trim()) {
       updateData.activityName = body.activityName.trim();
@@ -66,8 +68,21 @@ export async function PUT(
       updateData[key] = value;
     }
 
-    if (body.assignedTo === null || typeof body.assignedTo === "string") {
-      updateData.assignedTo = body.assignedTo || null;
+    if (assignedToProvided) {
+      if (body.assignedTo !== null && typeof body.assignedTo !== "string") {
+        return NextResponse.json({ error: "assignedTo must be a valid user ID or null" }, { status: 400 });
+      }
+
+      const normalizedAssignedTo = typeof body.assignedTo === "string" ? body.assignedTo.trim() || null : null;
+
+      if (normalizedAssignedTo) {
+        const assignedUser = await getActiveUserById(normalizedAssignedTo);
+        if (!assignedUser) {
+          return NextResponse.json({ error: "assignedTo must reference an active user" }, { status: 400 });
+        }
+      }
+
+      updateData.assignedTo = normalizedAssignedTo;
     }
 
     const plannedAmount = typeof updateData.plannedAmount === "number"
@@ -93,34 +108,38 @@ export async function PUT(
       );
     }
 
-    const [updatedBudgetAllocation] = await db
-      .update(budgetAllocations)
-      .set(updateData)
-      .where(eq(budgetAllocations.id, id))
-      .returning();
+    const [updatedBudgetAllocation] = await db.transaction(async (tx) => {
+      const [nextBudgetAllocation] = await tx
+        .update(budgetAllocations)
+        .set(updateData)
+        .where(eq(budgetAllocations.id, id))
+        .returning();
 
-    const taskPayload = {
-      title: buildBudgetLineTaskTitle(updatedBudgetAllocation.activityName),
-      description: buildBudgetLineTaskDescription(updatedBudgetAllocation.notes),
-      assignedTo: updatedBudgetAllocation.assignedTo ?? null,
-      updatedAt: new Date(),
-    };
-
-    if (existingBudgetAllocation.task) {
-      await db
-        .update(tasks)
-        .set(taskPayload)
-        .where(eq(tasks.id, existingBudgetAllocation.task.id));
-    } else {
-      await db.insert(tasks).values({
-        projectId: updatedBudgetAllocation.projectId,
-        budgetAllocationId: updatedBudgetAllocation.id,
-        title: taskPayload.title,
-        description: taskPayload.description,
-        assignedTo: taskPayload.assignedTo,
+      const taskValues = {
+        projectId: nextBudgetAllocation.projectId,
+        budgetAllocationId: nextBudgetAllocation.id,
+        title: buildBudgetLineTaskTitle(nextBudgetAllocation.activityName),
+        description: buildBudgetLineTaskDescription(nextBudgetAllocation.notes),
+        assignedTo: nextBudgetAllocation.assignedTo ?? null,
         createdBy: session.userId,
-      });
-    }
+      };
+
+      await tx
+        .insert(tasks)
+        .values(taskValues)
+        .onConflictDoUpdate({
+          target: tasks.budgetAllocationId,
+          set: {
+            projectId: taskValues.projectId,
+            title: taskValues.title,
+            description: taskValues.description,
+            assignedTo: taskValues.assignedTo,
+            updatedAt: new Date(),
+          },
+        });
+
+      return [nextBudgetAllocation] as const;
+    });
 
     await logAuditEvent({
       actorUserId: session.userId,
