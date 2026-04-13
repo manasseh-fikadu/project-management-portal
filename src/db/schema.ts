@@ -106,6 +106,7 @@ export const projectDocuments = pgTable("project_documents", {
   type: varchar("type", { length: 100 }).notNull(),
   url: text("url").notNull(),
   size: integer("size").notNull(),
+  metadata: jsonb("metadata"),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -140,6 +141,9 @@ export const reportingTemplateEnum = pgEnum("reporting_template", ["agra_budget_
 export const reportingNodeTypeEnum = pgEnum("reporting_node_type", ["outcome", "output", "activity", "sub_activity"]);
 export const reportingFundingFacilityEnum = pgEnum("reporting_funding_facility", ["ff1", "ff2", "eif", "other", "unspecified"]);
 export const reportingTransactionTypeEnum = pgEnum("reporting_transaction_type", ["expenditure", "disbursement"]);
+export const disbursementDirectionValues = ["outward", "inward"] as const;
+export type DisbursementDirection = typeof disbursementDirectionValues[number];
+export const disbursementDirectionEnum = pgEnum("disbursement_direction", disbursementDirectionValues);
 
 export const donors = pgTable("donors", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -533,6 +537,7 @@ export const proposalDocuments = pgTable("proposal_documents", {
   type: varchar("type", { length: 100 }).notNull(),
   url: text("url").notNull(),
   size: integer("size").notNull(),
+  metadata: jsonb("metadata"),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -542,6 +547,7 @@ export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "
 export const tasks = pgTable("tasks", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   status: taskStatusEnum("status").default("pending").notNull(),
@@ -556,6 +562,18 @@ export const tasks = pgTable("tasks", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   progressRangeCheck: check("tasks_progress_range_check", sql`${table.progress} >= 0 AND ${table.progress} <= 100`),
+  budgetAllocationIdIdx: uniqueIndex("tasks_budget_allocation_id_idx").on(table.budgetAllocationId),
+}));
+
+export const taskMilestones = pgTable("task_milestones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+  milestoneId: uuid("milestone_id").references(() => milestones.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  taskMilestoneUnique: uniqueIndex("task_milestones_task_id_milestone_id_key").on(table.taskId, table.milestoneId),
+  taskIdIdx: index("task_milestones_task_id_idx").on(table.taskId),
+  milestoneIdIdx: index("task_milestones_milestone_id_idx").on(table.milestoneId),
 }));
 
 export const taskDocuments = pgTable("task_documents", {
@@ -565,6 +583,7 @@ export const taskDocuments = pgTable("task_documents", {
   type: varchar("type", { length: 100 }).notNull(),
   url: text("url").notNull(),
   size: integer("size").notNull(),
+  metadata: jsonb("metadata"),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -578,6 +597,7 @@ export const budgetAllocations = pgTable("budget_allocations", {
   q2Amount: integer("q2_amount").default(0).notNull(),
   q3Amount: integer("q3_amount").default(0).notNull(),
   q4Amount: integer("q4_amount").default(0).notNull(),
+  assignedTo: uuid("assigned_to").references(() => users.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdBy: uuid("created_by").references(() => users.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -605,6 +625,7 @@ export const disbursementLogs = pgTable("disbursement_logs", {
   donorId: uuid("donor_id").references(() => donors.id, { onDelete: "set null" }),
   budgetAllocationId: uuid("budget_allocation_id").references(() => budgetAllocations.id, { onDelete: "set null" }),
   expenditureId: uuid("expenditure_id").references(() => expenditures.id, { onDelete: "set null" }),
+  direction: disbursementDirectionEnum("direction").default("outward").notNull(),
   activityName: varchar("activity_name", { length: 255 }).notNull(),
   amount: integer("amount").notNull(),
   disbursedAt: timestamp("disbursed_at").notNull(),
@@ -839,11 +860,12 @@ export const projectDocumentsRelations = relations(projectDocuments, ({ one }) =
   }),
 }));
 
-export const milestonesRelations = relations(milestones, ({ one }) => ({
+export const milestonesRelations = relations(milestones, ({ one, many }) => ({
   project: one(projects, {
     fields: [milestones.projectId],
     references: [projects.id],
   }),
+  taskMilestones: many(taskMilestones),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
@@ -1109,6 +1131,10 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     fields: [tasks.projectId],
     references: [projects.id],
   }),
+  budgetAllocation: one(budgetAllocations, {
+    fields: [tasks.budgetAllocationId],
+    references: [budgetAllocations.id],
+  }),
   assignee: one(users, {
     fields: [tasks.assignedTo],
     references: [users.id],
@@ -1122,6 +1148,18 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
   documents: many(taskDocuments),
   expenditures: many(expenditures),
   procurementRequests: many(procurementRequests),
+  taskMilestones: many(taskMilestones),
+}));
+
+export const taskMilestonesRelations = relations(taskMilestones, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskMilestones.taskId],
+    references: [tasks.id],
+  }),
+  milestone: one(milestones, {
+    fields: [taskMilestones.milestoneId],
+    references: [milestones.id],
+  }),
 }));
 
 export const taskDocumentsRelations = relations(taskDocuments, ({ one }) => ({
@@ -1139,6 +1177,14 @@ export const budgetAllocationsRelations = relations(budgetAllocations, ({ one, m
   project: one(projects, {
     fields: [budgetAllocations.projectId],
     references: [projects.id],
+  }),
+  task: one(tasks, {
+    fields: [budgetAllocations.id],
+    references: [tasks.budgetAllocationId],
+  }),
+  assignee: one(users, {
+    fields: [budgetAllocations.assignedTo],
+    references: [users.id],
   }),
   creator: one(users, {
     fields: [budgetAllocations.createdBy],
@@ -1320,6 +1366,8 @@ export type ProposalDocument = typeof proposalDocuments.$inferSelect;
 export type NewProposalDocument = typeof proposalDocuments.$inferInsert;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+export type TaskMilestone = typeof taskMilestones.$inferSelect;
+export type NewTaskMilestone = typeof taskMilestones.$inferInsert;
 export type TaskDocument = typeof taskDocuments.$inferSelect;
 export type NewTaskDocument = typeof taskDocuments.$inferInsert;
 export type BudgetAllocation = typeof budgetAllocations.$inferSelect;

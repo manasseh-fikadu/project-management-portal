@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth";
 import { canAccessTask, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage";
+import { parseDocumentLocationMetadata } from "@/lib/document-location";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -76,9 +77,22 @@ export async function POST(
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const name = formData.get("name") as string | null;
+    const rawLocationMetadata = formData.get("locationMetadata");
+    const locationMetadata = parseDocumentLocationMetadata(
+      typeof rawLocationMetadata === "string" ? rawLocationMetadata : null
+    );
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    if (
+      rawLocationMetadata !== null
+      && typeof rawLocationMetadata === "string"
+      && rawLocationMetadata !== ""
+      && !locationMetadata
+    ) {
+      return NextResponse.json({ error: "Invalid location metadata" }, { status: 400 });
     }
 
     const fileExtension = file.name.split(".").pop() || "bin";
@@ -107,6 +121,7 @@ export async function POST(
         type: file.type || "application/octet-stream",
         url: fileUrl,
         size: file.size,
+        metadata: locationMetadata ? { location: locationMetadata } : null,
         uploadedBy: session.userId,
       })
       .returning();
