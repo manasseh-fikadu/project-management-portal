@@ -25,6 +25,7 @@ import {
 } from "@/lib/procurement";
 import { getRequiredProcurementApprovalRole } from "@/lib/procurement-approval";
 import { getProcurementRequestWithRelations } from "@/lib/procurement-data";
+import { getActiveUserById } from "@/lib/users";
 
 type NormalizedLineItem = {
   description: string;
@@ -37,6 +38,7 @@ type NormalizedLineItem = {
 };
 
 const PROCUREMENT_REQUEST_NUMBER_MAX_ATTEMPTS = 3;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isValidProcurementStatus(value: string): value is ProcurementStatus {
   return [
@@ -70,6 +72,10 @@ function isUniqueConstraintError(error: unknown, constraintName: string): boolea
   );
 }
 
+function isValidUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
 function normalizeLineItems(value: unknown): NormalizedLineItem[] {
   if (!Array.isArray(value)) {
     return [];
@@ -82,16 +88,25 @@ function normalizeLineItems(value: unknown): NormalizedLineItem[] {
       }
 
       const description = typeof item.description === "string" ? item.description.trim() : "";
-      const quantity = Math.max(1, Math.round(Number(item.quantity ?? 1)));
-      const unitPrice = Math.max(0, Math.round(Number(item.unitPrice ?? 0)));
-      const totalPrice = Math.max(
-        0,
-        Math.round(Number(item.totalPrice ?? quantity * unitPrice))
-      );
+      const rawQuantity = Number(item.quantity ?? 1);
+      const rawUnitPrice = Number(item.unitPrice ?? 0);
+      const rawTotalPrice = item.totalPrice !== undefined ? Number(item.totalPrice) : undefined;
 
-      if (!description) {
+      if (
+        !description
+        || !Number.isFinite(rawQuantity)
+        || !Number.isFinite(rawUnitPrice)
+        || (rawTotalPrice !== undefined && !Number.isFinite(rawTotalPrice))
+      ) {
         return null;
       }
+
+      const quantity = Math.max(1, Math.round(rawQuantity));
+      const unitPrice = Math.max(0, Math.round(rawUnitPrice));
+      const totalPrice = Math.max(
+        0,
+        Math.round(rawTotalPrice ?? quantity * unitPrice)
+      );
 
       return {
         description,
@@ -282,6 +297,28 @@ export async function POST(request: NextRequest) {
     const neededByDate = normalizeOptionalText(body.neededByDate);
     const priority = typeof body.priority === "string" && body.priority.trim() ? body.priority.trim() : "medium";
 
+    if (procurementOfficerId) {
+      if (!isValidUuid(procurementOfficerId)) {
+        return NextResponse.json(
+          { error: "procurementOfficerId must be a valid UUID" },
+          { status: 400 }
+        );
+      }
+
+      const procurementOfficer = await getActiveUserById(procurementOfficerId);
+      if (!procurementOfficer) {
+        return NextResponse.json({ error: "Procurement officer not found" }, { status: 404 });
+      }
+    }
+
+    let parsedNeededByDate: Date | null = null;
+    if (neededByDate) {
+      parsedNeededByDate = new Date(neededByDate);
+      if (Number.isNaN(parsedNeededByDate.getTime())) {
+        return NextResponse.json({ error: "neededByDate must be a valid date" }, { status: 400 });
+      }
+    }
+
     let createdRequest: typeof procurementRequests.$inferSelect | null = null;
 
     for (let attempt = 0; attempt < PROCUREMENT_REQUEST_NUMBER_MAX_ATTEMPTS; attempt += 1) {
@@ -309,7 +346,7 @@ export async function POST(request: NextRequest) {
               requesterId: session.userId,
               procurementOfficerId,
               selectedVendorId,
-              neededByDate: neededByDate ? new Date(neededByDate) : null,
+              neededByDate: parsedNeededByDate,
               submittedAt: submitForApproval ? new Date() : null,
               notes,
               lookupText: buildProcurementLookupText({

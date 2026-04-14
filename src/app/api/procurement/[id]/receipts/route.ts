@@ -119,6 +119,9 @@ export async function POST(
     if (typeof body.receivedAt === "string" && body.receivedAt.trim() && parsedReceivedAt === null) {
       return NextResponse.json({ error: "receivedAt must be a valid date" }, { status: 400 });
     }
+    if ("status" in body && typeof body.status === "string" && !isGoodsReceiptStatus(body.status)) {
+      return NextResponse.json({ error: "status must be a valid goods receipt status" }, { status: 400 });
+    }
 
     const requestedStatus =
       typeof body.status === "string" && isGoodsReceiptStatus(body.status)
@@ -240,13 +243,13 @@ export async function POST(
           status: nextPurchaseOrderStatus,
           updatedAt: new Date(),
         })
-        .where(eq(purchaseOrders.id, procurementRequest.purchaseOrder.id));
+        .where(eq(purchaseOrders.id, lockedProcurementRequest.purchaseOrderId));
 
       await tx
         .update(procurementRequests)
         .set({
           status: nextProcurementStatus,
-          receivedAt: new Date(),
+          ...(progressReceivedAmount > 0 ? { receivedAt: new Date() } : {}),
           updatedAt: new Date(),
         })
         .where(eq(procurementRequests.id, id));

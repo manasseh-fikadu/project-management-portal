@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check, index, AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, varchar, integer, boolean, pgEnum, jsonb, uniqueIndex, check, index, AnyPgColumn, foreignKey } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 export const roleEnum = pgEnum("role", ["admin", "manager", "user"]);
@@ -370,6 +370,10 @@ export const vendorQuotations = pgTable("vendor_quotations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
+  vendorQuotationsIdRequestUnique: uniqueIndex("vendor_quotations_id_request_key").on(
+    table.id,
+    table.procurementRequestId
+  ),
   vendorQuotationsRequestIdx: index("vendor_quotations_request_id_idx").on(table.procurementRequestId),
   vendorQuotationsVendorIdx: index("vendor_quotations_vendor_id_idx").on(table.vendorId),
   vendorQuotationsAmountCheck: check("vendor_quotations_amount_check", sql`${table.amount} > 0`),
@@ -390,6 +394,10 @@ export const purchaseOrders = pgTable("purchase_orders", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
+  purchaseOrdersIdRequestUnique: uniqueIndex("purchase_orders_id_request_key").on(
+    table.id,
+    table.procurementRequestId
+  ),
   purchaseOrdersRequestUnique: uniqueIndex("purchase_orders_procurement_request_id_key").on(table.procurementRequestId),
   purchaseOrdersPoNumberUnique: uniqueIndex("purchase_orders_po_number_key").on(table.poNumber),
   purchaseOrdersVendorIdx: index("purchase_orders_vendor_id_idx").on(table.vendorId),
@@ -400,7 +408,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
 export const goodsReceipts = pgTable("goods_receipts", {
   id: uuid("id").defaultRandom().primaryKey(),
   procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
-  purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "cascade" }).notNull(),
+  purchaseOrderId: uuid("purchase_order_id").notNull(),
   receiptNumber: varchar("receipt_number", { length: 60 }).notNull(),
   status: goodsReceiptStatusEnum("status").default("received").notNull(),
   receivedAmount: integer("received_amount").default(0).notNull(),
@@ -411,18 +419,27 @@ export const goodsReceipts = pgTable("goods_receipts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
+  goodsReceiptsIdRequestUnique: uniqueIndex("goods_receipts_id_request_key").on(
+    table.id,
+    table.procurementRequestId
+  ),
   goodsReceiptsReceiptNumberUnique: uniqueIndex("goods_receipts_receipt_number_key").on(table.receiptNumber),
   goodsReceiptsRequestIdx: index("goods_receipts_request_id_idx").on(table.procurementRequestId),
   goodsReceiptsPurchaseOrderIdx: index("goods_receipts_purchase_order_id_idx").on(table.purchaseOrderId),
   goodsReceiptsReceivedAmountCheck: check("goods_receipts_received_amount_check", sql`${table.receivedAmount} >= 0`),
+  goodsReceiptsPurchaseOrderRequestFk: foreignKey({
+    columns: [table.purchaseOrderId, table.procurementRequestId],
+    foreignColumns: [purchaseOrders.id, purchaseOrders.procurementRequestId],
+    name: "goods_receipts_purchase_order_request_fkey",
+  }).onDelete("cascade"),
 }));
 
 export const supplierInvoices = pgTable("supplier_invoices", {
   id: uuid("id").defaultRandom().primaryKey(),
   procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
-  purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "set null" }),
+  purchaseOrderId: uuid("purchase_order_id"),
   vendorId: uuid("vendor_id").references(() => vendors.id).notNull(),
-  goodsReceiptId: uuid("goods_receipt_id").references(() => goodsReceipts.id, { onDelete: "set null" }),
+  goodsReceiptId: uuid("goods_receipt_id"),
   invoiceNumber: varchar("invoice_number", { length: 100 }).notNull(),
   amount: integer("amount").notNull(),
   currency: varchar("currency", { length: 10 }).default("ETB").notNull(),
@@ -437,6 +454,10 @@ export const supplierInvoices = pgTable("supplier_invoices", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
+  supplierInvoicesIdRequestUnique: uniqueIndex("supplier_invoices_id_request_key").on(
+    table.id,
+    table.procurementRequestId
+  ),
   supplierInvoicesVendorInvoiceUnique: uniqueIndex("supplier_invoices_vendor_invoice_key").on(
     table.vendorId,
     table.invoiceNumber
@@ -445,15 +466,25 @@ export const supplierInvoices = pgTable("supplier_invoices", {
   supplierInvoicesVendorIdx: index("supplier_invoices_vendor_id_idx").on(table.vendorId),
   supplierInvoicesStatusIdx: index("supplier_invoices_status_idx").on(table.status),
   supplierInvoicesAmountCheck: check("supplier_invoices_amount_check", sql`${table.amount} > 0`),
+  supplierInvoicesPurchaseOrderRequestFk: foreignKey({
+    columns: [table.purchaseOrderId, table.procurementRequestId],
+    foreignColumns: [purchaseOrders.id, purchaseOrders.procurementRequestId],
+    name: "supplier_invoices_purchase_order_request_fkey",
+  }),
+  supplierInvoicesGoodsReceiptRequestFk: foreignKey({
+    columns: [table.goodsReceiptId, table.procurementRequestId],
+    foreignColumns: [goodsReceipts.id, goodsReceipts.procurementRequestId],
+    name: "supplier_invoices_goods_receipt_request_fkey",
+  }),
 }));
 
 export const procurementDocuments = pgTable("procurement_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   procurementRequestId: uuid("procurement_request_id").references(() => procurementRequests.id, { onDelete: "cascade" }).notNull(),
-  quotationId: uuid("quotation_id").references(() => vendorQuotations.id, { onDelete: "set null" }),
-  purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id, { onDelete: "set null" }),
-  goodsReceiptId: uuid("goods_receipt_id").references(() => goodsReceipts.id, { onDelete: "set null" }),
-  supplierInvoiceId: uuid("supplier_invoice_id").references(() => supplierInvoices.id, { onDelete: "set null" }),
+  quotationId: uuid("quotation_id"),
+  purchaseOrderId: uuid("purchase_order_id"),
+  goodsReceiptId: uuid("goods_receipt_id"),
+  supplierInvoiceId: uuid("supplier_invoice_id"),
   documentType: procurementDocumentTypeEnum("document_type").default("other").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   type: varchar("type", { length: 100 }).notNull(),
@@ -467,6 +498,26 @@ export const procurementDocuments = pgTable("procurement_documents", {
   procurementDocumentsPurchaseOrderIdx: index("procurement_documents_purchase_order_id_idx").on(table.purchaseOrderId),
   procurementDocumentsGoodsReceiptIdx: index("procurement_documents_goods_receipt_id_idx").on(table.goodsReceiptId),
   procurementDocumentsSupplierInvoiceIdx: index("procurement_documents_supplier_invoice_id_idx").on(table.supplierInvoiceId),
+  procurementDocumentsQuotationRequestFk: foreignKey({
+    columns: [table.quotationId, table.procurementRequestId],
+    foreignColumns: [vendorQuotations.id, vendorQuotations.procurementRequestId],
+    name: "proc_docs_quotation_request_fkey",
+  }),
+  procurementDocumentsPurchaseOrderRequestFk: foreignKey({
+    columns: [table.purchaseOrderId, table.procurementRequestId],
+    foreignColumns: [purchaseOrders.id, purchaseOrders.procurementRequestId],
+    name: "proc_docs_purchase_order_request_fkey",
+  }),
+  procurementDocumentsGoodsReceiptRequestFk: foreignKey({
+    columns: [table.goodsReceiptId, table.procurementRequestId],
+    foreignColumns: [goodsReceipts.id, goodsReceipts.procurementRequestId],
+    name: "proc_docs_goods_receipt_request_fkey",
+  }),
+  procurementDocumentsSupplierInvoiceRequestFk: foreignKey({
+    columns: [table.supplierInvoiceId, table.procurementRequestId],
+    foreignColumns: [supplierInvoices.id, supplierInvoices.procurementRequestId],
+    name: "proc_docs_supplier_invoice_request_fkey",
+  }),
 }));
 
 export const procurementApprovals = pgTable("procurement_approvals", {
@@ -1009,8 +1060,8 @@ export const goodsReceiptsRelations = relations(goodsReceipts, ({ one, many }) =
     references: [procurementRequests.id],
   }),
   purchaseOrder: one(purchaseOrders, {
-    fields: [goodsReceipts.purchaseOrderId],
-    references: [purchaseOrders.id],
+    fields: [goodsReceipts.purchaseOrderId, goodsReceipts.procurementRequestId],
+    references: [purchaseOrders.id, purchaseOrders.procurementRequestId],
   }),
   receiver: one(users, {
     fields: [goodsReceipts.receivedBy],
@@ -1026,16 +1077,16 @@ export const supplierInvoicesRelations = relations(supplierInvoices, ({ one, man
     references: [procurementRequests.id],
   }),
   purchaseOrder: one(purchaseOrders, {
-    fields: [supplierInvoices.purchaseOrderId],
-    references: [purchaseOrders.id],
+    fields: [supplierInvoices.purchaseOrderId, supplierInvoices.procurementRequestId],
+    references: [purchaseOrders.id, purchaseOrders.procurementRequestId],
   }),
   vendor: one(vendors, {
     fields: [supplierInvoices.vendorId],
     references: [vendors.id],
   }),
   goodsReceipt: one(goodsReceipts, {
-    fields: [supplierInvoices.goodsReceiptId],
-    references: [goodsReceipts.id],
+    fields: [supplierInvoices.goodsReceiptId, supplierInvoices.procurementRequestId],
+    references: [goodsReceipts.id, goodsReceipts.procurementRequestId],
   }),
   linkedExpenditure: one(expenditures, {
     fields: [supplierInvoices.linkedExpenditureId],
@@ -1058,20 +1109,20 @@ export const procurementDocumentsRelations = relations(procurementDocuments, ({ 
     references: [procurementRequests.id],
   }),
   quotation: one(vendorQuotations, {
-    fields: [procurementDocuments.quotationId],
-    references: [vendorQuotations.id],
+    fields: [procurementDocuments.quotationId, procurementDocuments.procurementRequestId],
+    references: [vendorQuotations.id, vendorQuotations.procurementRequestId],
   }),
   purchaseOrder: one(purchaseOrders, {
-    fields: [procurementDocuments.purchaseOrderId],
-    references: [purchaseOrders.id],
+    fields: [procurementDocuments.purchaseOrderId, procurementDocuments.procurementRequestId],
+    references: [purchaseOrders.id, purchaseOrders.procurementRequestId],
   }),
   goodsReceipt: one(goodsReceipts, {
-    fields: [procurementDocuments.goodsReceiptId],
-    references: [goodsReceipts.id],
+    fields: [procurementDocuments.goodsReceiptId, procurementDocuments.procurementRequestId],
+    references: [goodsReceipts.id, goodsReceipts.procurementRequestId],
   }),
   supplierInvoice: one(supplierInvoices, {
-    fields: [procurementDocuments.supplierInvoiceId],
-    references: [supplierInvoices.id],
+    fields: [procurementDocuments.supplierInvoiceId, procurementDocuments.procurementRequestId],
+    references: [supplierInvoices.id, supplierInvoices.procurementRequestId],
   }),
   uploader: one(users, {
     fields: [procurementDocuments.uploadedBy],

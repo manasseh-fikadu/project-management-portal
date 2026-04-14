@@ -92,6 +92,20 @@
       "when": 1776032714000,
       "tag": "0008_procurement_module",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1776162600000,
+      "tag": "0012_procurement_module_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1776166200000,
+      "tag": "0013_short_wither",
+      "breakpoints": true
     }
   ]
 }

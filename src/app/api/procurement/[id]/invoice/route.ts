@@ -107,26 +107,31 @@ export async function POST(
         return NextResponse.json({ error: "Supplier invoice not found" }, { status: 404 });
       }
 
-      if (body.markAsPaid === true || body.postToFinancials === true) {
-        await postSupplierInvoiceToFinancials({
-          invoiceId,
-          actorUserId: session.userId,
-          markAsPaid: body.markAsPaid === true,
-          paymentReference: typeof body.paymentReference === "string" ? body.paymentReference.trim() || null : null,
-          paymentDate: parseOptionalDate(body.paymentDate),
-        });
+      await db.transaction(async (tx) => {
+        if (body.markAsPaid === true || body.postToFinancials === true) {
+          await postSupplierInvoiceToFinancials({
+            invoiceId,
+            actorUserId: session.userId,
+            markAsPaid: body.markAsPaid === true,
+            paymentReference: typeof body.paymentReference === "string" ? body.paymentReference.trim() || null : null,
+            paymentDate: parseOptionalDate(body.paymentDate),
+            executor: tx,
+          });
 
-        await logAuditEvent({
-          actorUserId: session.userId,
-          action: "update",
-          entityType: "supplier_invoice_financial_posting",
-          entityId: invoiceId,
-          changes: { procurementRequestId: id, markAsPaid: body.markAsPaid === true },
-          request,
-        });
-      }
+          await logAuditEvent({
+            actorUserId: session.userId,
+            action: "update",
+            entityType: "supplier_invoice_financial_posting",
+            entityId: invoiceId,
+            changes: { procurementRequestId: id, markAsPaid: body.markAsPaid === true },
+            request,
+            executor: tx,
+          });
+        } else {
+          await syncProcurementRequestFinancials(id, { executor: tx });
+        }
+      });
 
-      await syncProcurementRequestFinancials(id);
       const detail = await getProcurementRequestWithRelations(id);
       return NextResponse.json(detail);
     }

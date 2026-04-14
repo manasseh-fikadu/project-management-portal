@@ -29,6 +29,25 @@ class ProcurementQuotationError extends Error {
   }
 }
 
+function parseOptionalQuotationDate(value: unknown, fieldName: string): Date | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  if (Number.isNaN(Date.parse(trimmedValue))) {
+    throw new ProcurementQuotationError(400, {
+      error: `${fieldName} must be a valid date`,
+    });
+  }
+
+  return new Date(trimmedValue);
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -96,6 +115,8 @@ export async function POST(
     }
 
     const body = await request.json();
+    const submittedAt = parseOptionalQuotationDate(body.submittedAt, "submittedAt");
+    const validUntil = parseOptionalQuotationDate(body.validUntil, "validUntil");
     const quotationId = typeof body.quotationId === "string" ? body.quotationId : null;
 
     if (quotationId) {
@@ -212,8 +233,8 @@ export async function POST(
             referenceNumber: typeof body.referenceNumber === "string" ? body.referenceNumber.trim() || null : null,
             amount,
             currency: typeof body.currency === "string" && body.currency.trim() ? body.currency.trim() : procurementRequest.currency,
-            submittedAt: typeof body.submittedAt === "string" && body.submittedAt.trim() ? new Date(body.submittedAt) : null,
-            validUntil: typeof body.validUntil === "string" && body.validUntil.trim() ? new Date(body.validUntil) : null,
+            submittedAt,
+            validUntil,
             isSelected: false,
             notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
             comparisonNotes: typeof body.comparisonNotes === "string" ? body.comparisonNotes.trim() || null : null,
@@ -244,30 +265,34 @@ export async function POST(
         return createdQuotation;
       });
     } else if (procurementRequest.status === "approved" || procurementRequest.status === "rfq_open") {
-      [quotation] = await db
-        .insert(vendorQuotations)
-        .values({
-          procurementRequestId: id,
-          vendorId,
-          referenceNumber: typeof body.referenceNumber === "string" ? body.referenceNumber.trim() || null : null,
-          amount,
-          currency: typeof body.currency === "string" && body.currency.trim() ? body.currency.trim() : procurementRequest.currency,
-          submittedAt: typeof body.submittedAt === "string" && body.submittedAt.trim() ? new Date(body.submittedAt) : null,
-          validUntil: typeof body.validUntil === "string" && body.validUntil.trim() ? new Date(body.validUntil) : null,
-          isSelected: false,
-          notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
-          comparisonNotes: typeof body.comparisonNotes === "string" ? body.comparisonNotes.trim() || null : null,
-          createdBy: session.userId,
-        })
-        .returning();
+      quotation = await db.transaction(async (tx) => {
+        const [createdQuotation] = await tx
+          .insert(vendorQuotations)
+          .values({
+            procurementRequestId: id,
+            vendorId,
+            referenceNumber: typeof body.referenceNumber === "string" ? body.referenceNumber.trim() || null : null,
+            amount,
+            currency: typeof body.currency === "string" && body.currency.trim() ? body.currency.trim() : procurementRequest.currency,
+            submittedAt,
+            validUntil,
+            isSelected: false,
+            notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
+            comparisonNotes: typeof body.comparisonNotes === "string" ? body.comparisonNotes.trim() || null : null,
+            createdBy: session.userId,
+          })
+          .returning();
 
-      await db
-        .update(procurementRequests)
-        .set({
-          status: "quotes_received",
-          updatedAt: new Date(),
-        })
-        .where(eq(procurementRequests.id, id));
+        await tx
+          .update(procurementRequests)
+          .set({
+            status: "quotes_received",
+            updatedAt: new Date(),
+          })
+          .where(eq(procurementRequests.id, id));
+
+        return createdQuotation;
+      });
     } else {
       [quotation] = await db
         .insert(vendorQuotations)
@@ -277,8 +302,8 @@ export async function POST(
           referenceNumber: typeof body.referenceNumber === "string" ? body.referenceNumber.trim() || null : null,
           amount,
           currency: typeof body.currency === "string" && body.currency.trim() ? body.currency.trim() : procurementRequest.currency,
-          submittedAt: typeof body.submittedAt === "string" && body.submittedAt.trim() ? new Date(body.submittedAt) : null,
-          validUntil: typeof body.validUntil === "string" && body.validUntil.trim() ? new Date(body.validUntil) : null,
+          submittedAt,
+          validUntil,
           isSelected: false,
           notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
           comparisonNotes: typeof body.comparisonNotes === "string" ? body.comparisonNotes.trim() || null : null,

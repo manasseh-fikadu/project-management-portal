@@ -1,6 +1,8 @@
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db, goodsReceipts, procurementDocuments, purchaseOrders, supplierInvoices, vendorQuotations } from "@/db";
 import { getSession } from "@/lib/auth";
@@ -8,6 +10,9 @@ import { canAccessProcurementRequest, ensureEditAccess } from "@/lib/rbac";
 import { logAuditEvent } from "@/lib/audit";
 import { r2Client, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage";
 import { PROCUREMENT_DOCUMENT_TYPES, type ProcurementDocumentType } from "@/lib/procurement";
+
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 25 * 1024 * 1024);
+const STREAM_UPLOAD_THRESHOLD_BYTES = Number(process.env.STREAM_UPLOAD_THRESHOLD_BYTES ?? 5 * 1024 * 1024);
 
 export async function GET(
   request: NextRequest,
@@ -85,10 +90,20 @@ export async function POST(
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: `File exceeds the ${MAX_UPLOAD_BYTES} byte upload limit` },
+        { status: 413 }
+      );
+    }
+
     const fileExtension = file.name.split(".").pop() || "bin";
     const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExtension}`;
     const key = `procurement/${id}/${fileName}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const uploadBody =
+      file.size >= STREAM_UPLOAD_THRESHOLD_BYTES
+        ? Readable.fromWeb(file.stream() as unknown as NodeReadableStream<Uint8Array>)
+        : Buffer.from(await file.arrayBuffer());
     const rawDocumentType = (formData.get("documentType") as string) || "other";
     const documentType: ProcurementDocumentType = PROCUREMENT_DOCUMENT_TYPES.includes(rawDocumentType as ProcurementDocumentType)
       ? (rawDocumentType as ProcurementDocumentType)
@@ -186,37 +201,59 @@ export async function POST(
       new PutObjectCommand({
         Bucket: R2_BUCKET,
         Key: key,
-        Body: buffer,
+        Body: uploadBody,
         ContentType: file.type || "application/octet-stream",
       })
     );
 
     const fileUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${key}` : `/uploads/${key}`;
-    const [document] = await db
-      .insert(procurementDocuments)
-      .values({
-        procurementRequestId: id,
-        quotationId,
-        purchaseOrderId,
-        goodsReceiptId,
-        supplierInvoiceId,
-        documentType,
-        name: name || file.name,
-        type: file.type || "application/octet-stream",
-        url: fileUrl,
-        size: file.size,
-        uploadedBy: session.userId,
-      })
-      .returning();
+    let document;
 
-    await logAuditEvent({
-      actorUserId: session.userId,
-      action: "create",
-      entityType: "procurement_document",
-      entityId: document.id,
-      changes: { after: document },
-      request,
-    });
+    try {
+      document = await db.transaction(async (tx) => {
+        const [createdDocument] = await tx
+          .insert(procurementDocuments)
+          .values({
+            procurementRequestId: id,
+            quotationId,
+            purchaseOrderId,
+            goodsReceiptId,
+            supplierInvoiceId,
+            documentType,
+            name: name || file.name,
+            type: file.type || "application/octet-stream",
+            url: fileUrl,
+            size: file.size,
+            uploadedBy: session.userId,
+          })
+          .returning();
+
+        await logAuditEvent({
+          actorUserId: session.userId,
+          action: "create",
+          entityType: "procurement_document",
+          entityId: createdDocument.id,
+          changes: { after: createdDocument },
+          request,
+          executor: tx,
+        });
+
+        return createdDocument;
+      });
+    } catch (error) {
+      try {
+        await r2Client.send(
+          new DeleteObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: key,
+          })
+        );
+      } catch (cleanupError) {
+        console.error("Failed to clean up procurement document after transaction failure:", cleanupError);
+      }
+
+      throw error;
+    }
 
     return NextResponse.json({ document }, { status: 201 });
   } catch (error) {

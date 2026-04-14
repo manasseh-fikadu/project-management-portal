@@ -44,7 +44,13 @@ export async function POST(
     }
 
     const body = await request.json();
-    const decision = body.decision === "rejected" ? "rejected" : "approved";
+    if (body?.decision !== "approved" && body?.decision !== "rejected") {
+      return NextResponse.json(
+        { error: "decision must be either approved or rejected" },
+        { status: 400 }
+      );
+    }
+    const decision = body.decision;
     const comments = typeof body.comments === "string" ? body.comments.trim() || null : null;
     const rawApprovedAmount = body.approvedAmount;
 
