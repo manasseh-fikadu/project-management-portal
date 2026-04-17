@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, inArray } from "drizzle-orm";
 import type { ProfileRole, SessionUser } from "@/lib/auth";
-import { db, projectDonors, projectMembers, projects, proposals, tasks } from "@/db";
+import { db, procurementRequests, projectDonors, projectMembers, projects, proposals, tasks } from "@/db";
 
 const EDIT_ROLES: ReadonlySet<ProfileRole> = new Set(["admin", "project_manager"]);
 
@@ -68,6 +68,40 @@ export async function canAccessTask(user: SessionUser, taskId: string): Promise<
   }
 
   return canAccessProject(user, task.projectId);
+}
+
+export async function getAccessibleProcurementRequestIds(user: SessionUser): Promise<string[] | null> {
+  if (user.role === "admin") {
+    return null;
+  }
+
+  const accessibleProjectIds = await getAccessibleProjectIds(user);
+  const [projectRequests, ownRequests] = await Promise.all([
+    accessibleProjectIds && accessibleProjectIds.length > 0
+      ? db.query.procurementRequests.findMany({
+          where: inArray(procurementRequests.projectId, accessibleProjectIds),
+          columns: { id: true },
+        })
+      : Promise.resolve([]),
+    db.query.procurementRequests.findMany({
+      where: eq(procurementRequests.requesterId, user.id),
+      columns: { id: true },
+    }),
+  ]);
+
+  return Array.from(new Set([
+    ...projectRequests.map((request) => request.id),
+    ...ownRequests.map((request) => request.id),
+  ]));
+}
+
+export async function canAccessProcurementRequest(
+  user: SessionUser,
+  procurementRequestId: string
+): Promise<boolean> {
+  const accessibleProcurementRequestIds = await getAccessibleProcurementRequestIds(user);
+  return accessibleProcurementRequestIds === null
+    || accessibleProcurementRequestIds.includes(procurementRequestId);
 }
 
 export async function getAccessibleProposalIds(user: SessionUser): Promise<string[] | null> {
